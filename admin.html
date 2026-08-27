@@ -1,0 +1,2392 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — ระบบเช็คชื่อเข้างาน</title>
+<style>
+  :root { --blue:#1e40af; --blue2:#2563eb; --bg:#f5f7fa; --card:#fff; --muted:#64748b; --line:#e2e8f0; --gridline:#dfe3e8; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,'Segoe UI',Roboto,'Noto Sans Thai',sans-serif; background:var(--bg); color:#0f172a; }
+  .btn { border:0; border-radius:9px; padding:9px 15px; font-size:14px; font-weight:600; cursor:pointer; }
+  .btn-primary { background:var(--blue2); color:#fff; }
+  .btn-ghost { background:#e9edf2; color:#0f172a; }
+  .btn-ok { background:#16a34a; color:#fff; }
+  .btn-danger { background:#dc2626; color:#fff; }
+  .btn-sm { padding:7px 12px; font-size:13px; border-radius:8px; }
+  input, select, textarea { padding:9px 12px; border:1px solid #cbd5e1; border-radius:9px; font-size:14px; font-family:inherit; background:#fff; }
+  input:focus, select:focus, textarea:focus { outline:none; border-color:var(--blue2); }
+  .hidden { display:none !important; }
+  a { color:var(--blue2); text-decoration:none; }
+  a:hover { text-decoration:underline; }
+
+  .err { background:#fee2e2; color:#991b1b; padding:10px 12px; border-radius:9px; font-size:13px; margin-bottom:12px; }
+
+  /* shell */
+  header.top { background:#fff; border-bottom:1px solid var(--line); padding:12px 20px; display:flex; align-items:center; justify-content:space-between; gap:10px; position:sticky; top:0; z-index:20; }
+  header.top .brand { font-weight:800; font-size:16px; color:var(--blue); display:flex; align-items:center; gap:8px; }
+  header.top .who { font-size:13px; color:var(--muted); }
+  .nav { display:flex; gap:4px; background:#fff; padding:0 20px; border-bottom:1px solid var(--line); position:sticky; top:53px; z-index:19; overflow-x:auto; white-space:nowrap; }
+  .navbtn { padding:13px 16px; cursor:pointer; font-weight:600; font-size:14px; color:var(--muted); background:none; border:0; border-bottom:2.5px solid transparent; flex:0 0 auto; }
+  .navbtn.active { color:var(--blue2); border-bottom-color:var(--blue2); }
+  .wrap { max-width:1180px; margin:0 auto; padding:20px; }
+  h3.sec { margin:4px 2px 14px; font-size:16px; }
+
+  /* stats */
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; margin-bottom:22px; }
+  .stat { background:#fff; border:1px solid var(--line); border-radius:14px; padding:16px 18px; }
+  .stat .n { font-size:28px; font-weight:800; color:var(--blue); }
+  .stat .l { color:var(--muted); font-size:13px; margin-top:3px; }
+
+  .toolbar { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; align-items:center; }
+  .toolbar input, .toolbar select { min-width:120px; }
+  .grow { flex:1; min-width:180px; }
+
+  /* clean grid table (เหมือนตัวอย่าง) */
+  .tbl-wrap { overflow-x:auto; background:#fff; border-radius:12px; border:1px solid var(--gridline); }
+  table.grid { border-collapse:collapse; width:100%; font-size:14px; }
+  table.grid th, table.grid td { border:1px solid var(--gridline); padding:12px 14px; text-align:center; vertical-align:middle; }
+  table.grid th { background:#f7f9fb; color:#475569; font-weight:700; font-size:13px; white-space:nowrap; }
+  table.grid td.addr { text-align:left; min-width:240px; }
+  table.grid td.name { font-weight:600; white-space:nowrap; }
+  .type-in { color:#16a34a; font-weight:700; }
+  .type-out { color:#ea580c; font-weight:700; }
+  .time-cell { color:#475569; white-space:nowrap; }
+
+  /* photo thumbnail (มี fallback เป็นเงาคนถ้ารูปโหลดไม่ได้) */
+  .ph { width:72px; height:72px; border-radius:10px; margin:0 auto; overflow:hidden; background:#eef2f7 no-repeat center/64%;
+        background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="72" height="72" viewBox="0 0 72 72"><circle cx="36" cy="28" r="14" fill="%23111"/><path d="M12 66c0-14 11-22 24-22s24 8 24 22z" fill="%23111"/></svg>'); }
+  .ph img { width:100%; height:100%; object-fit:cover; display:block; }
+  /* map embed */
+  .mp-wrap { display:inline-flex; flex-direction:column; align-items:center; gap:4px; }
+  .mp { width:160px; height:110px; border-radius:9px; overflow:hidden; background:#eef2f7; }
+  .mp iframe { width:100%; height:100%; border:0; display:block; }
+  .mp-link { font-size:12px; }
+
+  .badge { padding:3px 9px; border-radius:999px; font-size:12px; font-weight:700; white-space:nowrap; }
+  .pill { padding:3px 10px; border-radius:999px; font-size:12px; font-weight:700; white-space:nowrap; }
+  .pill.pending { background:#fef9c3; color:#854d0e; }
+  .pill.approved { background:#dcfce7; color:#166534; }
+  .pill.rejected { background:#fee2e2; color:#991b1b; }
+  .muted { color:var(--muted); font-size:13px; }
+  .center-load { text-align:center; padding:40px 0; color:var(--muted); }
+  .spinner { width:22px; height:22px; border:3px solid #cbd5e1; border-top-color:var(--blue2); border-radius:50%; animation:spin 1s linear infinite; display:inline-block; vertical-align:middle; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  /* check-in panel (manager) */
+  .ci-card { background:#fff; border:1px solid var(--line); border-radius:14px; padding:20px; max-width:520px; margin:0 auto 14px; }
+  .ci-clock { font-size:40px; font-weight:800; text-align:center; letter-spacing:1px; }
+  .ci-date { text-align:center; color:var(--muted); font-size:14px; margin-top:4px; }
+  .ci-line { display:flex; gap:12px; padding:11px 0; border-bottom:1px solid #f1f5f9; }
+  .ci-line:last-child { border-bottom:0; }
+  .ci-line .ico { font-size:20px; width:26px; text-align:center; }
+  .ci-line .lbl { color:var(--muted); font-size:12px; }
+  .ci-line .val { font-weight:600; word-break:break-word; }
+  .ci-status { font-size:13px; padding:11px 13px; border-radius:10px; margin-bottom:12px; }
+  .ci-status.wait { background:#fef9c3; color:#854d0e; }
+  .ci-status.ok { background:#dcfce7; color:#166534; }
+  .ci-status.err { background:#fee2e2; color:#991b1b; }
+  .btn-big { width:100%; padding:15px; font-size:16px; border-radius:12px; }
+  .btn-big:disabled { background:#94a3b8; cursor:not-allowed; }
+
+  /* แท็บย่อยในหน้าตั้งค่าระบบ */
+  .subnav { display:flex; gap:8px; flex-wrap:wrap; margin:0 0 18px; padding-bottom:12px; border-bottom:1px solid var(--line); }
+  .subbtn { padding:9px 16px; border:1px solid var(--line); background:#fff; color:var(--muted); border-radius:999px;
+            font-size:14px; font-weight:700; cursor:pointer; flex:0 0 auto; }
+  .subbtn.active { background:var(--blue2); border-color:var(--blue2); color:#fff; }
+
+  /* ตัวเลือกแบบเลื่อน (ท่า / ค่าตะกั่ว / ค่าน็อคตู้ / ค่าล่วงเวลา) */
+  .opt-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; }
+  .opt-card { background:#fff; border:1px solid var(--line); border-radius:14px; padding:16px 18px; }
+  .opt-card h4 { margin:0 0 12px; font-size:14px; }
+  .opt-card label { display:block; font-size:12px; color:var(--muted); font-weight:600; margin:0 0 5px; }
+  .opt-row { display:flex; gap:10px; margin-bottom:12px; flex-wrap:wrap; }
+  .opt-row > div { flex:1; min-width:88px; }
+  .opt-row input { width:100%; text-align:right; }
+  .opt-prev { margin-top:10px; line-height:1.5; }
+  .opt-ports { display:flex; flex-direction:column; gap:8px; max-height:280px; overflow:auto; }
+  .opt-port { display:flex; gap:8px; align-items:center; }
+  .opt-port input { flex:1; min-width:0; }
+  /* ท่าที่คิดค่า EXTRA MOVEMENT — ติ๊กเลือกจากรายการท่าที่มีอยู่ */
+  .opt-emports { display:flex; flex-wrap:wrap; gap:8px; max-height:280px; overflow:auto; }
+  .opt-emport { display:flex; align-items:center; gap:6px; border:1px solid var(--line); border-radius:999px;
+                padding:6px 12px 6px 8px; font-size:13px; font-weight:600; cursor:pointer; background:#fff; }
+  .opt-emport input { width:17px; height:17px; margin:0; accent-color:var(--blue2); }
+  .opt-emport.on { border-color:var(--blue2); background:#eff6ff; color:var(--blue2); }
+
+  /* modal */
+  .modal-bg { position:fixed; inset:0; background:rgba(15,23,42,.5); display:flex; align-items:center; justify-content:center; z-index:60; padding:16px; }
+  .modal { background:#fff; border-radius:16px; padding:22px; width:100%; max-width:440px; max-height:92vh; overflow:auto; }
+  .modal h3 { margin:0 0 16px; }
+  .modal label { display:block; font-size:13px; color:var(--muted); font-weight:600; margin:0 0 6px; }
+  .modal input, .modal select, .modal textarea { width:100%; margin-bottom:14px; }
+  .modal .actions { display:flex; gap:10px; justify-content:flex-end; }
+  /* ---- คู่มือเปิดสิทธิ์ตำแหน่งบนคอม (แท็บเข้างานของผู้จัดการ) ---- */
+  .gps-step .cap { font-size:13px; font-weight:700; color:#0f172a; margin-bottom:8px; }
+  .gps-step img { width:100%; display:block; border:1px solid var(--line); border-radius:10px; }
+  .gps-step .miss { font-size:12px; color:var(--muted); background:#f7f9fb; border:1px dashed var(--line);
+                    border-radius:10px; padding:10px; }
+  .toast { position:fixed; left:50%; bottom:26px; transform:translateX(-50%); background:#0f172a; color:#fff; padding:12px 18px; border-radius:12px; font-size:14px; z-index:90; box-shadow:0 8px 24px rgba(0,0,0,.25); max-width:90%; text-align:center; }
+
+  @media (max-width:600px){
+    .wrap { padding:14px; }
+    header.top .who { display:none; }
+    .nav { top:52px; }
+    .toolbar > * { flex:1 1 100%; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== APP ===== -->
+<div id="view-app" class="hidden">
+  <header class="top">
+    <div class="brand" id="brand-title">🗂️ แดชบอร์ดผู้ดูแล</div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <span class="who" id="who"></span>
+      <button id="btn-logout" class="btn btn-ghost btn-sm">ออกจากระบบ</button>
+    </div>
+  </header>
+  <div class="nav">
+    <button class="navbtn hidden" data-tab="checkin">เข้างาน</button>
+    <button class="navbtn active" data-tab="dash">ภาพรวม</button>
+    <button class="navbtn" data-tab="attend">การเข้างาน</button>
+    <button class="navbtn" data-tab="claim">การเบิก</button>
+    <button class="navbtn" data-tab="settle">ปิดบัญชี</button>
+    <button class="navbtn" data-tab="receipt">ใบเสร็จ</button>
+    <button class="navbtn" data-tab="leave">การลา</button>
+    <button class="navbtn" data-tab="emp">พนักงาน</button>
+    <button class="navbtn" data-tab="settings">⚙️ ตั้งค่าระบบ</button>
+  </div>
+  <div class="wrap">
+
+    <!-- CHECK-IN (manager: คอมพิวเตอร์ Windows เท่านั้น / ตำแหน่งอย่างเดียว ไม่ถ่ายรูป) -->
+    <section id="tab-checkin" class="hidden">
+      <div class="ci-card">
+        <div class="ci-clock" id="ci-clock">--:--:--</div>
+        <div class="ci-date" id="ci-date">--</div>
+      </div>
+
+      <div class="ci-card hidden" id="ci-block" style="text-align:center">
+        <div style="font-size:46px">💻</div>
+        <h3 style="margin:10px 0 6px">ต้องเข้างานผ่านคอมพิวเตอร์ Windows</h3>
+        <p class="muted" style="margin:0">สิทธิ์ของคุณกดเข้างานได้จากคอมพิวเตอร์ระบบปฏิบัติการ Windows เท่านั้น กรุณาเปิดหน้านี้จากคอมพิวเตอร์ที่ทำงาน</p>
+      </div>
+
+      <div id="ci-panel">
+        <div class="ci-card">
+          <div class="ci-line">
+            <div class="ico">📍</div>
+            <div style="flex:1"><div class="lbl">ตำแหน่งปัจจุบัน</div><div class="val" id="ci-loc">กำลังหาตำแหน่ง…</div><div class="muted" id="ci-acc"></div></div>
+          </div>
+          <div class="ci-line">
+            <div class="ico">🕒</div>
+            <div style="flex:1"><div class="lbl">เวลา (บันทึกจริงจากเซิร์ฟเวอร์)</div><div class="val" id="ci-time">—</div></div>
+          </div>
+          <div class="ci-line hidden" id="ci-addr-line">
+            <div class="ico">🏢</div>
+            <div style="flex:1"><div class="lbl">สถานที่ที่บันทึก</div><div class="val" id="ci-addr">—</div></div>
+          </div>
+        </div>
+
+        <div class="ci-card">
+          <div id="ci-msg" class="ci-status wait">รอ: สัญญาณตำแหน่ง</div>
+          <!-- รอพิกัดนานเกินไป = ให้กดดูวิธีเปิดสิทธิ์ตำแหน่งบนคอม -->
+          <button id="ci-loc-guide" class="btn btn-ghost hidden" style="margin-bottom:10px">📖 ดูวิธีเปิดสิทธิ์ตำแหน่ง</button>
+          <button id="ci-btn" class="btn btn-primary btn-big" disabled>✅ เข้างาน</button>
+          <p class="muted" style="text-align:center;margin:12px 0 0">บันทึกเฉพาะเวลาและตำแหน่ง ไม่ต้องถ่ายรูป • เข้างานได้วันละ 1 ครั้ง</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- DASH -->
+    <section id="tab-dash">
+      <div class="stats" id="stats"></div>
+      <h3 class="sec">การเข้างานล่าสุด</h3>
+      <div class="tbl-wrap">
+        <table class="grid">
+          <thead><tr><th>รูป</th><th>ชื่อ</th><th>ประเภท</th><th>เวลา</th><th>สถานที่</th><th>พิกัด</th></tr></thead>
+          <tbody id="dash-body"><tr><td colspan="6"><div class="center-load"><span class="spinner"></span> กำลังโหลด…</div></td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ATTEND -->
+    <section id="tab-attend" class="hidden">
+      <div class="toolbar">
+        <input id="at-search" type="text" placeholder="ค้นหา ชื่อ / สถานที่ / ประเภท" class="grow">
+        <input id="at-from" type="date" title="ตั้งแต่วันที่">
+        <input id="at-to" type="date" title="ถึงวันที่">
+        <button id="at-refresh" class="btn btn-ghost btn-sm">↻ รีเฟรช</button>
+        <button id="at-export" class="btn btn-primary btn-sm">⬇ CSV</button>
+      </div>
+      <div id="at-summary" class="muted" style="margin-bottom:10px"></div>
+      <div class="tbl-wrap">
+        <table class="grid">
+          <thead><tr><th>รูป</th><th>ชื่อ</th><th>ประเภท</th><th>เวลา</th><th>สถานที่</th><th>พิกัด</th></tr></thead>
+          <tbody id="at-body"><tr><td colspan="6"><div class="center-load"><span class="spinner"></span> กำลังโหลด…</div></td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- CLAIM (การเบิก) — เฉพาะรายการของพนักงาน ส่วนการตั้งค่าย้ายไปแท็บ "ตั้งค่าระบบ" -->
+    <section id="tab-claim" class="hidden">
+      <h3 class="sec">รายการเบิกของพนักงาน</h3>
+      <p class="muted" style="margin:0 0 14px">
+        ตั้ง <b>อัตราค่าใช้จ่าย</b> และ <b>ตัวเลือกแบบเลื่อน</b> (ท่า / ค่าตะกั่ว / ค่าน็อคตู้ / ค่าล่วงเวลา) ได้ที่แท็บ
+        <button type="button" class="btn btn-ghost btn-sm go-settings" data-sub="claim">⚙️ ตั้งค่าระบบ → รายการเบิก</button>
+      </p>
+      <div class="toolbar">
+        <input id="cm-search" type="text" placeholder="ค้นหา ชื่อ / รายละเอียด" class="grow">
+        <input id="cm-from" type="date" title="วันที่ตรวจปล่อย ตั้งแต่">
+        <input id="cm-to" type="date" title="วันที่ตรวจปล่อย ถึง">
+        <button id="cm-refresh" class="btn btn-ghost btn-sm">↻ รีเฟรช</button>
+        <button id="cm-export" class="btn btn-primary btn-sm">⬇ CSV</button>
+      </div>
+      <div id="cm-summary" class="muted" style="margin-bottom:10px"></div>
+      <div class="tbl-wrap">
+        <table class="grid">
+          <thead><tr><th>วันที่ตรวจปล่อย</th><th>ผู้เบิก</th><th>จำนวนตู้</th><th>หัวข้อ</th><th>ยอดรวม (บาท)</th><th>การแก้ไข</th><th>บันทึกล่าสุด</th><th>จัดการ</th></tr></thead>
+          <tbody id="cm-body"><tr><td colspan="8"><div class="center-load"><span class="spinner"></span> กำลังโหลด…</div></td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- SETTLE (ปิดบัญชี) — เฉพาะรายการของพนักงาน ส่วนการตั้งค่าย้ายไปแท็บ "ตั้งค่าระบบ" -->
+    <section id="tab-settle" class="hidden">
+      <h3 class="sec">รายการปิดบัญชีของพนักงาน</h3>
+      <p class="muted" style="margin:0 0 14px">
+        ตั้ง <b>อัตราคิดอัตโนมัติในใบปิดบัญชี</b> และ <b>ตรวจการเชื่อมต่อชีตงานขนส่ง</b> ได้ที่แท็บ
+        <button type="button" class="btn btn-ghost btn-sm go-settings" data-sub="settle">⚙️ ตั้งค่าระบบ → ปิดบัญชี</button>
+      </p>
+      <div class="toolbar">
+        <input id="sm-search" type="text" placeholder="ค้นหา ชื่อ / เลข BL / เลขที่รายการสลิป / รายละเอียด" class="grow">
+        <input id="sm-from" type="date" title="วันที่ตรวจปล่อย ตั้งแต่">
+        <input id="sm-to" type="date" title="วันที่ตรวจปล่อย ถึง">
+        <select id="sm-status">
+          <option value="">ทุกสถานะ</option>
+          <option value="wait-emp">รอพนักงานโอนคืน</option>
+          <option value="wait-com">รอบริษัทโอนคืน</option>
+          <option value="done">ปิดครบแล้ว</option>
+        </select>
+        <button id="sm-refresh" class="btn btn-ghost btn-sm">↻ รีเฟรช</button>
+        <button id="sm-export" class="btn btn-primary btn-sm">⬇ CSV</button>
+      </div>
+      <div id="sm-summary" class="muted" style="margin-bottom:10px"></div>
+      <div class="tbl-wrap">
+        <table class="grid">
+          <thead><tr>
+            <th>วันที่ตรวจปล่อย</th><th>ชื่อ SHIPPING</th><th>BL</th><th>ตู้</th>
+            <th>รวมค่าใช้จ่าย</th><th>ยอดเบิก</th><th>คงเหลือ</th>
+            <th>โอนคืนบริษัท</th><th>สลิป / เลขที่รายการ</th><th>บริษัทโอนคืน</th><th>แก้ไข</th><th>จัดการ</th>
+          </tr></thead>
+          <tbody id="sm-body"><tr><td colspan="12"><div class="center-load"><span class="spinner"></span> กำลังโหลด…</div></td></tr></tbody>
+        </table>
+      </div>
+
+    </section>
+
+    <!-- ตั้งค่าระบบ (admin + manager) — รวมการตั้งค่าทั้งหมดไว้ที่เดียว แยกเป็น 3 เรื่อง -->
+    <section id="tab-settings" class="hidden">
+      <div class="subnav">
+        <button class="subbtn active" data-sub="claim">รายการเบิก</button>
+        <button class="subbtn" data-sub="settle">ปิดบัญชี</button>
+        <button class="subbtn hidden" id="subbtn-sheet" data-sub="sheet">ใบปิดบัญชี (รูป)</button>
+        <button class="subbtn" data-sub="transport">ตรวจสอบการเชื่อมต่อ</button>
+      </div>
+
+      <!-- ตั้งค่า: รายการเบิก -->
+      <div id="sub-claim">
+        <h3 class="sec">อัตราค่าใช้จ่าย (ใบเบิก)</h3>
+        <p class="muted" style="margin:0 0 14px">
+          หัวข้อที่ <b>คิดจากจำนวนตู้</b> จะคำนวณให้อัตโนมัติ (อัตรา × จำนวนตู้) พนักงานแก้ยอดเองไม่ได้ •
+          หัวข้อที่ <b>กรอกเอง</b> พนักงานกรอกจำนวนเงินที่ใช้จริง ค่าที่ตั้งไว้ตรงนี้ใช้เป็นค่าตั้งต้นให้เท่านั้น
+        </p>
+        <div class="tbl-wrap">
+          <table class="grid">
+            <thead><tr><th style="width:44px">#</th><th>หัวข้อค่าใช้จ่าย</th><th>วิธีคิด</th><th>อัตรา / ค่าตั้งต้น (บาท)</th></tr></thead>
+            <tbody id="rate-body"><tr><td colspan="4"><div class="center-load"><span class="spinner"></span> กำลังโหลด…</div></td></tr></tbody>
+          </table>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center; margin:14px 0 28px">
+          <button id="rate-save" class="btn btn-primary">บันทึกอัตรา</button>
+          <button id="rate-reload" class="btn btn-ghost">↻ โหลดใหม่</button>
+          <span class="muted" id="rate-hint"></span>
+        </div>
+
+        <!-- ตัวเลือกแบบเลื่อน (dropdown) ที่พนักงานเห็นในหน้าเบิก/ปิดบัญชี -->
+        <h3 class="sec">ตัวเลือกแบบเลื่อน (Dropdown) และค่าล่วงเวลา</h3>
+        <p class="muted" style="margin:0 0 14px">
+          ใช้ทั้งหน้า <b>เบิก</b> และ <b>ปิดบัญชี</b> ของพนักงาน — แก้ได้ทั้ง admin และ manager •
+          ตั้ง <b>ค่าแรก</b> / <b>ขึ้นทีละ</b> / <b>ค่าสุดท้าย</b> แล้วระบบจะสร้างตัวเลือกให้เอง เพิ่มค่าพิเศษที่ไม่อยู่ในขั้นได้ที่ช่อง "ค่าที่เพิ่มเอง"
+        </p>
+        <div class="opt-grid">
+          <div class="opt-card">
+            <h4>ค่าตะกั่ว</h4>
+            <div class="opt-row">
+              <div><label>ค่าแรก</label><input type="number" id="op-seal-from" min="1" step="1"></div>
+              <div><label>ขึ้นทีละ</label><input type="number" id="op-seal-step" min="1" step="1"></div>
+              <div><label>ค่าสุดท้าย</label><input type="number" id="op-seal-to" min="1" step="1"></div>
+            </div>
+            <label>ค่าที่เพิ่มเอง (คั่นด้วยจุลภาค)</label>
+            <input type="text" id="op-seal-extra" placeholder="เช่น 750, 1200" style="width:100%">
+            <div class="muted opt-prev" id="op-seal-prev"></div>
+          </div>
+
+          <div class="opt-card">
+            <h4>ค่าน็อคตู้ <span class="muted" style="font-weight:400">(หัวข้อย่อยของค่าบริการเพิ่มเติมพิเศษ)</span></h4>
+            <div class="opt-row">
+              <div><label>ค่าแรก</label><input type="number" id="op-knock-from" min="1" step="1"></div>
+              <div><label>ขึ้นทีละ</label><input type="number" id="op-knock-step" min="1" step="1"></div>
+              <div><label>ค่าสุดท้าย</label><input type="number" id="op-knock-to" min="1" step="1"></div>
+            </div>
+            <label>ค่าที่เพิ่มเอง (คั่นด้วยจุลภาค)</label>
+            <input type="text" id="op-knock-extra" placeholder="เช่น 3500, 4000" style="width:100%">
+            <div class="muted opt-prev" id="op-knock-prev"></div>
+          </div>
+
+          <div class="opt-card">
+            <h4>ค่าล่วงเวลา</h4>
+            <div class="opt-row">
+              <div><label>บาท / 1 ชุด</label><input type="number" id="op-ot-per" min="0" step="1"></div>
+              <div><label>เลือกได้สูงสุด (ชุด)</label><input type="number" id="op-ot-max" min="1" max="100" step="1"></div>
+            </div>
+            <div class="muted opt-prev" id="op-ot-prev"></div>
+          </div>
+
+          <div class="opt-card">
+            <h4>ท่า <span class="muted" style="font-weight:400">(ใช้ในใบปิดบัญชี)</span></h4>
+            <div id="op-ports" class="opt-ports"></div>
+            <button type="button" id="op-port-add" class="btn btn-ghost btn-sm" style="margin-top:8px">＋ เพิ่มท่า</button>
+            <div class="muted opt-prev">ลำดับในรายการ = ลำดับที่พนักงานเห็นใน dropdown</div>
+          </div>
+
+          <div class="opt-card">
+            <h4>ท่าที่คิด <b>ค่า EXTRA MOVEMENT</b> <span class="muted" style="font-weight:400">(ใบปิดบัญชี)</span></h4>
+            <div id="op-emports" class="opt-emports"></div>
+            <div class="muted opt-prev" id="op-emports-prev"></div>
+          </div>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center; margin:14px 0 10px">
+          <button id="op-save" class="btn btn-primary">บันทึกตัวเลือก</button>
+          <button id="op-reload" class="btn btn-ghost">↻ โหลดใหม่</button>
+          <span class="muted" id="op-hint"></span>
+        </div>
+      </div>
+
+      <!-- ตั้งค่า: ปิดบัญชี -->
+      <div id="sub-settle" class="hidden">
+        <h3 class="sec">อัตราคิดอัตโนมัติในใบปิดบัญชี (ต่อ 1 ตู้)</h3>
+        <p class="muted" style="margin:0 0 14px">
+          ช่องที่ตั้งอัตราไว้ ระบบจะคิดให้อัตโนมัติ (<b>อัตรา × จำนวนตู้</b>) ตอนพนักงานติ๊กเลือกเลข BL และคิดใหม่เมื่อแก้จำนวนตู้ —
+          พนักงานพิมพ์ทับได้ ส่วนช่องที่ตั้งเป็น <b>0</b> จะให้กรอกเองทั้งหมด
+        </p>
+        <div class="tbl-wrap">
+          <table class="grid">
+            <thead><tr><th style="width:44px">#</th><th>ช่องค่าใช้จ่าย</th><th>อัตราต่อ 1 ตู้ (บาท)</th><th>ตัวอย่าง 3 ตู้</th></tr></thead>
+            <tbody id="srate-body"><tr><td colspan="4"><div class="center-load"><span class="spinner"></span> กำลังโหลด…</div></td></tr></tbody>
+          </table>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center; margin:14px 0 10px">
+          <button id="srate-save" class="btn btn-primary">บันทึกอัตรา</button>
+          <button id="srate-reload" class="btn btn-ghost">↻ โหลดใหม่</button>
+          <span class="muted" id="srate-hint"></span>
+        </div>
+      </div>
+
+      <!-- ตั้งค่า: หน้าตารูปใบปิดบัญชี (เฉพาะ admin) -->
+      <div id="sub-sheet" class="hidden">
+        <h3 class="sec">หน้าตารูปใบปิดบัญชี (เฉพาะ admin)</h3>
+        <p class="muted" style="margin:0 0 12px">
+          ตั้ง <b>ความกว้างช่อง</b> (px), <b>ขนาดตัวอักษร</b> (px) และ <b>ตำแหน่งข้อความในช่อง</b> ของแต่ละคอลัมน์
+          — กด <b>ดูตัวอย่าง</b> เพื่อดูรูปจริงก่อนบันทึก • ค่าที่บันทึกจะใช้กับรูปที่พนักงานกดสร้างทุกใบ
+        </p>
+
+        <div class="tbl-wrap">
+          <table class="grid">
+            <thead><tr>
+              <th style="width:44px">#</th><th>คอลัมน์</th>
+              <th style="width:120px">กว้าง (px)</th><th style="width:120px">ตัวอักษร (px)</th><th style="width:150px">ตำแหน่งข้อความ</th>
+            </tr></thead>
+            <tbody id="sl-body"><tr><td colspan="5"><div class="center-load"><span class="spinner"></span> กำลังโหลด…</div></td></tr></tbody>
+          </table>
+        </div>
+
+        <h3 class="sec" style="margin-top:26px">ขนาดตัวอักษรส่วนอื่นของใบ</h3>
+        <div class="tbl-wrap">
+          <table class="grid">
+            <thead><tr><th>ส่วนของใบ</th><th style="width:140px">ขนาด (px)</th></tr></thead>
+            <tbody id="sl-fonts"></tbody>
+          </table>
+        </div>
+
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:14px 0 10px">
+          <button id="sl-preview" class="btn btn-ghost">👁 ดูตัวอย่าง</button>
+          <button id="sl-save" class="btn btn-primary">บันทึก</button>
+          <button id="sl-reload" class="btn btn-ghost">↻ โหลดใหม่</button>
+          <button id="sl-reset" class="btn btn-ghost">↺ คืนค่าเริ่มต้น</button>
+          <span class="muted" id="sl-hint"></span>
+        </div>
+        <div id="sl-total" class="muted" style="margin-bottom:12px"></div>
+
+        <div id="sl-preview-wrap" class="hidden">
+          <h3 class="sec">ตัวอย่างรูปใบปิดบัญชี (ข้อมูลสมมติ)</h3>
+          <p class="muted" style="margin:0 0 10px">เลื่อนดูภาพได้ • ตัวอย่างนี้วาดด้วยโค้ดชุดเดียวกับที่พนักงานใช้สร้างรูปจริง</p>
+          <div style="overflow:auto; -webkit-overflow-scrolling:touch; background:#f1f5f9; border:1px solid var(--line); border-radius:12px; padding:10px">
+            <img id="sl-preview-img" alt="ตัวอย่างใบปิดบัญชี" style="display:block; width:auto; max-width:none; min-width:100%; border-radius:6px; background:#fff">
+          </div>
+        </div>
+      </div>
+
+      <!-- ตั้งค่า: ตรวจสอบการเชื่อมต่อชีตงานขนส่ง -->
+      <div id="sub-transport" class="hidden">
+        <h3 class="sec">การเชื่อมต่อชีตงานขนส่ง (ที่มาของเลข BL / จำนวนตู้)</h3>
+        <p class="muted" style="margin:0 0 12px">
+          หน้าปิดบัญชีของพนักงานดึงเลข BL และจำนวนตู้จากชีตนี้ โดยกรองด้วยคอลัมน์ <b>ชิปปิ้ง</b> (รหัสชิปปิ้งของพนักงาน) และ <b>TRANSPORT</b> (วันที่ตรวจปล่อย)
+          — กดปุ่มด้านล่างเพื่อดูว่าระบบเปิดชีตได้ไหม และจับหัวคอลัมน์ของแต่ละแท็บได้ครบหรือเปล่า
+        </p>
+        <button id="tr-check" class="btn btn-ghost btn-sm">🔌 ตรวจการเชื่อมต่อ</button>
+        <div id="tr-result" style="margin-top:14px"></div>
+
+        <h3 class="sec" style="margin-top:30px">ระบบอ่านสลิปโอนเงิน (OCR)</h3>
+        <p class="muted" style="margin:0 0 12px">
+          ใช้เมื่อพนักงานต้อง <b>โอนคืนบริษัท</b> — ระบบอ่านยอด/วันที่/เลขที่รายการจากรูปสลิปให้อัตโนมัติ
+          กดปุ่มด้านล่างเพื่อตรวจว่าระบบพร้อมไหม และ<b>หยิบสลิปใบล่าสุดมาทดลองอ่านให้ดู</b>
+        </p>
+        <button id="slip-check" class="btn btn-ghost btn-sm">🧾 ตรวจระบบอ่านสลิป</button>
+        <div class="muted" style="margin-top:8px">หากยังไม่ได้ตั้ง OCR endpoint พนักงานยังกรอกยอด วันที่ และเลขที่รายการจากสลิปเองได้</div>
+        <div id="slip-result" style="margin-top:14px"></div>
+      </div>
+    </section>
+
+    <!-- RECEIPT (ใบเสร็จที่พนักงานถ่ายส่ง) -->
+    <section id="tab-receipt" class="hidden">
+      <h3 class="sec">ใบเสร็จที่พนักงานส่งเข้ามา</h3>
+      <p class="muted" style="margin:0 0 14px">
+        พนักงานจัดส่งกดเมนู <b>ส่งใบเสร็จ</b> ในแอป → เลือก <b>วันที่ตรวจปล่อย</b> → ถ่ายรูปสดจากมือถือ ระบบบันทึกเวลาเซิร์ฟเวอร์ + ตำแหน่งให้อัตโนมัติ
+        • <b>1 วันที่ตรวจปล่อย = 1 รูป</b> (ถ่ายใหม่ = แทนที่รูปเดิม ระบบนับจำนวนครั้งที่ถ่ายใหม่ไว้ให้)
+      </p>
+      <div class="toolbar">
+        <input id="rc-search" type="text" placeholder="ค้นหา ชื่อ / วันที่ตรวจปล่อย / หมายเหตุ / สถานที่" class="grow">
+        <input id="rc-from" type="date" title="วันที่ตรวจปล่อย ตั้งแต่">
+        <input id="rc-to" type="date" title="วันที่ตรวจปล่อย ถึง">
+        <button id="rc-refresh" class="btn btn-ghost btn-sm">↻ รีเฟรช</button>
+        <button id="rc-export" class="btn btn-primary btn-sm">⬇ CSV</button>
+      </div>
+      <div id="rc-summary" class="muted" style="margin-bottom:10px"></div>
+      <div class="tbl-wrap">
+        <table class="grid">
+          <thead><tr><th>ใบเสร็จ</th><th>วันที่ตรวจปล่อย</th><th>พนักงาน</th><th>เวลาที่ส่ง</th><th>หมายเหตุ</th><th>สถานที่</th><th>พิกัด</th></tr></thead>
+          <tbody id="rc-body"><tr><td colspan="7"><div class="center-load"><span class="spinner"></span> กำลังโหลด…</div></td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- LEAVE -->
+    <section id="tab-leave" class="hidden">
+      <div class="toolbar">
+        <select id="lv-filter">
+          <option value="pending">รออนุมัติ</option>
+          <option value="">ทั้งหมด</option>
+          <option value="approved">อนุมัติแล้ว</option>
+          <option value="rejected">ไม่อนุมัติ</option>
+        </select>
+        <input id="lv-search" type="text" placeholder="ค้นหาชื่อ / ประเภท" class="grow">
+        <button id="lv-refresh" class="btn btn-ghost btn-sm">↻ รีเฟรช</button>
+      </div>
+      <div id="lv-summary" class="muted" style="margin-bottom:10px"></div>
+      <div class="tbl-wrap">
+        <table class="grid">
+          <thead><tr><th>ยื่นเมื่อ</th><th>ชื่อ</th><th>ประเภท</th><th>ช่วงวันที่</th><th>วัน</th><th>เหตุผล</th><th>สถานะ</th><th>จัดการ</th></tr></thead>
+          <tbody id="lv-body"><tr><td colspan="8"><div class="center-load"><span class="spinner"></span> กำลังโหลด…</div></td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- EMP -->
+    <section id="tab-emp" class="hidden">
+      <div class="toolbar">
+        <input id="emp-search" type="text" placeholder="ค้นหาพนักงาน" class="grow">
+        <button id="emp-add" class="btn btn-primary btn-sm">+ เพิ่มพนักงาน</button>
+        <button id="emp-refresh" class="btn btn-ghost btn-sm">↻ รีเฟรช</button>
+      </div>
+      <div class="tbl-wrap">
+        <table class="grid">
+          <thead><tr><th>Username</th><th>ชื่อ</th><th>รหัสชิปปิ้ง</th><th>สิทธิ์</th><th>สถานะ</th><th>จัดการ</th></tr></thead>
+          <tbody id="emp-body"><tr><td colspan="6"><div class="center-load"><span class="spinner"></span> กำลังโหลด…</div></td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<!-- employee modal -->
+<div id="emp-modal" class="modal-bg hidden">
+  <div class="modal">
+    <h3 id="emp-modal-title">เพิ่มพนักงาน</h3>
+    <input id="emp-orig" type="hidden">
+    <label>Username</label>
+    <input id="emp-username" type="text" placeholder="เช่น emp02">
+    <label>รหัสผ่าน <span class="muted" id="emp-pass-hint"></span></label>
+    <input id="emp-password" type="text" placeholder="รหัสผ่าน">
+    <label>ชื่อที่แสดง</label>
+    <input id="emp-name" type="text" placeholder="ชื่อ-สกุล">
+    <label>รหัสชิปปิ้ง <span class="muted">(ค่าในช่อง "ชิปปิ้ง" ของชีตงานขนส่ง เช่น NON / AUN / FOLK / BEST)</span></label>
+    <input id="emp-shipping" type="text" placeholder="เว้นว่างได้ถ้าไม่ต้องใช้เมนูปิดบัญชี">
+    <label>สิทธิ์</label>
+    <select id="emp-role">
+      <option value="employee-office">พนักงานสำนักงาน — คอม Windows • ไม่ถ่ายรูป</option>
+      <option value="employee-shipping">พนักงานจัดส่ง — มือถือ • ถ่ายรูป</option>
+      <option value="manager">ผู้จัดการ — คอม Windows • ไม่ถ่ายรูป</option>
+      <option value="admin">ผู้ดูแล (admin) — ไม่ต้องเช็คชื่อ</option>
+    </select>
+    <label>สถานะ</label>
+    <select id="emp-active"><option value="yes">ใช้งาน</option><option value="no">ปิดบัญชี</option></select>
+    <div id="emp-err" class="err hidden"></div>
+    <div class="actions">
+      <button id="emp-cancel" class="btn btn-ghost btn-sm">ยกเลิก</button>
+      <button id="emp-save" class="btn btn-primary btn-sm">บันทึก</button>
+    </div>
+  </div>
+</div>
+
+<!-- leave decision modal -->
+<div id="dec-modal" class="modal-bg hidden">
+  <div class="modal">
+    <h3 id="dec-title">อนุมัติการลา</h3>
+    <div id="dec-info" class="muted" style="margin-bottom:12px"></div>
+    <label>หมายเหตุ (ถ้ามี)</label>
+    <textarea id="dec-note" rows="3" placeholder="ข้อความถึงพนักงาน"></textarea>
+    <div class="actions">
+      <button id="dec-cancel" class="btn btn-ghost btn-sm">ยกเลิก</button>
+      <button id="dec-confirm" class="btn btn-primary btn-sm">ยืนยัน</button>
+    </div>
+  </div>
+</div>
+
+<!-- settlement detail modal -->
+<div id="sm-modal" class="modal-bg hidden">
+  <div class="modal" style="max-width:560px">
+    <h3>รายละเอียดการปิดบัญชี</h3>
+    <pre id="sm-detail" style="white-space:pre-wrap; word-break:break-word; font-family:inherit; font-size:13px; background:#f7f9fb; border:1px solid var(--line); border-radius:10px; padding:14px; margin:0 0 12px; max-height:46vh; overflow:auto"></pre>
+    <div id="sm-slip" class="muted" style="margin:0 0 10px; background:#f7f9fb; border:1px solid var(--line); border-radius:10px; padding:12px"></div>
+    <div id="sm-image" class="muted" style="margin:0 0 14px"></div>
+    <div id="sm-acct">
+      <label>วันที่บริษัทโอนคืน <span class="muted">(เฉพาะพนักงานบัญชี)</span></label>
+      <input id="sm-company" type="date">
+    </div>
+    <div class="actions">
+      <button id="sm-save" class="btn btn-ok btn-sm">บันทึกวันที่โอนคืน</button>
+      <button id="sm-copy" class="btn btn-primary btn-sm">📋 คัดลอก</button>
+      <button id="sm-close" class="btn btn-ghost btn-sm">ปิด</button>
+    </div>
+  </div>
+</div>
+
+<!-- claim detail modal -->
+<div id="cm-modal" class="modal-bg hidden">
+  <div class="modal">
+    <h3>รายละเอียดการเบิก</h3>
+    <pre id="cm-detail" style="white-space:pre-wrap; word-break:break-word; font-family:inherit; font-size:13px; background:#f7f9fb; border:1px solid var(--line); border-radius:10px; padding:14px; margin:0 0 12px"></pre>
+    <!-- ข้อความแยกตามครั้งที่บันทึก (ครั้งแรก / แก้ไขครั้งที่ 1..5) ซ่อนไว้ก่อน กดดู/คัดลอกแยกครั้งได้ -->
+    <div id="cm-revwrap" class="hidden" style="margin:0 0 14px">
+      <button id="cm-revtoggle" class="btn btn-ghost btn-sm" style="width:100%">🔽 แสดงรายการแยกครั้ง</button>
+      <div id="cm-revs" class="hidden" style="margin-top:8px"></div>
+    </div>
+    <div class="actions">
+      <button id="cm-copy" class="btn btn-primary btn-sm">📋 คัดลอกรวม</button>
+      <button id="cm-close" class="btn btn-ghost btn-sm">ปิด</button>
+    </div>
+  </div>
+</div>
+
+<!-- คู่มือเปิดสิทธิ์ตำแหน่ง (แท็บเข้างาน — ขึ้นเมื่อรอพิกัดเกิน 7 วินาที) -->
+<div id="cig-modal" class="modal-bg hidden">
+  <div class="modal" style="max-width:520px">
+    <h3>วิธีเปิดสิทธิ์ตำแหน่ง (คอมพิวเตอร์)</h3>
+    <div class="pill pending" style="display:block;margin:0 0 12px">ทำตามรูป และ log in อีกครั้ง</div>
+    <div id="cig-steps"></div>
+    <div class="actions" style="margin-top:14px">
+      <button id="cig-done" class="btn btn-primary btn-sm">เข้าใจแล้ว</button>
+      <button id="cig-close" class="btn btn-ghost btn-sm">ปิด</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script>
+/* Fastify ให้บริการ API บนโดเมนเดียวกับหน้าเว็บ */
+var API_URL = '/api';
+
+var $ = function(id){ return document.getElementById(id); };
+var state = { token:null, user:null };
+var attendData=[], leaveData=[], empData=[];
+
+function api(payload){
+  return fetch(API_URL,{ method:'POST', headers:{'Content-Type':'application/json;charset=utf-8'}, body:JSON.stringify(payload||{}) })
+    .then(function(r){ return r.json(); });
+}
+function toast(m,ms){ var t=$('toast'); t.textContent=m; t.classList.remove('hidden'); clearTimeout(toast._t); toast._t=setTimeout(function(){t.classList.add('hidden');},ms||2500); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+var ERR_TH={ forbidden:'บัญชีนี้ไม่มีสิทธิ์ผู้ดูแล', session_expired:'หมดเวลา กรุณาเข้าสู่ระบบใหม่', invalid_token:'เซสชันไม่ถูกต้อง', username_exists:'มี username นี้อยู่แล้ว', missing_username:'กรุณากรอก username',
+  no_location:'ยังไม่พบตำแหน่ง', location_inaccurate:'ตำแหน่งยังไม่แม่นพอ กรุณารอสักครู่แล้วลองใหม่', already_checked_in:'วันนี้คุณเช็คชื่อเข้างานไปแล้ว',
+  windows_required:'เข้างานได้จากคอมพิวเตอร์ Windows เท่านั้น', mobile_required:'สิทธิ์ของคุณเข้างานผ่านคอมพิวเตอร์ Windows ไม่ได้', checkin_not_allowed:'บัญชีนี้ไม่มีสิทธิ์เช็คชื่อเข้างาน',
+  missing_inspect_date:'กรุณาเลือกวันที่ตรวจปล่อย', invalid_containers:'จำนวนตู้ไม่ถูกต้อง', no_claim_items:'ยังไม่ได้เลือกค่าใช้จ่าย', claim_not_found:'ไม่พบใบเบิกนี้', bad_request:'ข้อมูลไม่ครบถ้วน',
+  claim_edit_limit:'ใบเบิกนี้แก้ไขครบ 5 ครั้งแล้ว กรุณาติดต่อผู้ดูแลระบบ',
+  receipt_not_allowed:'บัญชีนี้ไม่มีสิทธิ์ส่งใบเสร็จ', receipt_photo_save_failed:'บันทึกรูปใบเสร็จบนเซิร์ฟเวอร์ไม่สำเร็จ' };
+function errTH(c){ return ERR_TH[c]||('ข้อผิดพลาด: '+c); }
+function guard(res){ if(res && !res.ok && (res.error==='session_expired'||res.error==='invalid_token'||res.error==='forbidden')){ logout(); return false; } return true; }
+
+function saveSess(){ try{ localStorage.setItem('admin_sess',JSON.stringify({token:state.token,user:state.user})); }catch(e){} }
+function loadSess(){ try{ var s=JSON.parse(localStorage.getItem('admin_sess')||'null'); if(s&&s.token){ state.token=s.token; state.user=s.user; return true; } }catch(e){} return false; }
+function clearSess(){ try{ localStorage.removeItem('admin_sess'); localStorage.removeItem('ci_sess'); }catch(e){} state.token=null; state.user=null; }
+
+$('btn-logout').addEventListener('click', logout);
+function logout(){ clearSess(); window.location.href='index.html'; }
+
+function enterApp(){
+  var isManager = state.user.role==='manager';
+  $('who').textContent = state.user.name + (isManager ? ' (ผู้จัดการ)' : ' (ผู้ดูแล)');
+  $('brand-title').textContent = isManager ? '🗂️ แดชบอร์ด' : '🗂️ แดชบอร์ดผู้ดูแล';
+  // เมนูเข้างานมีเฉพาะผู้จัดการ (admin ไม่ต้องลงเวลา) และเปิดเป็นแท็บแรกให้เลย
+  document.querySelector('.navbtn[data-tab="checkin"]').classList.toggle('hidden', !isManager);
+  document.querySelector('.navbtn[data-tab="leave"]').classList.toggle('hidden', isManager);
+  document.querySelector('.navbtn[data-tab="emp"]').classList.toggle('hidden', isManager);
+  $('subbtn-sheet').classList.toggle('hidden', !canEditSheet());   // หน้าตารูปใบปิดบัญชี = เฉพาะ admin
+  $('view-app').classList.remove('hidden');
+  switchTab(isManager ? 'checkin' : 'dash');
+  loadAll();
+}
+
+// ---------- NAV ----------
+Array.prototype.forEach.call(document.querySelectorAll('.navbtn'), function(t){
+  t.addEventListener('click', function(){ switchTab(t.getAttribute('data-tab')); });
+});
+function switchTab(name){
+  Array.prototype.forEach.call(document.querySelectorAll('.navbtn'), function(t){ t.classList.toggle('active', t.getAttribute('data-tab')===name); });
+  ['checkin','dash','attend','claim','settle','receipt','leave','emp','settings'].forEach(function(s){ $('tab-'+s).classList.toggle('hidden', s!==name); });
+  if(name==='checkin') initCheckin();   // ขอสิทธิ์ตำแหน่งเฉพาะตอนเปิดแท็บเข้างานจริง ๆ
+  if(name==='claim') initClaimTab();    // โหลดใบเบิกของพนักงานตอนเปิดแท็บครั้งแรก
+  if(name==='settle') initSettleTab();
+  if(name==='receipt') initReceiptTab();
+  if(name==='settings') initSettingsTab();
+  window.scrollTo(0,0);
+}
+
+// ---------- ตั้งค่าระบบ: แท็บย่อย รายการเบิก / ปิดบัญชี / ตรวจสอบการเชื่อมต่อ ----------
+var SETTINGS_SUBS = ['claim','settle','sheet','transport'];
+
+Array.prototype.forEach.call(document.querySelectorAll('.subbtn'), function(b){
+  b.addEventListener('click', function(){ switchSub(b.getAttribute('data-sub')); });
+});
+// ปุ่มทางลัดจากแท็บการเบิก/ปิดบัญชี มาที่หัวข้อการตั้งค่าที่เกี่ยวข้องโดยตรง
+Array.prototype.forEach.call(document.querySelectorAll('.go-settings'), function(b){
+  b.addEventListener('click', function(){
+    switchTab('settings');
+    switchSub(b.getAttribute('data-sub'));
+  });
+});
+
+function switchSub(name){
+  if(SETTINGS_SUBS.indexOf(name)<0) name='claim';
+  if(name==='sheet' && !canEditSheet()) name='claim';        // หน้าตารูปใบปิดบัญชี = เฉพาะ admin
+  Array.prototype.forEach.call(document.querySelectorAll('.subbtn'), function(b){
+    b.classList.toggle('active', b.getAttribute('data-sub')===name);
+  });
+  SETTINGS_SUBS.forEach(function(s){ $('sub-'+s).classList.toggle('hidden', s!==name); });
+}
+
+function loadAll(){
+  loadAttend();
+  if(state.user.role!=='manager'){ loadLeaves(); loadEmployees(); }
+}
+
+// ---------- CHECK-IN (ผู้จัดการ: Windows เท่านั้น / ตำแหน่งอย่างเดียว ไม่ถ่ายรูป) ----------
+var ci = { loc:null, watchId:null, done:false, started:false, blocked:false };
+
+// userAgentData.platform เชื่อถือได้กว่าและ Chromium ให้ค่านี้โดยไม่ต้องขอสิทธิ์ — ไม่มีค่อยถอยไปดู userAgent
+function isWindowsDevice(){
+  var d=navigator.userAgentData;
+  if(d && d.platform) return String(d.platform).toLowerCase().indexOf('windows')>=0;
+  var ua=navigator.userAgent||'';
+  return /Windows NT/i.test(ua) && !/Windows Phone/i.test(ua);
+}
+
+function initCheckin(){
+  if(ci.started) return;
+  ci.started = true;
+  startCiClock();
+
+  if(!isWindowsDevice()){
+    ci.blocked = true;
+    $('ci-block').classList.remove('hidden');
+    $('ci-panel').classList.add('hidden');
+    return;
+  }
+  api({action:'todayStatus', token:state.token}).then(function(res){
+    if(!guard(res)) return;
+    if(res.ok && res.checkedIn){ ciDone(res.record); }
+    else { startCiLocation(); }
+  }).catch(function(){
+    startCiLocation();   // เช็คสถานะไม่ได้ก็เปิด GPS ไปก่อน เซิร์ฟเวอร์กันเช็คซ้ำอีกชั้นอยู่แล้ว
+  });
+}
+
+function startCiClock(){
+  function tick(){
+    var d=new Date(), pad=function(n){ return (n<10?'0':'')+n; };
+    $('ci-clock').textContent = pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());
+    $('ci-date').textContent = d.toLocaleDateString('th-TH-u-ca-gregory',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+    $('ci-time').textContent = fmtDT(d);
+  }
+  tick(); clearInterval(startCiClock._t); startCiClock._t=setInterval(tick,1000);
+}
+
+// รอพิกัดเกิน 7 วินาที (หรือเบราว์เซอร์ปฏิเสธ) = ขึ้นปุ่มดูคู่มือเปิดสิทธิ์ตำแหน่งของคอม
+// ผู้จัดการเช็คชื่อจากหน้านี้ จึงต้องมีคู่มือเหมือนหน้าพนักงาน
+var CI_LOC_WAIT_MS = 7000;
+
+function startCiLocation(){
+  $('ci-loc-guide').classList.add('hidden');
+  if(!navigator.geolocation){ $('ci-loc').textContent='อุปกรณ์ไม่รองรับการหาตำแหน่ง'; return; }
+  $('ci-loc').textContent='กำลังหาตำแหน่ง…';
+  if(ci.watchId!=null) navigator.geolocation.clearWatch(ci.watchId);
+  ci.watchId = navigator.geolocation.watchPosition(function(pos){
+    ci.loc={ lat:pos.coords.latitude, lng:pos.coords.longitude, accuracy:pos.coords.accuracy };
+    $('ci-loc').textContent = pos.coords.latitude.toFixed(6)+', '+pos.coords.longitude.toFixed(6);
+    $('ci-acc').textContent = 'ความแม่นยำ ± '+Math.round(pos.coords.accuracy)+' ม.';
+    clearTimeout(startCiLocation._t);
+    $('ci-loc-guide').classList.add('hidden');
+    ciRefresh();
+  }, function(){
+    $('ci-loc').textContent='หาตำแหน่งไม่ได้ — อนุญาตสิทธิ์ตำแหน่งในเบราว์เซอร์ แล้วเข้าระบบใหม่';
+    $('ci-acc').textContent='';
+    showCiLocGuideBtn();
+  }, { enableHighAccuracy:true, timeout:20000, maximumAge:0 });
+
+  // เคยกดปฏิเสธไว้ = เบราว์เซอร์ไม่ถามอีกแล้ว ขึ้นปุ่มทันที
+  if(navigator.permissions && navigator.permissions.query){
+    try {
+      navigator.permissions.query({ name:'geolocation' }).then(function(p){
+        if(p.state==='denied' && !ci.loc) showCiLocGuideBtn();
+      }).catch(function(){});
+    } catch(e){}
+  }
+
+  clearTimeout(startCiLocation._t);
+  startCiLocation._t=setTimeout(function(){ if(!ci.loc) showCiLocGuideBtn(); }, CI_LOC_WAIT_MS);
+}
+
+function showCiLocGuideBtn(){
+  if(ci.loc) return;
+  $('ci-loc-guide').classList.remove('hidden');
+}
+
+// ---- คู่มือเปิดสิทธิ์ตำแหน่งบนคอม (รูปเดียวกับที่ใช้ใน index.html) ----
+// วางไฟล์ desktop_gps.jpg ไว้โฟลเดอร์เดียวกับ admin.html (ไม่มีรูปก็ยังอ่านขั้นตอนเป็นข้อความได้)
+var CI_GPS_FILE = 'desktop_gps';
+var CI_GPS_CAP = '1) กดไอคอนหน้าชื่อเว็บ (ซ้ายช่อง URL) → 2) เปิดสวิตช์ "ตำแหน่ง" ให้เป็นสีน้ำเงิน แล้วเข้าระบบใหม่อีกครั้ง';
+
+function openCiGpsGuide(){
+  $('cig-steps').innerHTML='<div class="gps-step">'+
+    '<div class="cap">'+esc(CI_GPS_CAP)+'</div>'+
+    '<img src="'+esc(CI_GPS_FILE)+'.jpg" alt="'+esc(CI_GPS_CAP)+'" onerror="cigImgFallback(this)">'+
+    '<div class="miss hidden">ไม่พบไฟล์รูป <b>'+esc(CI_GPS_FILE)+'</b> — ทำตามข้อความด้านบนได้เลย</div>'+
+  '</div>';
+  $('cig-modal').classList.remove('hidden');
+}
+window.cigImgFallback=function(img){
+  if(img.getAttribute('data-alt')!=='1'){ img.setAttribute('data-alt','1'); img.src=CI_GPS_FILE+'.png'; return; }
+  img.classList.add('hidden');
+  var miss=img.parentNode && img.parentNode.querySelector('.miss');
+  if(miss) miss.classList.remove('hidden');
+};
+$('ci-loc-guide').addEventListener('click', openCiGpsGuide);
+$('cig-close').addEventListener('click', function(){ $('cig-modal').classList.add('hidden'); });
+$('cig-done').addEventListener('click', function(){ $('cig-modal').classList.add('hidden'); });
+
+function ciRefresh(){
+  if(ci.done || ci.blocked) return;
+  var ready=!!ci.loc, m=$('ci-msg');
+  $('ci-btn').disabled = !ready;
+  if(ready){ m.className='ci-status ok'; m.textContent='พร้อม — กดเข้างานเพื่อบันทึกเวลาและตำแหน่ง'; }
+  else { m.className='ci-status wait'; m.textContent='รอ: สัญญาณตำแหน่ง'; }
+}
+
+function ciDone(rec){
+  ci.done = true;
+  if(ci.watchId!=null){ navigator.geolocation.clearWatch(ci.watchId); ci.watchId=null; }
+  $('ci-msg').className='ci-status ok';
+  $('ci-msg').textContent='คุณเช็คชื่อเข้างานวันนี้แล้ว'+(rec&&rec.time?(' เวลา '+fmtDT(rec.time)):'');
+  $('ci-btn').disabled=true;
+  $('ci-btn').textContent='✅ เข้างานแล้ววันนี้';
+  if(rec && rec.address){ $('ci-addr').textContent=rec.address; $('ci-addr-line').classList.remove('hidden'); }
+}
+
+$('ci-btn').addEventListener('click', function(){
+  if(ci.done || ci.blocked) return;
+  if(!ci.loc){ toast('ยังไม่พบตำแหน่ง กรุณารอสักครู่'); return; }
+  var b=$('ci-btn'), old=b.textContent;
+  b.disabled=true; b.textContent='กำลังบันทึก…';
+  api({
+    action:'checkin', token:state.token, type:'in',
+    lat:ci.loc.lat, lng:ci.loc.lng, accuracy:ci.loc.accuracy,
+    deviceTime:fmtDT(new Date()), userAgent:navigator.userAgent
+  }).then(function(res){
+    b.textContent=old;
+    if(!guard(res)) return;
+    if(!res.ok){
+      if(res.error==='already_checked_in'){ ciDone(res.record); toast(errTH(res.error)); return; }
+      b.disabled=false; ciRefresh(); toast(errTH(res.error));
+      return;
+    }
+    ciDone(res.record);
+    toast('บันทึกการเข้างานแล้ว');
+    loadAttend();   // ให้ตารางการเข้างานเห็นรายการล่าสุดทันที
+  }).catch(function(){
+    b.disabled=false; b.textContent=old; ciRefresh();
+    toast('บันทึกไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต');
+  });
+});
+
+// ---------- helpers: รูป + แผนที่ ----------
+function driveId(url){ var m=/[-\w]{25,}/.exec(url||''); return m?m[0]:''; }
+function photoCell(r){
+  if(r.photoUrl && (r.photoUrl.indexOf('/files/')===0 || r.photoUrl.indexOf('drive.google.com')<0)){
+    return '<a href="'+esc(r.photoUrl)+'" target="_blank"><div class="ph"><img src="'+esc(r.photoUrl)+'" loading="lazy" alt="รูป"></div></a>';
+  }
+  var id=driveId(r.photoUrl);
+  if(!id) return '<div class="ph"></div>';
+  var thumb='https://drive.google.com/thumbnail?id='+id+'&sz=w200';
+  var full='https://drive.google.com/file/d/'+id+'/view';
+  return '<a href="'+full+'" target="_blank"><div class="ph">'+
+    '<img src="'+thumb+'" loading="lazy" alt="รูป" onerror="this.style.display=\'none\'"></div></a>';
+}
+function mapCell(r){
+  var lat=r.lat, lng=r.lng;
+  if(lat==null||lat===''||lng==null||lng==='') return '<span class="muted">—</span>';
+  var src='https://maps.google.com/maps?q='+lat+','+lng+'&z=16&output=embed';
+  var link=r.mapLink||('https://www.google.com/maps?q='+lat+','+lng);
+  return '<div class="mp-wrap">'+
+    '<div class="mp"><iframe src="'+esc(src)+'" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe></div>'+
+    '<a href="'+esc(link)+'" target="_blank" class="mp-link">เปิดแผนที่เต็มจอ</a></div>';
+}
+function attRowHTML(r){
+  var t=r.time?fmtDT(r.time):'';
+  var isOut=String(r.type).indexOf('เลิก')>=0;
+  var link=r.mapLink||(r.lat?('https://www.google.com/maps?q='+r.lat+','+r.lng):'');
+  var addr=r.address?(link?('<a href="'+esc(link)+'" target="_blank">'+esc(r.address)+'</a>'):esc(r.address)):'—';
+  return '<tr>'+
+    '<td>'+photoCell(r)+'</td>'+
+    '<td class="name">'+esc(r.name)+'</td>'+
+    '<td><span class="'+(isOut?'type-out':'type-in')+'">'+esc(r.type)+'</span></td>'+
+    '<td class="time-cell">'+esc(t)+'</td>'+
+    '<td class="addr">'+addr+'</td>'+
+    '<td>'+mapCell(r)+'</td>'+
+  '</tr>';
+}
+
+// ---------- ATTENDANCE ----------
+$('at-refresh').addEventListener('click', loadAttend);
+$('at-search').addEventListener('input', renderAttend);
+$('at-from').addEventListener('change', renderAttend);
+$('at-to').addEventListener('change', renderAttend);
+$('at-export').addEventListener('click', exportCSV);
+
+function loadAttend(){
+  $('at-body').innerHTML='<tr><td colspan="6"><div class="center-load"><span class="spinner"></span> กำลังโหลด…</div></td></tr>';
+  api({action:'report', token:state.token}).then(function(res){
+    if(!guard(res)) return;
+    if(!res.ok){ $('at-body').innerHTML='<tr><td colspan="6" style="color:#dc2626;padding:16px">'+errTH(res.error)+'</td></tr>'; return; }
+    attendData=res.rows||[]; renderAttend(); renderDash();
+  }).catch(function(){ $('at-body').innerHTML='<tr><td colspan="6" style="padding:16px">โหลดไม่สำเร็จ</td></tr>'; });
+}
+function filteredAttend(){
+  var q=$('at-search').value.trim().toLowerCase(), from=$('at-from').value, to=$('at-to').value;
+  return attendData.filter(function(r){
+    var d = r.time ? new Date(r.time) : null;
+    var dstr = d ? d.toISOString().slice(0,10) : '';
+    if(from && dstr < from) return false;
+    if(to && dstr > to) return false;
+    if(!q) return true;
+    var t = d ? fmtDT(d) : '';
+    return (r.name+' '+r.username+' '+r.address+' '+r.type+' '+t).toLowerCase().indexOf(q)>=0;
+  });
+}
+function renderAttend(){
+  var rows=filteredAttend();
+  $('at-summary').textContent='แสดง '+rows.length+' / ทั้งหมด '+attendData.length+' รายการ';
+  $('at-body').innerHTML = rows.length ? rows.map(attRowHTML).join('') : '<tr><td colspan="6" class="muted" style="padding:16px">ไม่มีข้อมูล</td></tr>';
+}
+// BOM นำหน้าไว้ให้ Excel อ่านภาษาไทยไม่เพี้ยน
+function downloadCSV(filename, head, rows){
+  var lines=[head.join(',')];
+  rows.forEach(function(cols){
+    lines.push(cols.map(function(x){ return '"'+String(x==null?'':x).replace(/"/g,'""')+'"'; }).join(','));
+  });
+  var blob=new Blob(['﻿'+lines.join('\n')],{type:'text/csv;charset=utf-8'});
+  var url=URL.createObjectURL(blob), a=document.createElement('a');
+  a.href=url; a.download=filename;
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+}
+
+function exportCSV(){
+  var rows=filteredAttend();
+  if(!rows.length){ toast('ไม่มีข้อมูลให้ส่งออก'); return; }
+  downloadCSV('attendance_'+new Date().toISOString().slice(0,10)+'.csv',
+    ['ชื่อ','username','ประเภท','เวลา','ละติจูด','ลองจิจูด','ความแม่นยำ(ม.)','สถานที่','ลิงก์แผนที่','ลิงก์รูป'],
+    rows.map(function(r){
+      var t=r.time?fmtDT(r.time):'';
+      return [r.name,r.username,r.type,t,r.lat,r.lng,r.accuracy,r.address,r.mapLink,r.photoUrl];
+    }));
+}
+
+// ---------- DASHBOARD ----------
+function renderDash(){
+  var today=new Date().toISOString().slice(0,10);
+  var todayRows=attendData.filter(function(r){ return r.time && new Date(r.time).toISOString().slice(0,10)===today; });
+  var inCount=todayRows.filter(function(r){ return String(r.type).indexOf('เลิก')<0; }).length;
+  var outCount=todayRows.filter(function(r){ return String(r.type).indexOf('เลิก')>=0; }).length;
+  var s=[
+    { n: todayRows.length, l:'บันทึกวันนี้' },
+    { n: inCount, l:'เข้างานวันนี้' },
+    { n: outCount, l:'เลิกงานวันนี้' },
+  ];
+  if(state.user.role!=='manager'){
+    var pending=leaveData.filter(function(l){ return String(l.status).toLowerCase()==='pending'; }).length;
+    s.push({ n: pending, l:'ใบลารออนุมัติ' });
+    s.push({ n: empData.filter(function(e){return String(e.active).toLowerCase()!=='no';}).length, l:'พนักงานที่ใช้งาน' });
+  }
+  $('stats').innerHTML=s.map(function(x){ return '<div class="stat"><div class="n">'+x.n+'</div><div class="l">'+x.l+'</div></div>'; }).join('');
+  var recent=attendData.slice(0,8);
+  $('dash-body').innerHTML = recent.length ? recent.map(attRowHTML).join('') : '<tr><td colspan="6" class="muted" style="padding:16px">ยังไม่มีข้อมูล</td></tr>';
+}
+
+// ---------- LEAVES ----------
+var LV_TH={ pending:'รออนุมัติ', approved:'อนุมัติแล้ว', rejected:'ไม่อนุมัติ' };
+$('lv-refresh').addEventListener('click', loadLeaves);
+$('lv-filter').addEventListener('change', loadLeaves);
+$('lv-search').addEventListener('input', renderLeaves);
+
+function loadLeaves(){
+  $('lv-body').innerHTML='<tr><td colspan="8"><div class="center-load"><span class="spinner"></span> กำลังโหลด…</div></td></tr>';
+  api({action:'listLeaves', token:state.token, status:$('lv-filter').value}).then(function(res){
+    if(!guard(res)) return;
+    if(!res.ok){ $('lv-body').innerHTML='<tr><td colspan="8" style="padding:16px;color:#dc2626">'+errTH(res.error)+'</td></tr>'; return; }
+    leaveData=res.rows||[]; renderLeaves(); renderDash();
+  }).catch(function(){ $('lv-body').innerHTML='<tr><td colspan="8" style="padding:16px">โหลดไม่สำเร็จ</td></tr>'; });
+}
+function renderLeaves(){
+  var q=$('lv-search').value.trim().toLowerCase();
+  var rows=leaveData.filter(function(r){ return !q || (r.name+' '+r.leaveType+' '+r.username).toLowerCase().indexOf(q)>=0; });
+  $('lv-summary').textContent='แสดง '+rows.length+' รายการ';
+  if(!rows.length){ $('lv-body').innerHTML='<tr><td colspan="8" class="muted" style="padding:16px">ไม่มีข้อมูล</td></tr>'; return; }
+  var html='';
+  rows.forEach(function(r){
+    var stt=String(r.status||'pending').toLowerCase();
+    var created=r.created?fmtD(new Date(r.created).toISOString().slice(0,10)):'';
+    var range=esc(r.startDate)+(r.endDate&&r.endDate!==r.startDate?(' → '+esc(r.endDate)):'');
+    var actions = stt==='pending'
+      ? '<button class="btn btn-ok btn-sm" onclick="decide(\''+r.id+'\',\'approved\')">อนุมัติ</button> '+
+        '<button class="btn btn-danger btn-sm" onclick="decide(\''+r.id+'\',\'rejected\')">ปฏิเสธ</button>'
+      : '<span class="muted">'+esc(r.decidedBy||'')+(r.note?(' • '+esc(r.note)):'')+'</span>';
+    html+='<tr><td class="time-cell">'+esc(created)+'</td><td class="name">'+esc(r.name)+'</td><td>'+esc(r.leaveType)+'</td><td class="time-cell">'+range+'</td><td>'+esc(r.days)+'</td>'+
+      '<td class="addr">'+esc(r.reason||'')+'</td><td><span class="pill '+stt+'">'+(LV_TH[stt]||stt)+'</span></td><td>'+actions+'</td></tr>';
+  });
+  $('lv-body').innerHTML=html;
+}
+
+var decCtx={ id:null, decision:null };
+window.decide=function(id, decision){
+  var r=leaveData.filter(function(x){return x.id===id;})[0]; if(!r) return;
+  decCtx={ id:id, decision:decision };
+  $('dec-title').textContent = decision==='approved'?'อนุมัติการลา':'ปฏิเสธการลา';
+  $('dec-info').textContent = r.name+' • '+r.leaveType+' • '+r.startDate+(r.endDate!==r.startDate?(' → '+r.endDate):'')+' ('+r.days+' วัน)';
+  $('dec-note').value='';
+  $('dec-confirm').className='btn btn-sm '+(decision==='approved'?'btn-ok':'btn-danger');
+  $('dec-modal').classList.remove('hidden');
+};
+$('dec-cancel').addEventListener('click', function(){ $('dec-modal').classList.add('hidden'); });
+$('dec-confirm').addEventListener('click', function(){
+  var b=$('dec-confirm'); b.disabled=true;
+  api({action:'decideLeave', token:state.token, id:decCtx.id, decision:decCtx.decision, note:$('dec-note').value.trim()}).then(function(res){
+    b.disabled=false;
+    if(!guard(res)) return;
+    if(!res.ok){ toast(errTH(res.error)); return; }
+    $('dec-modal').classList.add('hidden');
+    toast(decCtx.decision==='approved'?'อนุมัติแล้ว':'ปฏิเสธแล้ว');
+    loadLeaves();
+  }).catch(function(){ b.disabled=false; toast('บันทึกไม่สำเร็จ'); });
+});
+
+// ---------- EMPLOYEES ----------
+var ROLE_LABEL = {
+  admin:'<span class="pill approved">ผู้ดูแล</span>',
+  manager:'<span class="pill pending">ผู้จัดการ</span>',
+  'employee-office':'พนักงานสำนักงาน',
+  'employee-shipping':'พนักงานจัดส่ง'
+};
+var ROLE_VALID = { admin:1, manager:1, 'employee-office':1, 'employee-shipping':1 };
+
+$('emp-refresh').addEventListener('click', loadEmployees);
+$('emp-search').addEventListener('input', renderEmployees);
+$('emp-add').addEventListener('click', function(){ openEmpModal(null); });
+
+function loadEmployees(){
+  $('emp-body').innerHTML='<tr><td colspan="6"><div class="center-load"><span class="spinner"></span> กำลังโหลด…</div></td></tr>';
+  api({action:'listEmployees', token:state.token}).then(function(res){
+    if(!guard(res)) return;
+    if(!res.ok){ $('emp-body').innerHTML='<tr><td colspan="6" style="padding:16px;color:#dc2626">'+errTH(res.error)+'</td></tr>'; return; }
+    empData=res.rows||[]; renderEmployees(); renderDash();
+  }).catch(function(){ $('emp-body').innerHTML='<tr><td colspan="6" style="padding:16px">โหลดไม่สำเร็จ</td></tr>'; });
+}
+function renderEmployees(){
+  var q=$('emp-search').value.trim().toLowerCase();
+  var rows=empData.filter(function(r){ return !q || (r.name+' '+r.username+' '+r.role+' '+(r.shippingCode||'')).toLowerCase().indexOf(q)>=0; });
+  if(!rows.length){ $('emp-body').innerHTML='<tr><td colspan="6" class="muted" style="padding:16px">ไม่มีข้อมูล</td></tr>'; return; }
+  var html='';
+  rows.forEach(function(r){
+    var idx=empData.indexOf(r);
+    var active=String(r.active).toLowerCase()!=='no';
+    var roleTxt=ROLE_LABEL[r.role]||esc(r.role);
+    var statusTxt=active?'<span class="pill approved">ใช้งาน</span>':'<span class="pill rejected">ปิดบัญชี</span>';
+    var shipTxt=r.shippingCode?('<b>'+esc(r.shippingCode)+'</b>'):'<span class="muted">—</span>';
+    html+='<tr><td class="name">'+esc(r.username)+'</td><td>'+esc(r.name)+'</td><td>'+shipTxt+'</td><td>'+roleTxt+'</td><td>'+statusTxt+'</td>'+
+      '<td style="white-space:nowrap"><button class="btn btn-ghost btn-sm" onclick="editEmp('+idx+')">แก้ไข</button> '+
+      '<button class="btn '+(active?'btn-danger':'btn-ok')+' btn-sm" onclick="toggleEmp('+idx+')">'+(active?'ปิด':'เปิด')+'</button></td></tr>';
+  });
+  $('emp-body').innerHTML=html;
+}
+window.editEmp=function(idx){ openEmpModal(empData[idx]); };
+window.toggleEmp=function(idx){
+  var e=empData[idx]; var newActive=String(e.active).toLowerCase()!=='no'?'no':'yes';
+  api({action:'saveEmployee', token:state.token, employee:{ origUsername:e.username, username:e.username, name:e.name, role:e.role, active:newActive, password:'', shippingCode:e.shippingCode||'' }}).then(function(res){
+    if(!guard(res)) return;
+    if(!res.ok){ toast(errTH(res.error)); return; }
+    toast(newActive==='no'?'ปิดบัญชีแล้ว':'เปิดใช้แล้ว'); loadEmployees();
+  }).catch(function(){ toast('บันทึกไม่สำเร็จ'); });
+};
+function openEmpModal(emp){
+  $('emp-err').classList.add('hidden');
+  if(emp){
+    $('emp-modal-title').textContent='แก้ไขพนักงาน';
+    $('emp-orig').value=emp.username;
+    $('emp-username').value=emp.username;
+    $('emp-password').value='';
+    $('emp-pass-hint').textContent='(เว้นว่าง = ไม่เปลี่ยนรหัส)';
+    $('emp-name').value=emp.name;
+    $('emp-shipping').value=emp.shippingCode||'';
+    $('emp-role').value=ROLE_VALID[emp.role]?emp.role:'employee-shipping';
+    $('emp-active').value=String(emp.active).toLowerCase()==='no'?'no':'yes';
+  } else {
+    $('emp-modal-title').textContent='เพิ่มพนักงาน';
+    $('emp-orig').value='';
+    $('emp-username').value=''; $('emp-password').value=''; $('emp-name').value=''; $('emp-shipping').value='';
+    $('emp-pass-hint').textContent='';
+    $('emp-role').value='employee-office'; $('emp-active').value='yes';
+  }
+  $('emp-modal').classList.remove('hidden');
+}
+$('emp-cancel').addEventListener('click', function(){ $('emp-modal').classList.add('hidden'); });
+$('emp-save').addEventListener('click', function(){
+  var err=$('emp-err'); err.classList.add('hidden');
+  var username=$('emp-username').value.trim();
+  if(!username){ err.textContent='กรุณากรอก username'; err.classList.remove('hidden'); return; }
+  var emp={
+    origUsername:$('emp-orig').value,
+    username:username,
+    password:$('emp-password').value,
+    name:$('emp-name').value.trim()||username,
+    shippingCode:$('emp-shipping').value.trim(),
+    role:$('emp-role').value,
+    active:$('emp-active').value
+  };
+  if(!emp.origUsername && !emp.password){ err.textContent='กรุณากำหนดรหัสผ่านสำหรับพนักงานใหม่'; err.classList.remove('hidden'); return; }
+  var b=$('emp-save'); b.disabled=true; b.textContent='กำลังบันทึก…';
+  api({action:'saveEmployee', token:state.token, employee:emp}).then(function(res){
+    b.disabled=false; b.textContent='บันทึก';
+    if(!guard(res)) return;
+    if(!res.ok){ err.textContent=errTH(res.error); err.classList.remove('hidden'); return; }
+    $('emp-modal').classList.add('hidden'); toast(res.mode==='created'?'เพิ่มพนักงานแล้ว':'บันทึกแล้ว'); loadEmployees();
+  }).catch(function(){ b.disabled=false; b.textContent='บันทึก'; err.textContent='บันทึกไม่สำเร็จ'; err.classList.remove('hidden'); });
+});
+
+// ---------- CLAIM (การเบิก) ----------
+// admin/manager ปรับ "อัตราต่อ 1 ตู้" ของแต่ละหัวข้อได้ที่นี่ที่เดียว — พนักงานจัดส่งเห็นเป็นข้อมูลอย่างเดียว
+var claimCfg=[], claimRows=[], claimTabReady=false, settingsTabReady=false, settleRatesLoaded=false;
+
+function fmtM(n){
+  var v=Math.round((Number(n)||0)*100)/100;
+  var s=(v%1===0)?String(v):v.toFixed(2);
+  var p=s.split('.');
+  p[0]=p[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return p.join('.');
+}
+// รูปแบบวันที่มาตรฐานของทั้งระบบ: d/M/yyyy ค.ศ. เช่น 8/8/2026
+function fmtD(ymd){
+  var m=/^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(ymd||'').trim());
+  if(!m) return String(ymd||'—');
+  return Number(m[3])+'/'+Number(m[2])+'/'+Number(m[1]);
+}
+// วันที่ + เวลา เช่น 8/8/2026 14:22
+function fmtDT(v){
+  if(!v) return '';
+  var d=(v instanceof Date)?v:new Date(v);
+  if(isNaN(d.getTime())) return String(v);
+  var p=function(n){ return (n<10?'0':'')+n; };
+  return d.getDate()+'/'+(d.getMonth()+1)+'/'+d.getFullYear()+' '+p(d.getHours())+':'+p(d.getMinutes());
+}
+function copyText(text){
+  function fallback(){
+    var ta=document.createElement('textarea');
+    ta.value=text; ta.style.position='fixed'; ta.style.top='-1000px'; ta.setAttribute('readonly','');
+    document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, ta.value.length);
+    var ok=false; try{ ok=document.execCommand('copy'); }catch(e){}
+    ta.remove();
+    toast(ok?'คัดลอกแล้ว ✓':'คัดลอกไม่สำเร็จ');
+  }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(function(){ toast('คัดลอกแล้ว ✓'); }).catch(fallback);
+  } else { fallback(); }
+}
+
+function initClaimTab(){
+  if(claimTabReady) return;
+  claimTabReady=true;
+  loadClaims();
+}
+
+// แท็บตั้งค่าระบบ — โหลดอัตราใบเบิก + ตัวเลือก dropdown + อัตราใบปิดบัญชี ตอนเปิดครั้งแรก
+function initSettingsTab(){
+  if(settingsTabReady) return;
+  settingsTabReady=true;
+  loadRates();
+  loadAppOptions();
+  loadSettleRates();
+}
+
+// ---- ตัวเลือกแบบเลื่อน: ท่า / ค่าตะกั่ว / ค่าน็อคตู้ / ค่าล่วงเวลา ----
+var appOpt=null;
+
+$('op-reload').addEventListener('click', loadAppOptions);
+$('op-save').addEventListener('click', saveAppOptions);
+$('op-port-add').addEventListener('click', function(){
+  addPortRow('');
+  renderEmPorts();
+  var els=$('op-ports').querySelectorAll('.opt-port input');
+  if(els.length) els[els.length-1].focus();
+});
+$('op-ports').addEventListener('click', function(e){
+  var del=e.target.closest && e.target.closest('.op-port-del');
+  if(del){ var row=del.closest('.opt-port'); if(row) row.remove(); renderEmPorts(); }
+});
+// แก้ชื่อท่า/เพิ่มท่า = รายการ "ท่าที่คิดค่า EXTRA MOVEMENT" ต้องอัปเดตตาม
+$('op-ports').addEventListener('input', function(e){
+  if(e.target.classList.contains('op-port-in')) renderEmPorts();
+});
+// อัปเดตตัวอย่างตัวเลือกทันทีที่พิมพ์ จะได้เห็นว่าได้กี่ค่าและค่าท้ายสุดคืออะไร
+['op-seal-from','op-seal-step','op-seal-to','op-seal-extra','op-knock-from','op-knock-step','op-knock-to','op-knock-extra','op-ot-per','op-ot-max']
+  .forEach(function(id){ $(id).addEventListener('input', renderOptPreviews); });
+
+function loadAppOptions(){
+  $('op-hint').textContent='กำลังโหลด…';
+  api({action:'appOptions', token:state.token}).then(function(res){
+    if(!guard(res)) return;
+    if(!res.ok){ $('op-hint').textContent=errTH(res.error); return; }
+    appOpt=res;
+    fillAppOptions(res);
+    // หน้าตารูปใบปิดบัญชี (เฉพาะ admin — manager จะไม่เห็นแท็บย่อยนี้)
+    if(res.sheet && res.sheetDefs){ slCur=res.sheet; slDefs=res.sheetDefs; renderSheetLayoutForm(); }
+    $('op-hint').textContent='';
+  }).catch(function(){ $('op-hint').textContent='โหลดไม่สำเร็จ'; });
+}
+
+function fillAppOptions(o){
+  var seal=o.seal||{}, knock=o.knock||{}, ot=o.overtime||{};
+  $('op-seal-from').value=seal.from; $('op-seal-step').value=seal.step; $('op-seal-to').value=seal.to;
+  $('op-seal-extra').value=(seal.extra||[]).join(', ');
+  $('op-knock-from').value=knock.from; $('op-knock-step').value=knock.step; $('op-knock-to').value=knock.to;
+  $('op-knock-extra').value=(knock.extra||[]).join(', ');
+  $('op-ot-per').value=ot.perSet; $('op-ot-max').value=ot.maxSets;
+  $('op-ports').innerHTML='';
+  (o.ports||[]).forEach(addPortRow);
+  emPortsSel=(o.emPorts||[]).slice();
+  renderEmPorts();
+  renderOptPreviews();
+}
+
+function addPortRow(name){
+  var row=document.createElement('div');
+  row.className='opt-port';
+  row.innerHTML='<input type="text" class="op-port-in" maxlength="40" value="'+esc(name||'')+'" placeholder="ชื่อท่า เช่น C1C2">'+
+                '<button type="button" class="btn btn-danger btn-sm op-port-del">✕</button>';
+  $('op-ports').appendChild(row);
+}
+
+// ---- ท่าที่คิดค่า EXTRA MOVEMENT ให้อัตโนมัติ (ท่าอื่น = ปล่อยว่างให้พนักงานกรอกเอง) ----
+// ติ๊กจากรายการท่าด้านซ้าย — เพิ่ม/ลบ/แก้ชื่อท่าแล้ว รายการนี้อัปเดตตามทันที
+var emPortsSel=[];
+function portNamesNow(){
+  var out=[];
+  Array.prototype.forEach.call(document.querySelectorAll('#op-ports .op-port-in'), function(el){
+    var v=el.value.trim(); if(v && out.indexOf(v)<0) out.push(v);
+  });
+  return out;
+}
+function renderEmPorts(){
+  var names=portNamesNow();
+  // ท่าที่ติ๊กไว้แต่ถูกลบออกจากรายการท่าแล้ว — ยังโชว์ไว้ให้เห็น จะได้ไม่หายไปเงียบ ๆ
+  emPortsSel.forEach(function(p){ if(names.indexOf(p)<0) names.push(p); });
+  $('op-emports').innerHTML = names.length
+    ? names.map(function(p){
+        var on=emPortsSel.indexOf(p)>=0;
+        return '<label class="opt-emport'+(on?' on':'')+'"><input type="checkbox" class="op-emport-in" value="'+esc(p)+'"'+
+               (on?' checked':'')+'><span>'+esc(p)+'</span></label>';
+      }).join('')
+    : '<span class="muted">ยังไม่มีท่าในรายการ</span>';
+  $('op-emports-prev').innerHTML = emPortsSel.length
+    ? ('คิดให้เฉพาะ <b>'+esc(emPortsSel.join(', '))+'</b> — ท่าอื่นปล่อยว่างให้พนักงานกรอกเอง'+
+       '<br>และต้องเป็น BL ที่มี <b>2 ตู้ขึ้นไป</b> ด้วย (BL ตู้เดียวไม่คิดให้ทุกท่า)')
+    : '<b style="color:#dc2626">ยังไม่ได้ติ๊กท่าไหนเลย</b> = ไม่คิดค่า EXTRA MOVEMENT ให้อัตโนมัติทุกท่า (พนักงานกรอกเองทั้งหมด)';
+}
+$('op-emports').addEventListener('change', function(e){
+  var t=e.target; if(!t.classList.contains('op-emport-in')) return;
+  var p=t.value, at=emPortsSel.indexOf(p);
+  if(t.checked && at<0) emPortsSel.push(p);
+  if(!t.checked && at>=0) emPortsSel.splice(at,1);
+  renderEmPorts();
+});
+
+function numList(text){
+  return String(text||'').split(',').map(function(x){ return Number(String(x).trim())||0; }).filter(function(n){ return n>0; });
+}
+// สร้างรายการตัวเลือกแบบเดียวกับฝั่งเซิร์ฟเวอร์ เพื่อโชว์ตัวอย่างให้เห็นก่อนบันทึก
+function previewValues(from, step, to, extra){
+  var out=[], seen={}, MAX=400;
+  if(step>0 && from>0){
+    for(var v=from; v<=to+0.0001 && out.length<MAX; v=Math.round((v+step)*100)/100){
+      if(!seen[v]){ seen[v]=true; out.push(v); }
+    }
+  }
+  extra.forEach(function(n){ if(!seen[n] && out.length<MAX){ seen[n]=true; out.push(n); } });
+  out.sort(function(a,b){ return a-b; });
+  return out;
+}
+function rangePreviewText(from, step, to, extra){
+  var vals=previewValues(from, step, to, extra);
+  if(!vals.length) return '⚠️ ยังไม่ได้ตั้งค่า — ตรวจว่า "ค่าแรก" และ "ขึ้นทีละ" มากกว่า 0';
+  var head=vals.slice(0,4).map(fmtM).join(', ');
+  return 'ได้ '+vals.length+' ตัวเลือก: '+head+(vals.length>4?(' … '+fmtM(vals[vals.length-1])):'');
+}
+function renderOptPreviews(){
+  $('op-seal-prev').textContent=rangePreviewText(
+    Number($('op-seal-from').value)||0, Number($('op-seal-step').value)||0, Number($('op-seal-to').value)||0, numList($('op-seal-extra').value));
+  $('op-knock-prev').textContent=rangePreviewText(
+    Number($('op-knock-from').value)||0, Number($('op-knock-step').value)||0, Number($('op-knock-to').value)||0, numList($('op-knock-extra').value));
+  var per=Number($('op-ot-per').value)||0, max=Number($('op-ot-max').value)||0;
+  $('op-ot-prev').textContent='หน้าเบิก: เลือก 1–'+max+' ชุด (1 ชุด = '+fmtM(per)+' บาท, สูงสุด '+fmtM(per*max)+' บาท) • '+
+    'หน้าปิดบัญชี: ติ๊กเลือกแล้วคิด '+fmtM(per)+' บาท ต่อ 1 รายการ BL';
+}
+
+function saveAppOptions(){
+  var ports=[];
+  Array.prototype.forEach.call(document.querySelectorAll('#op-ports .op-port-in'), function(el){
+    var v=el.value.trim(); if(v) ports.push(v);
+  });
+  if(!ports.length){ toast('ต้องมีท่าอย่างน้อย 1 รายการ'); return; }
+
+  // กันบันทึกทับด้วยช่องว่าง (เช่น โหลดค่าไม่สำเร็จ) — ค่าล่วงเวลาจะกลายเป็น 0 ทั้งระบบ
+  var blank=['op-seal-from','op-seal-step','op-seal-to','op-knock-from','op-knock-step','op-knock-to','op-ot-per','op-ot-max']
+    .filter(function(id){ return String($(id).value).trim()===''; });
+  if(blank.length){ toast('ยังมีช่องที่ว่างอยู่ — กด "↻ โหลดใหม่" แล้วกรอกให้ครบก่อนบันทึก', 4000); return; }
+
+  // ท่าที่คิดค่า EXTRA MOVEMENT — ติ๊กออกหมดได้ (= ไม่คิดให้ทุกท่า) เก็บเฉพาะท่าที่ยังอยู่ในรายการท่า
+  var emPorts=emPortsSel.filter(function(p){ return ports.indexOf(p)>=0; });
+  var dropped=emPortsSel.filter(function(p){ return ports.indexOf(p)<0; });
+  if(dropped.length) toast('ท่า '+dropped.join(', ')+' ไม่มีในรายการท่าแล้ว จึงถูกเอาออกจากท่าที่คิด EXTRA MOVEMENT', 4000);
+
+  var options={
+    ports: ports,
+    emPorts: emPorts,
+    seal: { from:Number($('op-seal-from').value)||0, step:Number($('op-seal-step').value)||0,
+            to:Number($('op-seal-to').value)||0, extra:numList($('op-seal-extra').value) },
+    knock:{ from:Number($('op-knock-from').value)||0, step:Number($('op-knock-step').value)||0,
+            to:Number($('op-knock-to').value)||0, extra:numList($('op-knock-extra').value) },
+    overtime:{ perSet:Number($('op-ot-per').value)||0, maxSets:Number($('op-ot-max').value)||0 }
+  };
+
+  var b=$('op-save'); b.disabled=true; b.textContent='กำลังบันทึก…';
+  api({action:'saveAppOptions', token:state.token, options:options}).then(function(res){
+    b.disabled=false; b.textContent='บันทึกตัวเลือก';
+    if(!guard(res)) return;
+    if(!res.ok){ toast(errTH(res.error)); return; }
+    appOpt=res;
+    fillAppOptions(res);                 // แสดงค่าที่เซิร์ฟเวอร์ปรับให้ (เช่น ตัดช่วงที่ยาวเกินเพดาน)
+    $('op-hint').textContent='บันทึกล่าสุด '+fmtDT(new Date());
+    toast('บันทึกตัวเลือกแล้ว ✓');
+  }).catch(function(){ b.disabled=false; b.textContent='บันทึกตัวเลือก'; toast('บันทึกไม่สำเร็จ'); });
+}
+
+// ---- อัตราค่าใช้จ่าย ----
+$('rate-reload').addEventListener('click', loadRates);
+$('rate-save').addEventListener('click', saveRates);
+
+function loadRates(){
+  $('rate-body').innerHTML='<tr><td colspan="4"><div class="center-load"><span class="spinner"></span> กำลังโหลด…</div></td></tr>';
+  api({action:'claimConfig', token:state.token}).then(function(res){
+    if(!guard(res)) return;
+    if(!res.ok){ $('rate-body').innerHTML='<tr><td colspan="4" style="padding:16px;color:#dc2626">'+errTH(res.error)+'</td></tr>'; return; }
+    claimCfg=res.items||[];
+    renderRates();
+    $('rate-hint').textContent='';
+  }).catch(function(){ $('rate-body').innerHTML='<tr><td colspan="4" style="padding:16px">โหลดไม่สำเร็จ</td></tr>'; });
+}
+
+function reasonRowHTML(r){
+  return '<div class="sp-row" style="display:flex;gap:8px;align-items:center">'+
+    '<input type="text" class="sp-label" value="'+esc(r.label||'')+'" placeholder="ชื่อเหตุผล" style="flex:1;min-width:110px">'+
+    '<input type="number" class="sp-rate" value="'+(Number(r.rate)||0)+'" min="0" step="1" style="width:110px;text-align:right">'+
+    '<button type="button" class="btn btn-danger btn-sm sp-del">✕</button>'+
+  '</div>';
+}
+
+function renderRates(){
+  $('rate-body').innerHTML = claimCfg.map(function(c, i){
+    var type = c.perContainer
+      ? '<span class="pill approved">คิดจากจำนวนตู้</span>'
+      : '<span class="pill pending">กรอกเอง</span>';
+    var cell;
+    if(c.key==='special'){
+      cell = '<div id="sp-rows" style="display:flex;flex-direction:column;gap:8px">'+(c.reasons||[]).map(reasonRowHTML).join('')+'</div>'+
+        '<button type="button" class="btn btn-ghost btn-sm sp-add" style="margin-top:8px">＋ เพิ่มเหตุผล</button>'+
+        '<div class="muted" style="margin-top:6px">พนักงานเพิ่มเหตุผลอื่นเองได้ตอนทำใบเบิก • '+
+        '<b>ค่าน็อคตู้</b> พนักงานเลือกจำนวนเงินจาก dropdown (ตั้งขั้นได้ที่หัวข้อ "ตัวเลือกแบบเลื่อน" ด้านล่าง)</div>';
+    } else if(c.input==='sets'){
+      // ยอดค่าล่วงเวลาไม่ได้ใช้อัตราในตารางนี้ — ใช้ "บาท / 1 ชุด" ที่หัวข้อตัวเลือกแบบเลื่อน
+      cell = '<span class="muted">พนักงานเลือก <b>จำนวนชุด</b> — ตั้งยอดที่หัวข้อ <b>ตัวเลือกแบบเลื่อน → ค่าล่วงเวลา (บาท / 1 ชุด)</b> ด้านล่าง</span>';
+    } else if(c.input==='select'){
+      cell = '<input type="number" class="rate-in" data-key="'+esc(c.key)+'" min="0" step="1" value="'+(Number(c.rate)||0)+'" style="width:140px;text-align:right">'+
+        '<div class="muted" style="margin-top:6px">พนักงานเลือกจาก dropdown (ตั้งขั้นที่หัวข้อด้านล่าง) — ค่านี้ใช้เป็นค่าที่เลือกไว้ให้ตอนติ๊กหัวข้อ ตั้ง 0 = ยังไม่เลือก</div>';
+    } else if(c.ownQty){
+      // หัวข้อที่มีขั้นต่ำจำนวนตู้ (EXTRA MOVEMENT) — ใบที่ตู้ยังไม่ถึงขั้นต่ำจะไม่คิดให้อัตโนมัติ
+      var minc = Math.max(0, Number(c.minContainers)||0);
+      cell = '<input type="number" class="rate-in" data-key="'+esc(c.key)+'" min="0" step="1" value="'+(Number(c.rate)||0)+'" style="width:140px;text-align:right">'+
+        '<div class="muted" style="margin-top:6px">คิด อัตรา × <b>จำนวนตู้ที่พนักงานกดเพิ่มเฉพาะหัวข้อนี้</b> (ไม่ใช่จำนวนตู้ของทั้งใบ)'+
+        (minc>1 ? '<br><b>เริ่มคิดให้อัตโนมัติตั้งแต่ '+minc+' ตู้ขึ้นไป</b> — ชุดงาน BL ที่มีตู้เดียวไม่คิดให้ (ทั้งใบเบิกและใบปิดบัญชี) พนักงานกดเพิ่มเองได้ถ้ามีจริง' : '')+
+        '</div>';
+    } else {
+      cell = '<input type="number" class="rate-in" data-key="'+esc(c.key)+'" min="0" step="1" value="'+(Number(c.rate)||0)+'" style="width:140px;text-align:right">';
+    }
+    return '<tr><td>'+(i+1)+'</td><td class="name" style="text-align:left">'+esc(c.label)+'</td><td>'+type+'</td><td style="text-align:left">'+cell+'</td></tr>';
+  }).join('');
+}
+
+// เพิ่ม/ลบแถวเหตุผลของ "ค่าบริการเพิ่มเติมพิเศษ" โดยไม่ล้างค่าที่กำลังพิมพ์ในช่องอื่น
+$('rate-body').addEventListener('click', function(e){
+  if(e.target.closest && e.target.closest('.sp-add')){
+    var box=$('sp-rows'); if(!box) return;
+    var tmp=document.createElement('div');
+    tmp.innerHTML=reasonRowHTML({label:'', rate:0});
+    box.appendChild(tmp.firstChild);
+    var labels=box.querySelectorAll('.sp-label');
+    if(labels.length) labels[labels.length-1].focus();
+    return;
+  }
+  var del=e.target.closest && e.target.closest('.sp-del');
+  if(del){ var row=del.closest('.sp-row'); if(row) row.remove(); }
+});
+
+function saveRates(){
+  if(!claimCfg.length){ toast('ยังไม่มีข้อมูลอัตรา'); return; }
+  var items=claimCfg.map(function(c){
+    if(c.key==='special'){
+      var rs=[];
+      Array.prototype.forEach.call(document.querySelectorAll('#sp-rows .sp-row'), function(row){
+        var label=row.querySelector('.sp-label').value.trim();
+        if(!label) return;
+        rs.push({ label:label, rate:Math.max(0, Number(row.querySelector('.sp-rate').value)||0) });
+      });
+      return { key:c.key, rate:0, reasons:rs };
+    }
+    var el=document.querySelector('.rate-in[data-key="'+c.key+'"]');
+    return { key:c.key, rate: el ? Math.max(0, Number(el.value)||0) : (Number(c.rate)||0) };
+  });
+
+  var b=$('rate-save'); b.disabled=true; b.textContent='กำลังบันทึก…';
+  api({action:'saveClaimConfig', token:state.token, items:items}).then(function(res){
+    b.disabled=false; b.textContent='บันทึกอัตรา';
+    if(!guard(res)) return;
+    if(!res.ok){ toast(errTH(res.error)); return; }
+    claimCfg=res.items||[];
+    renderRates();
+    $('rate-hint').textContent='บันทึกล่าสุด '+fmtDT(new Date());
+    toast('บันทึกอัตราแล้ว ✓');
+  }).catch(function(){ b.disabled=false; b.textContent='บันทึกอัตรา'; toast('บันทึกไม่สำเร็จ'); });
+}
+
+// ---- รายการเบิกของพนักงาน ----
+$('cm-refresh').addEventListener('click', loadClaims);
+$('cm-search').addEventListener('input', renderClaims);
+$('cm-from').addEventListener('change', renderClaims);
+$('cm-to').addEventListener('change', renderClaims);
+$('cm-export').addEventListener('click', exportClaimCSV);
+
+function loadClaims(){
+  $('cm-body').innerHTML='<tr><td colspan="8"><div class="center-load"><span class="spinner"></span> กำลังโหลด…</div></td></tr>';
+  api({action:'listClaims', token:state.token}).then(function(res){
+    if(!guard(res)) return;
+    if(!res.ok){ $('cm-body').innerHTML='<tr><td colspan="8" style="padding:16px;color:#dc2626">'+errTH(res.error)+'</td></tr>'; return; }
+    claimRows=res.rows||[];
+    renderClaims();
+  }).catch(function(){ $('cm-body').innerHTML='<tr><td colspan="8" style="padding:16px">โหลดไม่สำเร็จ</td></tr>'; });
+}
+
+function filteredClaims(){
+  var q=$('cm-search').value.trim().toLowerCase(), from=$('cm-from').value, to=$('cm-to').value;
+  return claimRows.filter(function(r){
+    if(from && r.inspectDate < from) return false;
+    if(to && r.inspectDate > to) return false;
+    if(!q) return true;
+    return (r.name+' '+r.username+' '+r.detail).toLowerCase().indexOf(q)>=0;
+  });
+}
+
+function renderClaims(){
+  var rows=filteredClaims();
+  var sum=rows.reduce(function(t,r){ return t+(Number(r.total)||0); }, 0);
+  $('cm-summary').innerHTML='แสดง '+rows.length+' / ทั้งหมด '+claimRows.length+' ใบ • รวมยอดที่แสดง <b>'+fmtM(sum)+'</b> บาท';
+  if(!rows.length){ $('cm-body').innerHTML='<tr><td colspan="8" class="muted" style="padding:16px">ไม่มีข้อมูล</td></tr>'; return; }
+  $('cm-body').innerHTML = rows.map(function(r){
+    var i=claimRows.indexOf(r);
+    var upd=r.updated?fmtDT(r.updated):'';
+    return '<tr>'+
+      '<td class="time-cell">'+esc(fmtD(r.inspectDate))+'</td>'+
+      '<td class="name">'+esc(r.name)+'</td>'+
+      '<td>'+esc(r.containers)+'</td>'+
+      '<td>'+(r.items?r.items.length:0)+'</td>'+
+      '<td style="font-weight:700">'+fmtM(r.total)+'</td>'+
+      '<td>'+(r.editCount>0
+        ? ('<span class="pill pending">แก้ไขครั้งที่ '+r.editCount+'/'+(r.maxEdits||5)+'</span>')
+        : '<span class="muted">ยังไม่แก้ไข</span>')+'</td>'+
+      '<td class="time-cell">'+esc(upd)+'</td>'+
+      '<td style="white-space:nowrap">'+
+        '<button class="btn btn-ghost btn-sm" onclick="cmView('+i+')">ดู</button> '+
+        '<button class="btn btn-ghost btn-sm" onclick="cmCopy('+i+')">คัดลอก</button>'+
+      '</td></tr>';
+  }).join('');
+}
+
+// รายการย่อยแยกตามครั้งที่บันทึก — ข้อความมาจากคอลัมน์ detail_first / edit_detail_1..5 ของชีต Claims
+function claimRevisions(r){
+  var out=[{ n:0, label:'ครั้งแรก', text:String(r.detailFirst||'') }];
+  var eds=r.editDetails||[];
+  var n=Number(r.editCount)||0;
+  for(var j=eds.length-1;j>=0;j--){ if(String(eds[j]||'')){ n=Math.max(n, j+1); break; } }
+  // ป้ายสั้น ๆ: ครั้งแรก / แก้ไข1 … แก้ไข5 (แต่ละครั้ง = เฉพาะรายการที่เพิ่มจากครั้งก่อนหน้า)
+  for(var k=1;k<=n;k++) out.push({ n:k, label:'แก้ไข'+k, text:String(eds[k-1]||'') });
+  return out;
+}
+
+window.cmView=function(i){
+  var r=claimRows[i]; if(!r) return;
+  $('cm-detail').textContent=r.detailAll||r.detail||'(ไม่มีรายละเอียด)';
+  var revs=claimRevisions(r);
+  $('cm-revs').innerHTML='<div class="muted" style="font-size:12px;margin:0 2px 6px">แต่ละครั้ง = เฉพาะรายการที่เพิ่มจากครั้งก่อนหน้า</div>'+
+    revs.map(function(v){
+      return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 9px;margin-bottom:5px;'+
+               'background:#f7f9fb;border:1px solid var(--line);border-radius:9px">'+
+        '<span style="font-size:12px;font-weight:700;white-space:nowrap">'+(v.n===0?'🟢 ':'✏️ ')+esc(v.label)+'</span>'+
+        (v.text
+          ? '<button class="btn btn-ghost btn-sm" style="width:auto;padding:5px 9px;font-size:11px" onclick="cmCopyRev('+i+','+v.n+')">📋 คัดลอกข้อความ</button>'
+          : '<span class="muted" style="font-size:11px">ไม่มีข้อความ (ใบก่อนอัปเดตระบบ)</span>')+
+      '</div>';
+    }).join('');
+  $('cm-revwrap').classList.toggle('hidden', revs.length<2 && !revs[0].text);
+  $('cm-revs').classList.add('hidden');                       // ตั้งต้นซ่อนไว้เสมอ
+  $('cm-revtoggle').textContent='🔽 แสดงรายการแยกครั้ง ('+revs.length+')';
+  $('cm-modal').classList.remove('hidden');
+};
+window.cmCopy=function(i){
+  var r=claimRows[i]; if(!r) return;
+  copyText(r.detailAll||r.detail||'');
+};
+// คัดลอกข้อความของครั้งนั้นครั้งเดียว (0 = ครั้งแรก)
+window.cmCopyRev=function(i, n){
+  var r=claimRows[i]; if(!r) return;
+  var revs=claimRevisions(r), hit=null;
+  for(var k=0;k<revs.length;k++) if(revs[k].n===n) hit=revs[k];
+  if(!hit || !hit.text){ toast('ใบนี้ไม่มีข้อความของครั้งนั้นเก็บไว้'); return; }
+  copyText(hit.text);
+};
+$('cm-revtoggle').addEventListener('click', function(){
+  var box=$('cm-revs'), show=box.classList.contains('hidden');
+  box.classList.toggle('hidden', !show);
+  this.textContent=show ? '🔼 ซ่อนรายการแยกครั้ง' : '🔽 แสดงรายการแยกครั้ง';
+});
+$('cm-close').addEventListener('click', function(){ $('cm-modal').classList.add('hidden'); });
+$('cm-copy').addEventListener('click', function(){ copyText($('cm-detail').textContent); });
+
+function exportClaimCSV(){
+  var rows=filteredClaims();
+  if(!rows.length){ toast('ไม่มีข้อมูลให้ส่งออก'); return; }
+  downloadCSV('claims_'+new Date().toISOString().slice(0,10)+'.csv',
+    ['วันที่ตรวจปล่อย','ผู้เบิก','username','จำนวนตู้','ยอดรวม(บาท)','ครั้งที่แก้ไข','บันทึกล่าสุด','รายละเอียดทั้งใบ','ครั้งแรก',
+     'แก้ไขครั้งที่ 1','แก้ไขครั้งที่ 2','แก้ไขครั้งที่ 3','แก้ไขครั้งที่ 4','แก้ไขครั้งที่ 5'],
+    rows.map(function(r){
+      var eds=r.editDetails||[];
+      return [fmtD(r.inspectDate), r.name, r.username, r.containers, r.total, r.editCount,
+              r.updated?fmtDT(r.updated):'', r.detailAll||r.detail, r.detailFirst||'',
+              eds[0]||'', eds[1]||'', eds[2]||'', eds[3]||'', eds[4]||''];
+    }));
+}
+
+// ---------- ปิดบัญชี (SETTLEMENTS) ----------
+var settleRows=[], settleTabReady=false, smCurrent=-1;
+
+function initSettleTab(){
+  if(settleTabReady) return;
+  settleTabReady=true;
+  loadSettlements();
+  loadSettleRates();
+}
+
+// ---- อัตราคิดอัตโนมัติ (admin/manager) — ตารางอยู่ในแท็บตั้งค่าระบบ ----
+// เรียกจาก 2 ที่: แท็บตั้งค่าระบบ (ใช้แก้อัตรา) และแท็บปิดบัญชี (ต้องใช้ชื่อคอลัมน์ตอนแสดง/ส่งออก CSV)
+// จึงกันยิงซ้ำด้วย settleRatesLoaded — กด "↻ โหลดใหม่" ให้ force ได้
+var settleAutoRates={}, settleAutoMin={}, settleAutoPorts={}, settleRatesLoading=false;
+function loadSettleRates(force){
+  if(settleRatesLoading) return;
+  if(settleRatesLoaded && !force) return;
+  settleRatesLoading=true;
+  api({action:'settleConfig', token:state.token}).then(function(res){
+    settleRatesLoading=false;
+    if(!guard(res)) return;
+    if(!res.ok){ $('srate-body').innerHTML='<tr><td colspan="4" style="padding:16px;color:#dc2626">'+errTH(res.error)+'</td></tr>'; return; }
+    if(res.columns && res.columns.length) settleCols=res.columns;
+    settleAutoRates=res.autoRates||{};
+    settleAutoMin=res.autoMin||{};             // ขั้นต่ำจำนวนตู้ที่เริ่มคิดให้ (EXTRA MOVEMENT = 2 ตู้)
+    settleAutoPorts=res.autoPorts||{};          // ท่าที่คิดให้ (ตั้งที่แท็บการเบิก → ท่าที่คิดค่า EXTRA MOVEMENT)
+    settleRatesLoaded=true;
+    renderSettleRates();
+    if(settleRows.length) renderSettlements();     // ชื่อคอลัมน์เพิ่งมาถึง — วาดตารางปิดบัญชีใหม่ให้ตรง
+    $('srate-hint').textContent='';
+  }).catch(function(){
+    settleRatesLoading=false;
+    $('srate-body').innerHTML='<tr><td colspan="4" style="padding:16px">โหลดไม่สำเร็จ</td></tr>';
+  });
+}
+$('srate-reload').addEventListener('click', function(){ loadSettleRates(true); });
+
+function renderSettleRates(){
+  $('srate-body').innerHTML=claimSettleCols().map(function(c,i){
+    var v=Number(settleAutoRates[c.key])||0;
+    // ช่องแบบติ๊กเลือก (ค่าล่วงเวลา) ไม่คิดจากจำนวนตู้ — ยอดมาจาก "ค่าล่วงเวลา ต่อ 1 ชุด" ในแท็บการเบิก
+    if(c.input==='check'){
+      return '<tr><td>'+(i+1)+'</td><td class="name" style="text-align:left">'+esc(c.label)+'</td>'+
+        '<td colspan="2" class="muted" style="text-align:left">ติ๊กเลือกในใบปิดบัญชี แล้วคิดยอดต่อ 1 รายการ BL — ตั้งยอดที่แท็บ <b>การเบิก</b> → <b>ค่าล่วงเวลา (บาท / 1 ชุด)</b></td></tr>';
+    }
+    if(c.input==='select'){
+      return '<tr><td>'+(i+1)+'</td><td class="name" style="text-align:left">'+esc(c.label)+'</td>'+
+        '<td><input type="number" class="srate-in" data-key="'+esc(c.key)+'" min="0" step="0.01" value="'+v+'" style="width:150px;text-align:right"></td>'+
+        '<td class="muted" style="text-align:left">พนักงานเลือกจาก dropdown (ตั้งตัวเลือกที่แท็บ <b>การเบิก</b>) — ตั้งอัตราตรงนี้เป็น 0 ไว้ก็ได้</td></tr>';
+    }
+    // เงื่อนไขพิเศษของช่องนั้น (EXTRA MOVEMENT: ต้อง 2 ตู้ขึ้นไป และเป็นท่าที่ตั้งไว้เท่านั้น)
+    var minc=Math.max(0, Number(settleAutoMin[c.key])||0);
+    var eports=settleAutoPorts[c.key];
+    var minNote = (minc>1)
+      ? '<div class="muted" style="margin-top:4px"><b>เริ่มคิดให้ตั้งแต่ '+minc+' ตู้ขึ้นไป</b> — BL ที่มีตู้เดียวปล่อยว่างให้กรอกเอง</div>'
+      : '';
+    if(Array.isArray(eports)){
+      minNote += '<div class="muted" style="margin-top:4px">คิดให้เฉพาะท่า <b>'+(eports.length?esc(eports.join(', ')):'— ยังไม่ได้ติ๊กท่าไหนเลย —')+
+                 '</b><br>เลือกท่าได้ที่แท็บ <b>การเบิก</b> → <b>ท่าที่คิดค่า EXTRA MOVEMENT</b></div>';
+    }
+    return '<tr><td>'+(i+1)+'</td><td class="name" style="text-align:left">'+esc(c.label)+minNote+'</td>'+
+      '<td><input type="number" class="srate-in" data-key="'+esc(c.key)+'" min="0" step="0.01" value="'+v+'" style="width:150px;text-align:right"></td>'+
+      '<td class="srate-demo">'+(v?fmtM(v*3):'<span class="muted">กรอกเอง</span>')+'</td></tr>';
+  }).join('');
+}
+
+// อัปเดตตัวอย่างให้เห็นผลทันทีตอนพิมพ์
+$('srate-body').addEventListener('input', function(e){
+  if(!e.target.classList.contains('srate-in')) return;
+  var v=Number(e.target.value)||0;
+  var cell=e.target.closest('tr').querySelector('.srate-demo');
+  if(cell) cell.innerHTML = v ? fmtM(v*3) : '<span class="muted">กรอกเอง</span>';
+});
+
+$('srate-save').addEventListener('click', function(){
+  var rates={};
+  Array.prototype.forEach.call(document.querySelectorAll('.srate-in'), function(el){
+    rates[el.getAttribute('data-key')]=Math.max(0, Number(el.value)||0);
+  });
+  var b=$('srate-save'); b.disabled=true; b.textContent='กำลังบันทึก…';
+  api({action:'saveSettleRates', token:state.token, rates:rates}).then(function(res){
+    b.disabled=false; b.textContent='บันทึกอัตรา';
+    if(!guard(res)) return;
+    if(!res.ok){ toast(errTH(res.error)); return; }
+    settleAutoRates=res.autoRates||{};
+    if(res.autoMin) settleAutoMin=res.autoMin;
+    if(res.autoPorts) settleAutoPorts=res.autoPorts;
+    renderSettleRates();
+    $('srate-hint').textContent='บันทึกล่าสุด '+fmtDT(new Date());
+    toast('บันทึกอัตราแล้ว ✓');
+  }).catch(function(){ b.disabled=false; b.textContent='บันทึกอัตรา'; toast('บันทึกไม่สำเร็จ'); });
+});
+
+$('sm-refresh').addEventListener('click', loadSettlements);
+$('sm-search').addEventListener('input', renderSettlements);
+$('sm-from').addEventListener('change', renderSettlements);
+$('sm-to').addEventListener('change', renderSettlements);
+$('sm-status').addEventListener('change', renderSettlements);
+$('sm-export').addEventListener('click', exportSettleCSV);
+
+function loadSettlements(){
+  $('sm-body').innerHTML='<tr><td colspan="12"><div class="center-load"><span class="spinner"></span> กำลังโหลด…</div></td></tr>';
+  api({action:'listSettlements', token:state.token}).then(function(res){
+    if(!guard(res)) return;
+    if(!res.ok){ $('sm-body').innerHTML='<tr><td colspan="12" style="padding:16px;color:#dc2626">'+errTH(res.error)+'</td></tr>'; return; }
+    settleRows=res.rows||[];
+    renderSettlements();
+  }).catch(function(){ $('sm-body').innerHTML='<tr><td colspan="12" style="padding:16px">โหลดไม่สำเร็จ</td></tr>'; });
+}
+
+// คงเหลือ > 0 = พนักงานต้องโอนคืนบริษัท, < 0 = บริษัทต้องโอนคืนพนักงาน
+function settleStatus(r){
+  var bal=Number(r.balance)||0;
+  if(bal>0) return r.returnedDate ? 'done' : 'wait-emp';
+  if(bal<0) return r.companyReturnedDate ? 'done' : 'wait-com';
+  return 'done';
+}
+var SM_STATUS_TH={ 'wait-emp':'<span class="pill pending">รอพนักงานโอนคืน</span>',
+                   'wait-com':'<span class="pill rejected">รอบริษัทโอนคืน</span>',
+                   'done':'<span class="pill approved">ครบแล้ว</span>' };
+
+function filteredSettlements(){
+  var q=$('sm-search').value.trim().toLowerCase(), from=$('sm-from').value, to=$('sm-to').value, stt=$('sm-status').value;
+  return settleRows.filter(function(r){
+    if(from && r.inspectDate < from) return false;
+    if(to && r.inspectDate > to) return false;
+    if(stt && settleStatus(r)!==stt) return false;
+    if(!q) return true;
+    // ค้นด้วยเลขที่รายการสลิป/ธนาคารได้ด้วย (ใช้ตรวจย้อนหลัง)
+    return (r.name+' '+r.username+' '+r.detail+' '+(r.slipTxn||'')+' '+(r.slipBank||'')).toLowerCase().indexOf(q)>=0;
+  });
+}
+
+function renderSettlements(){
+  var rows=filteredSettlements();
+  var exp=0, clm=0;
+  rows.forEach(function(r){ exp+=Number(r.totalExpense)||0; clm+=Number(r.claimTotal)||0; });
+  $('sm-summary').innerHTML='แสดง '+rows.length+' / ทั้งหมด '+settleRows.length+' ใบ • '+
+    'รวมค่าใช้จ่าย <b>'+fmtM(exp)+'</b> บาท • รวมยอดเบิก <b>'+fmtM(clm)+'</b> บาท • คงเหลือรวม <b>'+fmtM(clm-exp)+'</b> บาท';
+  if(!rows.length){ $('sm-body').innerHTML='<tr><td colspan="12" class="muted" style="padding:16px">ไม่มีข้อมูล</td></tr>'; return; }
+  $('sm-body').innerHTML=rows.map(function(r){
+    var i=settleRows.indexOf(r);
+    var bal=Number(r.balance)||0;
+    var cntr=(r.rows||[]).reduce(function(t,x){ return t+(Number(x.containers)||0); },0);
+    return '<tr>'+
+      '<td class="time-cell">'+esc(fmtD(r.inspectDate))+'</td>'+
+      '<td class="name">'+esc(r.name)+'</td>'+
+      '<td>'+(r.rows?r.rows.length:0)+'</td>'+
+      '<td>'+cntr+'</td>'+
+      '<td>'+fmtM(r.totalExpense)+'</td>'+
+      '<td>'+fmtM(r.claimTotal)+'</td>'+
+      '<td style="font-weight:700;color:'+(bal>=0?'#1e40af':'#dc2626')+'">'+fmtM(Math.abs(bal))+
+        '<div class="muted" style="font-weight:400">'+(bal>=0?'โอนคืนบริษัท':'บริษัทโอนคืน')+'</div></td>'+
+      '<td class="time-cell">'+(r.returnedDate?esc(fmtD(r.returnedDate)):SM_STATUS_TH[settleStatus(r)])+'</td>'+
+      '<td class="addr" style="font-size:12px">'+slipCell(r)+'</td>'+
+      '<td class="time-cell">'+(r.companyReturnedDate?esc(fmtD(r.companyReturnedDate)):'<span class="muted">—</span>')+'</td>'+
+      '<td>'+(r.editCount>0?('<span class="pill pending">ครั้งที่ '+r.editCount+'</span>'):'<span class="muted">—</span>')+'</td>'+
+      '<td style="white-space:nowrap">'+
+        '<button class="btn btn-ghost btn-sm" onclick="smView('+i+')">ดู</button> '+
+        '<button class="btn btn-ghost btn-sm" onclick="smCopy('+i+')">คัดลอก</button>'+
+      '</td></tr>';
+  }).join('');
+}
+
+// สลิปโอนเงินคืนบริษัท — เลขที่รายการเก็บไว้ให้ตรวจย้อนหลัง
+function slipCell(r){
+  if(!r.slipUrl && !r.slipTxn){
+    return (Number(r.balance)>0) ? '<span class="muted">ยังไม่มีสลิป</span>' : '<span class="muted">—</span>';
+  }
+  var okAuto=/ผ่าน/.test(r.slipStatus||'');
+  var h='<div><b>'+esc(r.slipTxn||'(ไม่มีเลขที่รายการ)')+'</b></div>';
+  h+='<div class="muted">'+(r.slipAmount?(fmtM(r.slipAmount)+' บาท'):'—')+
+     (r.slipDate?(' • '+esc(fmtD(r.slipDate))):'')+(r.slipBank?(' • '+esc(r.slipBank)):'')+'</div>';
+  h+='<div style="margin-top:3px"><span class="pill '+(okAuto?'approved':'pending')+'">'+esc(r.slipStatus||'รอตรวจ')+'</span></div>';
+  if(r.slipUrl) h+='<div style="margin-top:3px"><a href="'+esc(r.slipUrl)+'" target="_blank">เปิดสลิป</a></div>';
+  return h;
+}
+
+window.smView=function(i){
+  var r=settleRows[i]; if(!r) return;
+  smCurrent=i;
+  $('sm-detail').textContent=r.detail||'(ไม่มีรายละเอียด)';
+  $('sm-slip').innerHTML = (r.slipUrl||r.slipTxn)
+    ? ('🧾 <b>สลิปโอนคืนบริษัท</b><br>เลขที่รายการ: <b>'+esc(r.slipTxn||'—')+'</b>'+
+       '<br>ยอดในสลิป: <b>'+(r.slipAmount?fmtM(r.slipAmount)+' บาท':'—')+'</b> • วันที่ในสลิป: <b>'+(r.slipDate?esc(fmtD(r.slipDate)):'—')+'</b>'+
+       (r.slipBank?('<br>ธนาคาร: '+esc(r.slipBank)):'')+
+       '<br>ผลตรวจ: '+esc(r.slipStatus||'—')+
+       (r.slipUrl?('<br><a href="'+esc(r.slipUrl)+'" target="_blank">เปิดรูปสลิป</a>'):''))
+    : ((Number(r.balance)>0) ? '🧾 ใบนี้ต้องโอนคืนบริษัท แต่ยังไม่มีสลิปในระบบ (ใบเก่าก่อนเปิดใช้ระบบสลิป)'
+                             : '🧾 ใบนี้ไม่ต้องโอนคืนบริษัท จึงไม่มีสลิป');
+  $('sm-image').innerHTML = r.imageUrl
+    ? ('🖼️ รูปใบปิดบัญชีบนเซิร์ฟเวอร์: <a href="'+esc(r.imageUrl)+'" target="_blank">เปิดไฟล์</a>')
+    : 'ยังไม่มีรูปใบปิดบัญชีบนเซิร์ฟเวอร์ (พนักงานกด "สร้างใบปิดบัญชี" แล้วระบบจะอัปโหลดให้)';
+  $('sm-company').value=r.companyReturnedDate||'';
+  $('sm-modal').classList.remove('hidden');
+};
+window.smCopy=function(i){ var r=settleRows[i]; if(r) copyText(r.detail||''); };
+$('sm-close').addEventListener('click', function(){ $('sm-modal').classList.add('hidden'); });
+$('sm-copy').addEventListener('click', function(){ copyText($('sm-detail').textContent); });
+
+// พนักงานบัญชีกรอก "วันที่บริษัทโอนคืน" — ส่งรายการเดิมกลับไปทั้งชุด เซิร์ฟเวอร์จะคิดยอดใหม่เอง
+$('sm-save').addEventListener('click', function(){
+  var r=settleRows[smCurrent]; if(!r) return;
+  var b=$('sm-save'); b.disabled=true; b.textContent='กำลังบันทึก…';
+  api({action:'saveSettlement', token:state.token, settlement:{
+    id:r.id, inspectDate:r.inspectDate, rows:r.rows,
+    returnedDate:r.returnedDate, companyReturnedDate:$('sm-company').value
+  }}).then(function(res){
+    b.disabled=false; b.textContent='บันทึกวันที่โอนคืน';
+    if(!guard(res)) return;
+    if(!res.ok){ toast(errTH(res.error)); return; }
+    $('sm-modal').classList.add('hidden');
+    toast('บันทึกแล้ว ✓');
+    loadSettlements();
+  }).catch(function(){ b.disabled=false; b.textContent='บันทึกวันที่โอนคืน'; toast('บันทึกไม่สำเร็จ'); });
+});
+
+function exportSettleCSV(){
+  var rows=filteredSettlements();
+  if(!rows.length){ toast('ไม่มีข้อมูลให้ส่งออก'); return; }
+  var head=['วันที่ตรวจปล่อย','ชื่อ SHIPPING','username','ท่า','ชื่อลูกค้า','เลข BL','จำนวนตู้'];
+  claimSettleCols().forEach(function(c){ head.push(c.label); });
+  head.push('ค่าบริการเพิ่มเติมพิเศษ (ยอดรวม)','ค่าบริการเพิ่มเติมพิเศษ (หัวข้อย่อย)',
+            'รายละเอียดค่าใช้จ่ายอื่นๆ','ที่มาของงาน','รวม(แถว)','รวมค่าใช้จ่าย(ใบ)','ยอดเบิก','คงเหลือ','วันที่โอนคืนบริษัท',
+            'เลขที่รายการสลิป','ยอดในสลิป','วันที่ในสลิป','ธนาคาร','ผลตรวจสลิป','ลิงก์สลิป',
+            'วันที่บริษัทโอนคืน','ครั้งที่แก้ไข','ลิงก์รูปใบปิดบัญชี');
+  var out=[];
+  rows.forEach(function(r){
+    (r.rows||[]).forEach(function(x, idx){
+      var line=[fmtD(r.inspectDate), r.name, r.username, x.port, x.customer, x.bl, x.containers];
+      claimSettleCols().forEach(function(c){ line.push((x.costs&&x.costs[c.key])||0); });
+      line.push(specialSum(x), specialText(x), x.otherDetail, x.source||'', x.total);
+      // ยอดรวมของทั้งใบ ใส่เฉพาะแถวแรกของใบนั้น จะได้ไม่นับซ้ำตอนรวมใน Excel
+      line.push(idx===0?r.totalExpense:'', idx===0?r.claimTotal:'', idx===0?r.balance:'',
+                idx===0?fmtD(r.returnedDate):'',
+                idx===0?(r.slipTxn||''):'', idx===0?(r.slipAmount||''):'', idx===0?fmtD(r.slipDate):'',
+                idx===0?(r.slipBank||''):'', idx===0?(r.slipStatus||''):'', idx===0?(r.slipUrl||''):'',
+                idx===0?fmtD(r.companyReturnedDate):'', idx===0?r.editCount:'',
+                idx===0?(r.imageUrl||''):'');
+      out.push(line);
+    });
+  });
+  downloadCSV('settlements_'+new Date().toISOString().slice(0,10)+'.csv', head, out);
+}
+
+// ช่องค่าใช้จ่ายในใบปิดบัญชี — อ่านจากใบที่โหลดมา (ทุกใบใช้ชุดเดียวกัน กำหนดที่ Code.gs)
+var SETTLE_COLS_FALLBACK=[
+  {key:'lift_on',label:'ค่า LIFT ON'},{key:'lift_off',label:'ค่า LIFT OFF'},{key:'storage',label:'ค่า STORAGE'},
+  {key:'extra_movement',label:'ค่า EXTRA MOVEMENT'},{key:'extra_service',label:'ค่าบริการเพิ่มเติม(ฟรีโซน)'},
+  {key:'extra_service_transit',label:'ค่าบริการเพิ่มเติม(ผ่านแดน)'},
+  {key:'overtime',label:'ค่าล่วงเวลา (มีใบเสร็จ)',input:'check'},{key:'order_form',label:'ค่า ORDER FORM (ค่าธรรมเนียม)'},
+  {key:'seal',label:'ค่าตะกั่ว',input:'select'}];
+// "ค่าบริการเพิ่มเติมพิเศษ" เป็นคอลัมน์เดียวที่มีหัวข้อย่อยอยู่ข้างใน
+function specialText(x){
+  return ((x&&x.specials)||[]).filter(function(s){ return s.label && Number(s.amount); })
+    .map(function(s){ return s.label+' '+fmtM(s.amount); }).join(' • ');
+}
+function specialSum(x){
+  return ((x&&x.specials)||[]).reduce(function(t,s){ return t+(Number(s.amount)||0); },0);
+}
+var settleCols=null;
+function claimSettleCols(){ return settleCols||SETTLE_COLS_FALLBACK; }
+
+// ---------- ตรวจระบบอ่านสลิป (OCR) ----------
+$('slip-check').addEventListener('click', function(){
+  var box=$('slip-result'), b=$('slip-check');
+  b.disabled=true; box.innerHTML='<div class="center-load"><span class="spinner"></span> กำลังตรวจ (อ่านสลิปอาจใช้เวลาสักครู่)…</div>';
+  api({action:'slipOcrDiag', token:state.token}).then(function(res){
+    b.disabled=false;
+    if(!guard(res)) return;
+    if(!res.ok){ box.innerHTML='<div class="err">ตรวจไม่สำเร็จ: '+esc(errTH(res.error))+'</div>'; return; }
+
+    var fixService='<div style="margin-top:8px">วิธีเปิด OCR: ตั้งค่า <b>OCR_ENDPOINT</b> ในไฟล์ <b>.env</b> แล้ว restart เซิร์ฟเวอร์ ระหว่างนี้พนักงานกรอกยอด วันที่ และเลขรายการจากสลิปเองได้</div>';
+    var fixAuth='<div style="margin-top:8px">ตรวจสิทธิ์หรือ API key ของบริการ OCR ที่ตั้งไว้ใน <b>OCR_ENDPOINT</b> แล้ว restart เซิร์ฟเวอร์</div>';
+    var scopeBox=function(){ return fixAuth; };
+    var head='<div class="muted" style="margin-bottom:10px">OCR endpoint: <b>'+(res.status==='not_configured'?'ยังไม่ได้ตั้งค่า':'พร้อมใช้งาน')+
+      '</b> • อ่านสลิปไม่ออกแล้วห้ามบันทึก (SLIP_STRICT): <b>'+(res.strict?'ใช่':'ไม่ (ให้กรอกค่าจากสลิปเองได้)')+'</b></div>';
+
+    var html=head, msg=esc(res.message||'');
+    if(res.status==='ok'){
+      var p=res.parsed||{};
+      var row=function(k,v,ok){ return '<tr><td class="name" style="text-align:left">'+esc(k)+'</td><td style="text-align:left;color:'+(ok?'#166534':'#b91c1c')+'"><b>'+esc(v||'อ่านไม่ออก')+'</b></td></tr>'; };
+      html+='<div class="'+((p.amount&&p.date&&p.txn)?'':'err')+'" style="'+((p.amount&&p.date&&p.txn)?'background:#dcfce7;color:#166534;padding:10px 12px;border-radius:9px;font-size:13px':'')+'">'+
+        (((p.amount&&p.date&&p.txn)?'✅ ':'⚠️ ')+msg)+'</div>';
+      html+='<div class="muted" style="margin:10px 0 6px">ทดลองอ่านไฟล์: <b>'+esc(res.file||'')+'</b>'+
+        (res.fileUrl?(' — <a href="'+esc(res.fileUrl)+'" target="_blank">เปิดสลิป</a>'):'')+'</div>';
+      html+='<div class="tbl-wrap"><table class="grid"><tbody>'+
+        row('ยอดเงินที่อ่านได้', p.amount?fmtM(p.amount)+' บาท':'', !!p.amount)+
+        row('วันที่ที่อ่านได้', p.date?fmtD(p.date):'', !!p.date)+
+        row('เลขที่รายการที่อ่านได้', p.txn, !!p.txn)+
+        row('ธนาคารที่จับได้', p.bank, !!p.bank)+
+        '</tbody></table></div>';
+      html+='<div class="muted" style="margin-top:10px">ข้อความที่ OCR อ่านได้จากรูป:</div>'+
+        '<pre style="white-space:pre-wrap;word-break:break-word;font-family:inherit;font-size:12px;background:#f7f9fb;border:1px solid var(--line);border-radius:9px;padding:12px;margin:6px 0 0;max-height:220px;overflow:auto">'+esc(res.sample||'')+'</pre>';
+      if(!(p.amount&&p.date&&p.txn)) html+='<div class="muted" style="margin-top:8px">ถ้าข้อความอ่านได้แต่ถอดค่าไม่ครบ ให้ส่งข้อความข้างบนนี้ให้ผู้พัฒนาเพิ่มรูปแบบของธนาคารนั้นได้</div>';
+    } else {
+      var cls=(res.status==='no_slip')?'muted':'err';
+      html+='<div class="'+cls+'">'+(res.status==='no_slip'?'ℹ️ ':'❌ ')+msg+'</div>';
+      if(res.status==='no_service'||res.status==='wrong_version'||res.status==='not_configured') html+=fixService;
+      if(res.status==='need_scope') html+=scopeBox();
+      if(res.status==='rate_limit'){
+        html+='<div style="margin-top:8px">บริการ OCR เต็มชั่วคราว — <b>รอ 1–2 นาทีแล้วกดตรวจอีกครั้ง</b>'+
+          '<br>ระหว่างนี้พนักงานยังปิดบัญชีได้ โดยกด <b>"ลองอ่านสลิปอีกครั้ง"</b> หรือ <b>กรอกค่าจากสลิปเอง</b> ในหน้าปิดบัญชี</div>';
+      }
+      if(res.status==='ocr_failed'){
+        html+=/permission|authoriz|scope|access|denied|อนุญาต/i.test(res.message||'') ? fixAuth
+            : '<div style="margin-top:8px">ถ้าเป็นรูปเบลอ/เอียง ให้ถ่ายหรือแคปสลิปใหม่ให้ใหญ่และชัดขึ้น แล้วกดตรวจอีกครั้ง</div>';
+      }
+      if(res.status==='no_slip') html+='<div style="margin-top:8px">ให้พนักงานลองแนบสลิป 1 ใบในหน้าปิดบัญชี (ไม่ต้องกดบันทึกก็ได้) แล้วกลับมากดตรวจอีกครั้ง</div>';
+    }
+    box.innerHTML=html;
+  }).catch(function(){ b.disabled=false; box.innerHTML='<div class="err">ตรวจไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต</div>'; });
+});
+
+// ---------- ใบเสร็จที่พนักงานส่ง ----------
+var receiptRows=[], receiptTabReady=false;
+
+function initReceiptTab(){
+  if(receiptTabReady) return;
+  receiptTabReady=true;
+  loadReceipts();
+}
+
+$('rc-refresh').addEventListener('click', loadReceipts);
+$('rc-search').addEventListener('input', renderReceipts);
+$('rc-from').addEventListener('change', renderReceipts);
+$('rc-to').addEventListener('change', renderReceipts);
+$('rc-export').addEventListener('click', exportReceiptCSV);
+
+function loadReceipts(){
+  $('rc-body').innerHTML='<tr><td colspan="7"><div class="center-load"><span class="spinner"></span> กำลังโหลด…</div></td></tr>';
+  api({action:'listReceipts', token:state.token}).then(function(res){
+    if(!guard(res)) return;
+    if(!res.ok){ $('rc-body').innerHTML='<tr><td colspan="7" style="padding:16px;color:#dc2626">'+errTH(res.error)+'</td></tr>'; return; }
+    receiptRows=res.rows||[];
+    renderReceipts();
+  }).catch(function(){ $('rc-body').innerHTML='<tr><td colspan="7" style="padding:16px">โหลดไม่สำเร็จ</td></tr>'; });
+}
+
+// กรองด้วย "วันที่ตรวจปล่อย" (ใบเสร็จผูกกับวันที่ตรวจปล่อย ไม่ใช่วันที่ถ่าย)
+// ใบเก่าที่ยังไม่มีวันที่ตรวจปล่อย ใช้วันที่ส่งแทนเพื่อไม่ให้หลุดจากตาราง
+function receiptDateOf(r){
+  if(r.inspectDate) return r.inspectDate;
+  var d=r.time?new Date(r.time):null;
+  return d?d.toISOString().slice(0,10):'';
+}
+
+function filteredReceipts(){
+  var q=$('rc-search').value.trim().toLowerCase(), from=$('rc-from').value, to=$('rc-to').value;
+  return receiptRows.filter(function(r){
+    var dstr=receiptDateOf(r);
+    if(from && dstr<from) return false;
+    if(to && dstr>to) return false;
+    if(!q) return true;
+    return (r.name+' '+r.username+' '+r.note+' '+r.address+' '+fmtD(r.inspectDate)).toLowerCase().indexOf(q)>=0;
+  });
+}
+
+function renderReceipts(){
+  var rows=filteredReceipts();
+  $('rc-summary').textContent='แสดง '+rows.length+' / ทั้งหมด '+receiptRows.length+' ใบ';
+  if(!rows.length){ $('rc-body').innerHTML='<tr><td colspan="7" class="muted" style="padding:16px">ไม่มีข้อมูล</td></tr>'; return; }
+  $('rc-body').innerHTML=rows.map(function(r){
+    var link=r.mapLink||(r.lat?('https://www.google.com/maps?q='+r.lat+','+r.lng):'');
+    var addr=r.address?(link?('<a href="'+esc(link)+'" target="_blank">'+esc(r.address)+'</a>'):esc(r.address)):'—';
+    return '<tr>'+
+      '<td>'+photoCell(r)+'</td>'+
+      '<td class="time-cell">'+(r.inspectDate?esc(fmtD(r.inspectDate)):'<span class="muted">—</span>')+
+        (r.retakeCount>0?('<div class="muted">ถ่ายใหม่ '+r.retakeCount+' ครั้ง</div>'):'')+'</td>'+
+      '<td class="name">'+esc(r.name)+'<div class="muted">'+esc(r.username)+'</div></td>'+
+      '<td class="time-cell">'+esc(r.time?fmtDT(r.time):'')+'</td>'+
+      '<td class="addr">'+(r.note?esc(r.note):'<span class="muted">—</span>')+'</td>'+
+      '<td class="addr">'+addr+'</td>'+
+      '<td>'+mapCell(r)+'</td>'+
+    '</tr>';
+  }).join('');
+}
+
+function exportReceiptCSV(){
+  var rows=filteredReceipts();
+  if(!rows.length){ toast('ไม่มีข้อมูลให้ส่งออก'); return; }
+  downloadCSV('receipts_'+new Date().toISOString().slice(0,10)+'.csv',
+    ['วันที่ตรวจปล่อย','เวลาที่ส่ง','พนักงาน','username','หมายเหตุ','ถ่ายใหม่(ครั้ง)','สถานที่','พิกัด','ลิงก์แผนที่','ลิงก์รูปใบเสร็จ'],
+    rows.map(function(r){
+      return [fmtD(r.inspectDate), r.time?fmtDT(r.time):'', r.name, r.username, r.note, r.retakeCount||0, r.address,
+              (r.lat!=null&&r.lat!=='')?(r.lat+', '+r.lng):'', r.mapLink||'', r.photoUrl||''];
+    }));
+}
+
+// ---------- ตรวจการเชื่อมต่อชีตงานขนส่ง ----------
+$('tr-check').addEventListener('click', function(){
+  var box=$('tr-result'), b=$('tr-check');
+  b.disabled=true; box.innerHTML='<div class="center-load"><span class="spinner"></span> กำลังตรวจ…</div>';
+  api({action:'transportDiag', token:state.token}).then(function(res){
+    b.disabled=false;
+    if(!guard(res)) return;
+    if(!res.ok){
+      box.innerHTML='<div class="err">เปิดชีตงานขนส่งไม่ได้ (ทุกไฟล์): '+esc(errTH(res.error))+
+        (res.detail?('<div class="muted" style="margin-top:6px">'+esc(res.detail)+'</div>'):'')+
+        '<div style="margin-top:8px">วิธีแก้: นำไฟล์ CSV งานขนส่งเข้าใหม่ด้วยคำสั่ง <b>npm run import:transport -- path/to/csv</b></div></div>';
+      return;
+    }
+    // สรุปรายไฟล์ก่อน (มีได้หลายไฟล์) แล้วค่อยลงรายละเอียดทีละแท็บ
+    var files=(res.files||[]);
+    var head='<div class="muted" style="margin-bottom:6px">พบ <b>'+files.length+'</b> ไฟล์ • รวม '+res.sheets.length+' แท็บ • วิธีนับตู้: <b>'+esc(res.countMode)+'</b>'+
+      ((res.sourceOrder&&res.sourceOrder.length)?(' • ลำดับการแสดงในหน้าปิดบัญชี: <b>'+res.sourceOrder.map(esc).join(' → ')+'</b> (ที่ไม่ตรงต่อท้าย)'):'')+'</div>';
+    if(files.length){
+      head+='<div class="tbl-wrap" style="margin-bottom:14px"><table class="grid"><thead><tr><th>ลำดับ</th><th>ไฟล์</th><th>เปิดได้</th><th>จำนวนแท็บ</th></tr></thead><tbody>'+
+        files.map(function(fl,i){
+          return '<tr><td>'+(i+1)+'</td><td class="name" style="text-align:left">'+esc(fl.name)+
+              '<div class="muted" style="font-size:11px">'+esc(fl.id)+'</div></td>'+
+            '<td>'+(fl.ok?'<span class="pill approved">เปิดได้</span>':'<span class="pill rejected">เปิดไม่ได้</span>'+
+              (fl.detail?('<div class="muted">'+esc(fl.detail)+'</div>'):''))+'</td>'+
+            '<td>'+(fl.ok?fl.tabs:'—')+'</td></tr>';
+        }).join('')+'</tbody></table></div>';
+    }
+    var html=head+'<div class="tbl-wrap"><table class="grid"><thead><tr><th>ไฟล์</th><th>แท็บ</th><th>ใช้ได้</th><th>แถวหัวตาราง</th><th>คอลัมน์ที่จับได้</th><th>ที่ยังหาไม่เจอ</th></tr></thead><tbody>';
+    res.sheets.forEach(function(s){
+      var found=Object.keys(s.found||{}).map(function(k){ return esc(k)+' → <b>'+esc(s.found[k])+'</b>'; }).join('<br>')||'<span class="muted">—</span>';
+      var miss=(s.missing&&s.missing.length)?('<span style="color:#dc2626">'+s.missing.map(esc).join(', ')+'</span>'):'<span class="muted">ครบ</span>';
+      html+='<tr><td class="name" style="text-align:left;font-size:12px">'+esc(s.file||'—')+'</td>'+
+        '<td class="name">'+esc(s.sheet)+'<div class="muted">'+s.rows+' แถว</div></td>'+
+        '<td>'+(s.usable?'<span class="pill approved">ใช้ได้</span>':'<span class="pill rejected">ไม่ได้ใช้</span>')+
+          (s.note?('<div class="muted">'+esc(s.note)+'</div>'):'')+'</td>'+
+        '<td>'+(s.headerRow||'—')+'</td>'+
+        '<td class="addr" style="font-size:12px">'+found+'</td>'+
+        '<td class="addr" style="font-size:12px">'+miss+'</td></tr>';
+    });
+    html+='</tbody></table></div>';
+    var bad=res.sheets.filter(function(s){ return !s.usable && s.rows>0; });
+    if(bad.length) html+='<div class="muted" style="margin-top:10px">แท็บที่ยังใช้ไม่ได้จะถูกข้ามไป — ถ้าแท็บนั้นมีข้อมูลที่ต้องใช้ ให้ดูชื่อหัวคอลัมน์จริงในชีต แล้วเพิ่มชื่อนั้นลงใน <b>TRANSPORT_ALIASES</b> ที่ต้นไฟล์ Code.gs แล้ว Deploy ใหม่</div>';
+    box.innerHTML=html;
+  }).catch(function(){ b.disabled=false; box.innerHTML='<div class="err">ตรวจไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต</div>'; });
+});
+
+
+// ===== โค้ดวาดรูปใบปิดบัญชี (คัดลอกจาก index.html แบบตรงตัว) =====
+// ★ ห้ามแก้เฉพาะที่นี่ ★ ต้องเหมือนกับใน index.html ทุกตัวอักษร ไม่งั้นตัวอย่างที่ admin เห็นจะไม่ตรงกับรูปจริง
+// (มีเทสเทียบโค้ด 2 ไฟล์นี้อยู่ — แก้ที่ไฟล์เดียวแล้วเทสจะฟ้อง)
+// ---------- ใบปิดบัญชี: วาดเป็นรูปตามฟอร์มกระดาษ แล้วบันทึกลงมือถือ ----------
+// วาดด้วย canvas ตรง ๆ ไม่พึ่งไลบรารีภายนอก (แอปเป็นไฟล์เดียว ต้องทำงานได้แม้เน็ตช้า)
+// ลำดับคอลัมน์ตามฟอร์มกระดาษ
+// ไม่มีคอลัมน์ "ชื่อลูกค้า" แล้ว (ตัดออกตามที่สั่ง) — ความกว้างช่องตัวเลขเพิ่มขึ้นให้พอกับตัวอักษรที่ใหญ่ขึ้น
+// จะได้ไม่ตัดบรรทัดกลางจำนวนเงิน
+// ความกว้าง (w) เป็นค่าฐาน — ทุกช่องยกเว้น ลำดับ / ท่า / เลข BL. ถูกย่อลงอีก 20% รอบล่าสุด
+// (ก่อนหน้านี้: ช่องตัวเลขย่อ 20%, ค่าบริการเพิ่มเติมพิเศษ + รวม ย่อ 40%)
+// หัวคอลัมน์ฟรีโซน/ผ่านแดน เว้นวรรค 2 ช่องก่อนวงเล็บ ให้ตัดขึ้นบรรทัดใหม่ตรงวงเล็บพอดี
+var SHEET_COLS = [
+  { k:'no',             t:'ลำดับ',                         w:52  },
+  { k:'port',           t:'ท่า',                           w:76  },
+  { k:'bl',             t:'เลข BL.',                       w:150 },
+  { k:'containers',     t:'จำนวนตู้',                       w:49  },
+  { k:'lift_on',        t:'ค่า LIFT ON',                    w:77  },
+  { k:'lift_off',       t:'ค่า LIFT OFF',                   w:77  },
+  { k:'storage',        t:'ค่า STORAGE',                    w:77  },
+  { k:'extra_movement', t:'ค่า EXTRA MOVEMENT',            w:77  },
+  { k:'extra_service',  t:'ค่าบริการเพิ่มเติม  (ฟรีโซน)',     w:96  },
+  { k:'extra_service_transit', t:'ค่าบริการเพิ่มเติม  (ผ่านแดน)', w:96 },
+  { k:'overtime',       t:'ค่าล่วงเวลา (มีใบเสร็จ)',         w:77  },
+  { k:'order_form',     t:'ค่า ORDER FORM (ค่าธรรมเนียม)',  w:96  },
+  { k:'seal',           t:'ค่าตะกั่ว',                      w:77  },
+  // คอลัมน์เดียว แต่ในช่องแสดงหัวข้อย่อยพร้อมจำนวนเงิน 1 หัวข้อต่อ 1 บรรทัด
+  { k:'__special',      t:'ค่าบริการเพิ่มเติมพิเศษ',          w:96,  align:'left' },
+  { k:'otherDetail',    t:'รายละเอียดค่าใช้จ่ายอื่นๆ',        w:144, align:'left' },
+  { k:'total',          t:'รวม',                           w:77  }
+];
+// ขยายความกว้าง "ทุกช่อง" จากค่าฐานด้านบน — 30% แล้วขยายอีก 20% = 1.56 เท่า
+// (คูณครั้งเดียวตอนโหลด ตัวเลขในตารางจึงยังเป็นค่าฐานที่อ่านง่าย)
+var SHEET_COL_SCALE = 1.56;
+SHEET_COLS.forEach(function(c){ c.w = Math.round(c.w * SHEET_COL_SCALE); });
+
+var SHEET_MIN_ROWS = 13;                      // ฟอร์มกระดาษมี 13 บรรทัด
+var SHEET_FONT = '"Noto Sans Thai","Segoe UI",Roboto,-apple-system,sans-serif';
+
+// ---- หน้าตาใบปิดบัญชีที่ admin ตั้งไว้ (มาจากเซิร์ฟเวอร์: options.sheet) ----
+// ไม่ได้ตั้งไว้ = ใช้ค่าตามตาราง SHEET_COLS ด้านบนและขนาดตัวอักษรตั้งต้นนี้
+// ★ ส่วนนี้ต้องเหมือนกับใน admin.html (หน้า preview) ทุกตัวอักษร ★
+var SHEET_FONTS_DEFAULT = { title:31.5, info:25.2, head:21, cell:21, foot:23.1 };
+var sheetLayout = null;
+
+function sheetFont(k){
+  var f = (sheetLayout && sheetLayout.fonts) || {};
+  return Number(f[k]) > 0 ? Number(f[k]) : SHEET_FONTS_DEFAULT[k];
+}
+
+// ความกว้าง / ขนาดตัวอักษร / ตำแหน่งข้อความ ของคอลัมน์นี้ (ค่าที่ admin ตั้ง ถ้าไม่มีก็ค่าตั้งต้น)
+function sheetCol(c){
+  var o = (sheetLayout && sheetLayout.cols && sheetLayout.cols[c.k]) || {};
+  var al = (o.align === 'left' || o.align === 'center' || o.align === 'right') ? o.align : null;
+  return {
+    w: Number(o.w) > 0 ? Number(o.w) : c.w,
+    size: Number(o.size) > 0 ? Number(o.size) : sheetFont('cell'),
+    align: al || c.align || (c.k==='no'||c.k==='containers'||c.k==='bl'||c.k==='port' ? 'center' : 'right')
+  };
+}
+
+// ตัดบรรทัดให้พอดีความกว้าง — ภาษาไทยไม่มีเว้นวรรค จึงต้องตัดทีละตัวอักษรด้วย
+function wrapText(ctx, text, maxW){
+  text = String(text == null ? '' : text);
+  if(!text) return [''];
+  var words = text.split(' '), lines = [], cur = '';
+  function pushChunk(word){
+    if(ctx.measureText(word).width <= maxW){
+      var join = cur ? cur+' '+word : word;
+      if(ctx.measureText(join).width <= maxW){ cur = join; }
+      else { if(cur) lines.push(cur); cur = word; }
+      return;
+    }
+    if(cur){ lines.push(cur); cur=''; }
+    var piece = '';
+    for(var i=0;i<word.length;i++){
+      if(ctx.measureText(piece+word[i]).width > maxW && piece){ lines.push(piece); piece=''; }
+      piece += word[i];
+    }
+    cur = piece;
+  }
+  for(var w=0; w<words.length; w++){ if(words[w]!=='') pushChunk(words[w]); }
+  if(cur) lines.push(cur);
+  return lines.length ? lines : [''];
+}
+
+// ขึ้นบรรทัดใหม่ตาม \n ก่อน แล้วค่อยตัดบรรทัดตามความกว้างของช่อง
+// (ใช้กับคอลัมน์ค่าบริการเพิ่มเติมพิเศษ ที่ต้องแสดงหัวข้อย่อย 1 หัวข้อต่อ 1 บรรทัด)
+function layoutLines(ctx, text, maxW){
+  var out = [];
+  String(text == null ? '' : text).split('\n').forEach(function(seg){
+    wrapText(ctx, seg, maxW).forEach(function(l){ out.push(l); });
+  });
+  return out.length ? out : [''];
+}
+
+function drawCell(ctx, text, x, y, w, h, opt){
+  opt = opt || {};
+  ctx.save();
+  if(opt.fill){ ctx.fillStyle = opt.fill; ctx.fillRect(x, y, w, h); }
+  ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
+  ctx.strokeRect(x + .5, y + .5, w, h);
+  var size = opt.size || 11, pad = 4;
+  ctx.font = (opt.bold ? 'bold ' : '') + size + 'px ' + SHEET_FONT;
+  ctx.fillStyle = opt.color || '#000';
+  // ช่องจำนวนเงินห้ามตัดกลางตัวเลข — ช่องแคบไปก็ย่อขนาดตัวอักษรลงเท่าที่จำเป็น (ไม่เกิน 25%)
+  if(opt.fit && text !== '' && text != null){
+    var floor = size*0.75;
+    while(size > floor && ctx.measureText(String(text)).width > w - pad*2){
+      size = Math.max(floor, size - 0.5);
+      ctx.font = (opt.bold ? 'bold ' : '') + size + 'px ' + SHEET_FONT;
+    }
+  }
+  var lines = layoutLines(ctx, text, w - pad*2);
+  var lh = opt.lh || (size + 3);
+  var startY = y + (h - lines.length*lh)/2 + lh/2 + 1;
+  for(var i=0;i<lines.length;i++){
+    var ty = startY + i*lh;
+    if(opt.align === 'left'){ ctx.textAlign='left'; ctx.fillText(lines[i], x+pad, ty); }
+    else if(opt.align === 'right'){ ctx.textAlign='right'; ctx.fillText(lines[i], x+w-pad, ty); }
+    else { ctx.textAlign='center'; ctx.fillText(lines[i], x+w/2, ty); }
+  }
+  ctx.restore();
+}
+
+function buildSettleSheet(rec){
+  // ขนาดตัวอักษร/ความกว้าง/ตำแหน่งข้อความของแต่ละช่อง = ค่าที่ admin ตั้งไว้ (sheetCol / sheetFont)
+  // ความสูงของแถว/หัวตาราง/ท้ายตาราง คำนวณจากขนาดตัวอักษรจริงทุกครั้ง ข้อความจึงไม่ล้นกรอบ
+  var F_CELL = sheetFont('cell'), F_HEAD = sheetFont('title'),
+      F_INFO = sheetFont('info'), F_VALUE = sheetFont('foot'), F_COLH = sheetFont('head');
+  var lhOf = function(size){ return Math.round(size*1.3); };
+  var LH = lhOf(F_CELL);                        // ระยะบรรทัดของช่องที่ใช้ขนาดตั้งต้น
+  var M = 16, HEAD_H = Math.round(F_HEAD*2.27), INFO_H = Math.round(F_INFO*3.17),
+      ROW_H = Math.round(F_CELL*2.6), FOOT_H = Math.round(F_VALUE*2.18);
+  var LAY = SHEET_COLS.map(sheetCol);           // ค่าที่ใช้จริงของแต่ละคอลัมน์ (เรียงเหมือน SHEET_COLS)
+  var tableW = LAY.reduce(function(t,c){ return t+c.w; }, 0);
+  var rows = rec.rows || [];
+  var nRows = Math.max(SHEET_MIN_ROWS, rows.length);
+  var W = tableW + M*2;
+
+  // ช่อง "ค่าบริการเพิ่มเติมพิเศษ" มีหลายหัวข้อย่อยได้ จึงต้องวัดก่อนว่าแถวไหนต้องสูงกว่าปกติ
+  var meas = document.createElement('canvas').getContext('2d');
+  var rowH = [], sumRowH = 0;
+  for(var m=0; m<nRows; m++){
+    var rr = rows[m], need = ROW_H;
+    if(rr){
+      SHEET_COLS.forEach(function(c, ci){
+        var txt = '';
+        if(c.k === '__special'){
+          txt = (rr.specials||[]).filter(function(s){ return s.label && Number(s.amount); })
+                 .map(function(s){ return s.label + ' ' + fmtM(s.amount); }).join('\n');
+        } else if(c.k === 'customer' || c.k === 'otherDetail' || c.k === 'bl') txt = rr[c.k] || '';
+        if(!txt) return;
+        meas.font = LAY[ci].size + 'px ' + SHEET_FONT;
+        need = Math.max(need, layoutLines(meas, txt, LAY[ci].w - 8).length*lhOf(LAY[ci].size) + 9);
+      });
+    }
+    rowH.push(need); sumRowH += need;
+  }
+
+  // หัวคอลัมน์: ชื่อคอลัมน์ยาว ๆ ตัดหลายบรรทัด — วัดความสูงจริงแทนค่าคงที่
+  var headLines = 1;
+  meas.font = 'bold ' + F_COLH + 'px ' + SHEET_FONT;
+  SHEET_COLS.forEach(function(c, ci){
+    headLines = Math.max(headLines, layoutLines(meas, c.t, LAY[ci].w - 8).length);
+  });
+  var COLH_H = Math.max(Math.round(F_COLH*3.05), headLines*lhOf(F_COLH) + 10);
+  meas.font = F_CELL + 'px ' + SHEET_FONT;
+
+  // ท้ายตาราง: ป้ายบางอันยาวจนตัด 2 บรรทัด ต้องวัดความสูงเหมือนกัน ไม่งั้นข้อความล้นกรอบ
+  // (ทิศทางการโอนใส่ไว้ที่ป้าย ไม่ใช่ช่องตัวเลข เพราะช่อง "รวม" แคบ)
+  var labelW = LAY[LAY.length-2].w;
+  var valueW = LAY[LAY.length-1].w;
+  var bal = Number(rec.balance)||0;
+  var footLabels = [
+    'รวมค่าใช้จ่าย',
+    'หัก ยอดเบิก',
+    'คงเหลือ ' + (bal < 0 ? '(บริษัทโอนคืนพนักงาน)' : '(โอนคืนบริษัท)'),
+    'วันที่โอนคืนบริษัท',
+    'วันที่บริษัทโอนคืน (เฉพาะพนักงานบัญชี)'
+  ];
+  var footH = [], sumFootH = 0;
+  meas.font = F_COLH + 'px ' + SHEET_FONT;
+  for(var g=0; g<footLabels.length; g++){
+    var fh0 = Math.max(FOOT_H, layoutLines(meas, footLabels[g], labelW-8).length*lhOf(F_COLH) + 9);
+    footH.push(fh0); sumFootH += fh0;
+  }
+
+  var H = M*2 + HEAD_H + INFO_H + COLH_H + sumRowH + sumFootH;
+
+  // วาดใหญ่กว่าจริงให้ภาพคม แต่ต้องไม่เกินขีดจำกัด canvas ของมือถือ
+  // (iOS Safari วาดภาพที่กว้างเกิน ~4096 px หรือพื้นที่เกิน ~16 ล้านพิกเซล ออกมาเป็นภาพว่าง)
+  // ตารางยิ่งกว้าง ตัวคูณยิ่งลดให้เองอัตโนมัติ — ตัวอักษรใหญ่อยู่แล้ว ภาพจึงยังอ่านชัด
+  var SC = Math.min(2, 4000/W, Math.sqrt(14000000/(W*H)));
+  if(!(SC > 1)) SC = 1;
+
+  var cv = document.createElement('canvas');
+  cv.width = W*SC; cv.height = H*SC;
+  var ctx = cv.getContext('2d');
+  ctx.scale(SC, SC);
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+
+  var BLUE = '#dce6f1';
+  var y = M;
+
+  // แถบหัวเรื่อง
+  drawCell(ctx, 'รายการปิดบัญชี (รายละเอียดการตรวจปล่อย)', M, y, tableW, HEAD_H, { fill:BLUE, bold:true, size:F_HEAD, lh:LH });
+  y += HEAD_H;
+
+  // วันที่ตรวจปล่อย / ชื่อ SHIPPING / ยอดเบิกเงิน
+  var w1 = Math.round(tableW*0.30), w2 = Math.round(tableW*0.42), w3 = tableW - w1 - w2;
+  drawCell(ctx, 'วันที่ตรวจปล่อย : ' + fmtD(rec.inspectDate), M, y, w1, INFO_H, { fill:BLUE, bold:true, size:F_INFO, lh:LH });
+  drawCell(ctx, 'ชื่อ SHIPPING : ' + (rec.name||''), M+w1, y, w2, INFO_H, { fill:BLUE, bold:true, size:F_INFO, lh:LH });
+  drawCell(ctx, 'ยอดเบิกเงิน : ' + fmtM(rec.claimTotal) + ' บาท', M+w1+w2, y, w3, INFO_H, { fill:BLUE, bold:true, size:F_INFO, lh:LH });
+  y += INFO_H;
+
+  // หัวคอลัมน์ — ชิดซ้ายของช่อง (กึ่งกลางแนวตั้ง)
+  var x = M;
+  SHEET_COLS.forEach(function(c, ci){
+    drawCell(ctx, c.t, x, y, LAY[ci].w, COLH_H, { fill:BLUE, bold:true, size:F_COLH, lh:lhOf(F_COLH), align:'left' });
+    x += LAY[ci].w;
+  });
+  y += COLH_H;
+
+  // แถวข้อมูล (เติมบรรทัดว่างให้ครบเหมือนฟอร์มกระดาษ)
+  for(var i=0; i<nRows; i++){
+    var r = rows[i];
+    x = M;
+    SHEET_COLS.forEach(function(c, ci){
+      var v = '';
+      if(r){
+        if(c.k === 'no') v = String(i+1);
+        else if(c.k === 'total') v = fmtM(r.total);
+        else if(c.k === 'containers') v = r.containers ? String(r.containers) : '';
+        else if(c.k === '__special'){
+          // หัวข้อย่อย 1 หัวข้อต่อ 1 บรรทัด ในช่องเดียว
+          v = (r.specials||[]).filter(function(s){ return s.label && Number(s.amount); })
+                .map(function(s){ return s.label + ' ' + fmtM(s.amount); }).join('\n');
+        }
+        else if(c.k === 'port' || c.k === 'customer' || c.k === 'bl' || c.k === 'otherDetail') v = r[c.k] || '';
+        else { var n = (r.costs && Number(r.costs[c.k])) || 0; v = n ? fmtM(n) : ''; }
+      } else if(c.k === 'no') v = String(i+1);
+      // ช่องที่เป็นจำนวนเงิน/ตัวเลข ห้ามตัดกลางตัวเลข (ช่องแคบลงแล้ว) — ย่อตัวอักษรแทน
+      var fit = !(c.k==='__special' || c.k==='otherDetail' || c.k==='bl' || c.k==='port');
+      drawCell(ctx, v, x, y, LAY[ci].w, rowH[i],
+               { size:LAY[ci].size, lh:lhOf(LAY[ci].size), align:LAY[ci].align, fit:fit });
+      x += LAY[ci].w;
+    });
+    y += rowH[i];
+  }
+
+  // ท้ายตาราง: รวมค่าใช้จ่าย / หัก ยอดเบิก / คงเหลือ / วันที่โอนคืน
+  var blankW = tableW - labelW - valueW;
+  var footValues = [
+    fmtM(rec.totalExpense),
+    fmtM(rec.claimTotal),
+    fmtM(Math.abs(bal)),
+    rec.returnedDate ? fmtD(rec.returnedDate) : '',
+    rec.companyReturnedDate ? fmtD(rec.companyReturnedDate) : ''
+  ];
+  for(var f=0; f<footLabels.length; f++){
+    var fh = footH[f];
+    drawCell(ctx, '', M, y, blankW, fh, {});
+    drawCell(ctx, footLabels[f], M+blankW, y, labelW, fh, { fill:BLUE, bold:true, size:F_COLH, lh:lhOf(F_COLH), align:'left' });
+    drawCell(ctx, footValues[f], M+blankW+labelW, y, valueW, fh, { size:F_VALUE, lh:LH, bold:true, align:'right', fit:true });
+    y += fh;
+  }
+  return cv;
+}
+
+// ---------- หน้าตารูปใบปิดบัญชี (เฉพาะ admin) ----------
+// ตั้งความกว้างช่อง / ขนาดตัวอักษร / ตำแหน่งข้อความของแต่ละคอลัมน์ แล้วดูตัวอย่างรูปจริงก่อนบันทึก
+var slDefs = null, slCur = null;
+
+function canEditSheet(){ return state.user && state.user.role === 'admin'; }
+
+$('sl-reload').addEventListener('click', function(){ loadAppOptions(); });
+$('sl-preview').addEventListener('click', function(){ renderSheetPreview(); });
+$('sl-save').addEventListener('click', function(){ saveSheetLayout(false); });
+$('sl-reset').addEventListener('click', function(){
+  if(!confirm('คืนค่าเริ่มต้นของหน้าตารูปใบปิดบัญชีทั้งหมด?')) return;
+  saveSheetLayout(true);
+});
+
+// เติมค่าลงตาราง (เรียกหลังโหลด appOptions)
+function renderSheetLayoutForm(){
+  if(!canEditSheet() || !slDefs || !slCur) return;
+  $('sl-body').innerHTML = slDefs.cols.map(function(c, i){
+    var v = slCur.cols[c.k] || {};
+    return '<tr>'+
+      '<td>'+(i+1)+'</td>'+
+      '<td class="name" style="text-align:left">'+esc(c.label)+'<div class="muted" style="font-size:11px">'+esc(c.k)+'</div></td>'+
+      '<td><input type="number" class="sl-w" data-k="'+esc(c.k)+'" min="'+slDefs.wMin+'" max="'+slDefs.wMax+'" step="1" value="'+(Number(v.w)||c.w)+'"></td>'+
+      '<td><input type="number" class="sl-size" data-k="'+esc(c.k)+'" min="'+slDefs.fontMin+'" max="'+slDefs.fontMax+'" step="0.5" value="'+(Number(v.size)||21)+'"></td>'+
+      '<td><select class="sl-align" data-k="'+esc(c.k)+'">'+
+        ['left','center','right'].map(function(a){
+          var lb = a==='left' ? 'ชิดซ้าย' : (a==='center' ? 'กึ่งกลาง' : 'ชิดขวา');
+          return '<option value="'+a+'"'+(v.align===a?' selected':'')+'>'+lb+'</option>';
+        }).join('')+
+      '</select></td></tr>';
+  }).join('');
+
+  $('sl-fonts').innerHTML = slDefs.fonts.map(function(f){
+    return '<tr><td class="name" style="text-align:left">'+esc(f.label)+'</td>'+
+      '<td><input type="number" class="sl-font" data-k="'+esc(f.k)+'" min="'+slDefs.fontMin+'" max="'+slDefs.fontMax+'" step="0.5" value="'+(Number(slCur.fonts[f.k])||f.v)+'"></td></tr>';
+  }).join('');
+
+  bindSheetInputs();
+  updateSheetTotal();
+}
+
+// แก้ค่าปุ๊บ อัปเดตความกว้างรวม + วาดตัวอย่างใหม่ให้ (ถ้าเปิดตัวอย่างค้างไว้)
+function bindSheetInputs(){
+  Array.prototype.forEach.call(document.querySelectorAll('#sub-sheet input, #sub-sheet select'), function(el){
+    el.addEventListener('change', function(){
+      updateSheetTotal();
+      if(!$('sl-preview-wrap').classList.contains('hidden')) renderSheetPreview();
+    });
+  });
+}
+
+function updateSheetTotal(){
+  var lay = readSheetLayoutForm();
+  var total = 0;
+  for(var k in lay.cols){ if(lay.cols.hasOwnProperty(k)) total += Number(lay.cols[k].w)||0; }
+  var over = slDefs && total > slDefs.totalMax;
+  $('sl-total').innerHTML = 'ความกว้างรวมทุกช่อง: <b>'+total+' px</b>'+
+    (over ? ' — <span style="color:#dc2626">เกิน '+slDefs.totalMax+' px ระบบจะย่อทุกช่องตามสัดส่วนให้ตอนบันทึก (กันภาพใหญ่จนมือถือวาดไม่ออก)</span>'
+          : ' <span class="muted">(เพดาน '+(slDefs?slDefs.totalMax:0)+' px)</span>');
+}
+
+// อ่านค่าจากฟอร์มเป็นรูปแบบเดียวกับที่เซิร์ฟเวอร์เก็บ
+function readSheetLayoutForm(){
+  var lay = { fonts:{}, cols:{} };
+  Array.prototype.forEach.call(document.querySelectorAll('.sl-font'), function(el){
+    lay.fonts[el.getAttribute('data-k')] = Number(el.value)||0;
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('.sl-w'), function(el){
+    var k = el.getAttribute('data-k');
+    lay.cols[k] = lay.cols[k] || {};
+    lay.cols[k].w = Number(el.value)||0;
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('.sl-size'), function(el){
+    var k = el.getAttribute('data-k');
+    lay.cols[k] = lay.cols[k] || {};
+    lay.cols[k].size = Number(el.value)||0;
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('.sl-align'), function(el){
+    var k = el.getAttribute('data-k');
+    lay.cols[k] = lay.cols[k] || {};
+    lay.cols[k].align = el.value;
+  });
+  return lay;
+}
+
+function saveSheetLayout(reset){
+  var b=$('sl-save'), hint=$('sl-hint');
+  b.disabled=true; hint.textContent='กำลังบันทึก…';
+  api({ action:'saveSheetLayout', token:state.token, layout:readSheetLayoutForm(), reset:!!reset })
+  .then(function(res){
+    b.disabled=false;
+    if(!guard(res)) return;
+    if(!res.ok){ hint.textContent=''; toast(errTH(res.error)); return; }
+    slCur = res.sheet; slDefs = res.sheetDefs || slDefs;
+    renderSheetLayoutForm();
+    if(!$('sl-preview-wrap').classList.contains('hidden')) renderSheetPreview();
+    hint.textContent='บันทึกแล้ว ✓ (มีผลกับรูปที่พนักงานสร้างหลังจากนี้)';
+    toast(reset ? 'คืนค่าเริ่มต้นแล้ว ✓' : 'บันทึกแล้ว ✓');
+  }).catch(function(){ b.disabled=false; hint.textContent=''; toast('บันทึกไม่สำเร็จ'); });
+}
+
+// ข้อมูลสมมติสำหรับหน้าตัวอย่าง (ครอบทุกกรณีที่เจอจริง: หัวข้อย่อยหลายบรรทัด / ยอดยาว / ข้อความยาว)
+function sheetPreviewRecord(){
+  return {
+    inspectDate:'2026-08-11', name:'นาย พัฒนะ ธนากูล', claimTotal:12000, totalExpense:10874.5, balance:1125.5,
+    returnedDate:'2026-08-12', companyReturnedDate:'',
+    rows:[
+      { bl:'011GX01464', port:'C1C2', containers:3, otherDetail:'ค่าขนย้ายเพิ่มหน้าท่า',
+        costs:{ lift_on:1040, lift_off:1040, storage:850, extra_movement:530.4, extra_service:1500,
+                extra_service_transit:700, overtime:400, order_form:200, seal:25 },
+        specials:[{label:'ค่าน็อคตู้',amount:300},{label:'ยางเกิน',amount:200}], total:6785.4 },
+      { bl:'TCLU7788123', port:'SiamCSP', containers:1, otherDetail:'',
+        costs:{ lift_on:1040, lift_off:1040, extra_service:500, seal:25 },
+        specials:[], total:2605 },
+      { bl:'MSCU1122334', port:'D1D2', containers:2, otherDetail:'ค่าล่าช้า',
+        costs:{ lift_on:1040, storage:319.1, order_form:125 },
+        specials:[{label:'สำแดงเท็จ',amount:1000}], total:2484.1 }
+    ]
+  };
+}
+
+function renderSheetPreview(){
+  if(!canEditSheet()) return;
+  sheetLayout = readSheetLayoutForm();        // ใช้ค่าที่กำลังแก้อยู่ (ยังไม่บันทึกก็ดูได้)
+  try {
+    var cv = buildSettleSheet(sheetPreviewRecord());
+    $('sl-preview-img').src = cv.toDataURL('image/png');
+    $('sl-preview-wrap').classList.remove('hidden');
+  } catch(e){ toast('วาดตัวอย่างไม่สำเร็จ: '+(e && e.message ? e.message : e), 4000); }
+}
+
+// ---------- INIT ----------
+(function init(){
+  if(!loadSess()){ window.location.href='index.html'; return; }
+  api({action:'me', token:state.token}).then(function(res){
+    if(res.ok && (res.user.role==='admin' || res.user.role==='manager')){ state.user=res.user; enterApp(); }
+    else { clearSess(); window.location.href='index.html'; }
+  }).catch(function(){ clearSess(); window.location.href='index.html'; });
+})();
+</script>
+</body>
+</html>

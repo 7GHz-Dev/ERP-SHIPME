@@ -1,0 +1,13 @@
+services:
+  checkin:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    volumes:
+      - checkin_data:/app/data
+
+volumes:
+  checkin_data:
