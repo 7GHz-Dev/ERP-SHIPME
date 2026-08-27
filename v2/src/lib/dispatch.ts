@@ -1,7 +1,8 @@
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '@/db';
-import { checkins, geocodeCache } from '@/db/schema';
+import { checkins, geocodeCache, settlements } from '@/db/schema';
 import { guard, login } from './auth';
+import { claimConfig, listClaims, saveClaim, saveClaimRates } from './claims';
 import { env } from './env';
 import {
   appOptionsPayload, readAppOptions, sheetLayoutDefault, writeAppOption
@@ -234,9 +235,43 @@ const handlers: Record<string, Handler> = {
     return session.error || listReceipts();
   },
 
+  // ---- การเบิก ----
+  claimConfig: async (body) => {
+    const session = await guard(body);
+    return session.error || claimConfig(session.user);
+  },
+  saveClaimConfig: async (body) => {
+    const session = await guard(body, ['admin', 'manager']);
+    if (session.error) return session.error;
+    if (!Array.isArray(body.items) || !body.items.length) return { ok: false, error: 'bad_request' };
+    return { ok: true, items: await saveClaimRates(body.items) };
+  },
+  saveClaim: async (body) => {
+    const session = await guard(body);
+    return session.error || saveClaim(body.claim, session.user);
+  },
+  myClaims: async (body) => {
+    const session = await guard(body);
+    if (session.error) return session.error;
+    // ใบที่ปิดบัญชีไปแล้วไม่ต้องโชว์ให้แก้ แต่ยังส่งวันที่กลับไปให้หน้าเว็บเตือนได้
+    const settledRows = await db.select({ inspectDate: settlements.inspectDate }).from(settlements)
+      .where(eq(settlements.username, session.user.username));
+    const settled = new Set(settledRows.map((row) => row.inspectDate));
+    const rows = await listClaims(session.user.username, 100);
+    return {
+      ok: true,
+      rows: rows.filter((row) => !settled.has(row.inspectDate)),
+      settledDates: [...settled]
+    };
+  },
+  listClaims: async (body) => {
+    const session = await guard(body, ['admin', 'manager']);
+    if (session.error) return session.error;
+    return { ok: true, rows: await listClaims(null, 500) };
+  },
+
   // ---- ยังต้องพอร์ต (ดู MIGRATION.md) ----
   ...Object.fromEntries([
-    'claimConfig', 'saveClaimConfig', 'saveClaim', 'myClaims', 'listClaims',
     'settleConfig', 'saveSettleRates', 'saveSettlement', 'saveSettleImage',
     'mySettlements', 'listSettlements',
     'blLookup', 'transportDiag', 'verifySlip', 'slipOcrDiag'

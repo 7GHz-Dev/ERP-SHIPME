@@ -34,18 +34,19 @@
 - `src/lib/auth.ts` — session / login / guard
 - `src/lib/storage.ts` — อัปโหลด, signed upload URL สำหรับรูปใหญ่, signed URL ตอนอ่าน
 - `src/app/api/route.ts` + `src/app/files/[...path]/route.ts`
-- **7 / 33 action**: `login` `me` `todayStatus` `checkin` `myCheckins` `report`
+- **24 / 33 action**
+  - เช็กอิน — `login` `me` `todayStatus` `checkin` `myCheckins` `report`
+  - ลา — `requestLeave` `myLeaves` `listLeaves` `decideLeave`
+  - พนักงาน — `listEmployees` `saveEmployee`
+  - ตัวเลือกระบบ — `appOptions` `saveAppOptions` `saveSheetLayout`
+  - ใบเสร็จ — `saveReceipt` `myReceipts` `listReceipts`
+  - การเบิก — `claimConfig` `saveClaimConfig` `saveClaim` `myClaims` `listClaims`
 
-### ยังต้องทำ — 26 action ที่เหลือ
-เรียงตามลำดับที่ควรทำ (ตัวหลังพึ่งตัวหน้า):
+### ยังต้องทำ — 9 action ที่เหลือ
 
-1. **ตัวเลือกระบบ** — `appOptions` `saveAppOptions` `saveSheetLayout` (พอร์ตจาก `src/options.js`)
-2. **พนักงาน/ลา** — `listEmployees` `saveEmployee` `requestLeave` `myLeaves` `listLeaves` `decideLeave`
-3. **ใบเสร็จ** — `saveReceipt` `myReceipts` `listReceipts`
-4. **การเบิก** — `claimConfig` `saveClaimConfig` `saveClaim` `myClaims` `listClaims` (จาก `src/claims.js`)
-5. **งานขนส่ง** — `blLookup` `transportDiag` (จาก `src/transport.js`)
-6. **ปิดบัญชี** — `settleConfig` `saveSettleRates` `saveSettlement` `saveSettleImage` `mySettlements` `listSettlements` (จาก `src/settlements.js`)
-7. **สลิป** — `verifySlip` `slipOcrDiag` (จาก `src/slip.js`)
+1. **งานขนส่ง** — `blLookup` `transportDiag` (จาก `src/transport.js`)
+2. **ปิดบัญชี** — `settleConfig` `saveSettleRates` `saveSettlement` `saveSettleImage` `mySettlements` `listSettlements` (จาก `src/settlements.js`)
+3. **สลิป** — `verifySlip` `slipOcrDiag` (จาก `src/slip.js`)
 
 action ที่ยังไม่พอร์ตจะตอบ `not_implemented` พร้อมชื่อ action — ไม่เงียบหาย
 
