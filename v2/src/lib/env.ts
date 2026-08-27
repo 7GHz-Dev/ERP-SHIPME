@@ -46,7 +46,11 @@ export const env = {
   ocrEndpoint: process.env.OCR_ENDPOINT || '',
   // endpoint OCR เป็น URL สาธารณะ ถ้าตั้ง token ไว้จะแนบไปกับทุกคำขอ
   ocrToken: process.env.OCR_TOKEN || '',
-  // ทางเลือก: Google Cloud Vision (ต้องเปิด billing ถึงจะใช้โควตาฟรีได้)
+  // Drive OCR — ตัวเดียวกับที่ระบบเดิมบน Apps Script ใช้ ฟรีและไม่ต้องเปิด billing
+  googleClientId: process.env.GOOGLE_OAUTH_CLIENT_ID || '',
+  googleClientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET || '',
+  googleRefreshToken: process.env.GOOGLE_OAUTH_REFRESH_TOKEN || '',
+  // ทางเลือก: Google Cloud Vision (แม่นกว่า แต่ต้องเปิด billing ถึงจะใช้โควตาฟรีได้)
   visionApiKey: process.env.GOOGLE_VISION_API_KEY || '',
   slipStrict: bool(process.env.SLIP_STRICT),
   slipAmountTolerance: number(process.env.SLIP_AMOUNT_TOLERANCE, 1),

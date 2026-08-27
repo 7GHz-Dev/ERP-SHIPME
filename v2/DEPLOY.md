@@ -51,9 +51,11 @@ Error: No Next.js version detected.
 | `SLIP_STRICT` | | ไม่ตั้ง = false (อ่านสลิปไม่ออกยังบันทึกได้ แต่ติดสถานะรอตรวจ) |
 | `SLIP_AMOUNT_TOLERANCE` | | ไม่ตั้ง = 1 บาท |
 | `GEOCODE_ENDPOINT` | | เว้นว่าง = แสดงพิกัดเป็นตัวเลข ไม่ส่งตำแหน่งออกนอกระบบ |
-| `OCR_ENDPOINT` | | อ่านสลิปอัตโนมัติด้วย PaddleOCR — เว้นว่าง = พนักงานกรอกเอง (ดูข้อ 6) |
-| `OCR_TOKEN` | | รหัสที่ต้องตรงกับฝั่งบริการ OCR |
-| `GOOGLE_VISION_API_KEY` | | ทางเลือกแทน PaddleOCR — ถ้าตั้ง `OCR_ENDPOINT` ไว้ ตัวนั้นถูกใช้ก่อน |
+| `GOOGLE_OAUTH_CLIENT_ID` | | อ่านสลิปอัตโนมัติด้วย Drive OCR — เว้นว่าง = พนักงานกรอกเอง (ดูข้อ 6) |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | | คู่กับตัวบน |
+| `GOOGLE_OAUTH_REFRESH_TOKEN` | | คู่กับตัวบน |
+| `OCR_ENDPOINT` / `OCR_TOKEN` | | ใช้บริการ OCR ของตัวเอง (เช่น PaddleOCR ใน `ocr/`) |
+| `GOOGLE_VISION_API_KEY` | | ทางเลือก — แม่นกว่าแต่ต้องเปิด billing |
 
 **ถ้าลืมตั้ง 4 ตัวแรก build จะล้มทันที** พร้อมข้อความบอกว่าขาดตัวไหนและเอามาจากไหน
 (ตั้งใจให้ล้มตั้งแต่ build ดีกว่า deploy ผ่านแล้วพังตอนพนักงานกำลังใช้งาน)
@@ -104,22 +106,49 @@ npx tsx scripts/smoke.mts https://<โดเมน> <username> <password>
 
 push ขึ้น `main` แล้ว Vercel จะ build + deploy ให้เอง ไม่ต้องสั่งอะไรเพิ่ม
 
-## 6. เปิดอ่านสลิปอัตโนมัติ (PaddleOCR)
+## 6. เปิดอ่านสลิปอัตโนมัติ (Google Drive OCR)
 
 ไม่ตั้งก็ใช้งานได้ — พนักงานกรอกยอด วันที่ และเลขที่รายการจากสลิปเอง
 แล้วระบบตรวจให้ว่าตรงกับยอดที่ต้องโอนคืนไหม แต่ถ้าเปิดไว้จะกรอกให้อัตโนมัติ
 
-PaddleOCR เป็น Python และต้องโหลดโมเดลค้างไว้ในหน่วยความจำ **รันบน Vercel ไม่ได้**
-ต้อง deploy เป็นบริการแยก แล้วชี้ `OCR_ENDPOINT` มาที่นั่น
+ใช้ **วิธีเดียวกับระบบเดิมบน Apps Script** คืออัปรูปขึ้น Drive ให้แปลงเป็น Google Doc แบบ OCR
+แล้วอ่านข้อความออกมา จากนั้นลบไฟล์ชั่วคราวทิ้ง
 
-โค้ดของบริการอยู่ที่ [`ocr/`](../ocr/README.md) พร้อม Dockerfile และวิธี deploy
+**ฟรี ไม่ต้องเปิด billing** — Drive API เป็น Workspace API คนละระบบคิดเงินกับ Cloud Vision
 
-พอ deploy บริการเสร็จแล้ว ตั้ง 2 ตัวใน Vercel แล้ว **Redeploy**:
+### ตั้งค่าครั้งเดียว
+
+1. [console.cloud.google.com](https://console.cloud.google.com) → เลือกหรือสร้างโปรเจกต์
+2. เปิดใช้ **Google Drive API** (ค้นใน API Library) — ไม่ต้องผูกบัตร
+3. **APIs & Services → OAuth consent screen** → เลือก External → กรอกชื่อแอปกับอีเมล
+   → ที่ **Test users** ใส่อีเมล Google ที่จะใช้เก็บไฟล์ชั่วคราว
+4. **Credentials → Create credentials → OAuth client ID → Desktop app** → จด Client ID กับ Client secret
+5. รันคำสั่งนี้บนเครื่อง แล้วทำตามที่มันบอก (เปิดลิงก์ → อนุญาต → วางรหัสกลับมา):
+
+```bash
+cd v2
+npx tsx scripts/google-oauth.mts <CLIENT_ID> <CLIENT_SECRET>
+```
+
+6. เอา 3 ค่าที่ได้ไปใส่ใน Vercel แล้ว **Redeploy**:
 
 ```
-OCR_ENDPOINT=https://ocr.yourdomain.com/
-OCR_TOKEN=<ชุดเดียวกับที่ตั้งไว้ฝั่งบริการ OCR>
+GOOGLE_OAUTH_CLIENT_ID=...
+GOOGLE_OAUTH_CLIENT_SECRET=...
+GOOGLE_OAUTH_REFRESH_TOKEN=...
 ```
+
+> ขอสิทธิ์แค่ `drive.file` = เห็นเฉพาะไฟล์ที่แอปนี้สร้างเอง ไม่ใช่ Drive ทั้งบัญชี
+> สลิปถูกอัปเป็นไฟล์ชั่วคราวแล้วลบทิ้งทันทีหลังอ่านข้อความเสร็จ
+
+### ถ้าอยากใช้ตัวอื่นแทน
+
+| ทางเลือก | ตั้งอะไร | ข้อแลกเปลี่ยน |
+|---|---|---|
+| **PaddleOCR** (รันเอง) | `OCR_ENDPOINT` + `OCR_TOKEN` — ดู [`ocr/`](../ocr/README.md) | ไม่ต้องพึ่ง Google แต่มีค่าเซิร์ฟเวอร์ $5–6/เดือน |
+| **Cloud Vision** | `GOOGLE_VISION_API_KEY` | แม่นที่สุด แต่ต้องเปิด billing แม้ใช้โควตาฟรี |
+
+ลำดับที่ระบบเลือกใช้: `OCR_ENDPOINT` → Drive OCR → Cloud Vision
 
 **ตรวจว่าใช้ได้จริง:** หน้า admin → **ตรวจ OCR** — ปุ่มนี้จะเอา**สลิปใบล่าสุดในระบบมาลองอ่านจริง**
 แล้วบอกว่าอ่านยอด/วันที่/เลขที่รายการออกครบไหม (แค่ "ตั้งค่าแล้ว" ไม่พอ เพราะตั้ง URL ผิด

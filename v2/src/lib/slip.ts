@@ -1,6 +1,7 @@
 import { desc, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { slips } from '@/db/schema';
+import { driveOcrConfigured, driveOcrText } from './drive-ocr';
 import { env } from './env';
 import { createSignedUpload, downloadAsDataUrl, fileExists, saveDataImage } from './storage';
 import type { ApiBody, ApiResult } from './types';
@@ -189,13 +190,27 @@ async function runCustomEndpoint(image: string): Promise<Partial<SlipInfo>> {
   }
 }
 
+/** Drive OCR — วิธีเดียวกับระบบเดิม ฟรี ไม่ต้องเปิด billing */
+async function runDriveOcr(image: string): Promise<Partial<SlipInfo>> {
+  try {
+    const text = await driveOcrText(image);
+    if (!text.trim()) {
+      return { ocr: 'slip_ocr_failed', detail: 'Drive OCR อ่านไม่พบตัวหนังสือในรูป — ถ่ายให้ชัดขึ้นหรือกดเพิ่มความละเอียด' };
+    }
+    return fromText(text);
+  } catch (error) {
+    return { ocr: 'slip_ocr_failed', detail: String((error as Error).message || error) };
+  }
+}
+
 async function runOcr(image: string): Promise<Partial<SlipInfo>> {
-  // ตั้ง OCR_ENDPOINT ไว้ = ตั้งใจใช้ของตัวเอง ให้มาก่อนเสมอ
+  // ตั้ง OCR_ENDPOINT ไว้ = ตั้งใจใช้บริการของตัวเอง ให้มาก่อนเสมอ
   if (env.ocrEndpoint) return runCustomEndpoint(image);
+  if (driveOcrConfigured()) return runDriveOcr(image);
   if (env.visionApiKey) return runGoogleVision(image);
   return {
     ocr: 'slip_ocr_unavailable',
-    detail: 'ยังไม่ได้ตั้ง GOOGLE_VISION_API_KEY (หรือ OCR_ENDPOINT ถ้าใช้บริการอื่น)'
+    detail: 'ยังไม่ได้ตั้งค่า OCR — ดูวิธีเปิด Drive OCR ใน v2/DEPLOY.md ข้อ 6'
   };
 }
 
@@ -364,8 +379,9 @@ export function checkStoredSlip(info: SlipInfo, expectDate: unknown, expectAmoun
   return checkSlip(info, expectDate, expectAmount);
 }
 
-const ocrProvider = () => env.ocrEndpoint ? 'PaddleOCR (OCR_ENDPOINT)'
-  : (env.visionApiKey ? 'Google Cloud Vision' : '');
+const ocrProvider = () => env.ocrEndpoint ? 'บริการ OCR ของตัวเอง (OCR_ENDPOINT)'
+  : (driveOcrConfigured() ? 'Google Drive OCR'
+    : (env.visionApiKey ? 'Google Cloud Vision' : ''));
 
 /**
  * ปุ่ม "ตรวจ OCR" ในหน้า admin — ลองอ่านสลิปใบล่าสุดจริง ๆ
