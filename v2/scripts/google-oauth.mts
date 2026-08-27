@@ -69,15 +69,21 @@ const authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchP
 });
 
 console.log('\nกำลังเปิดเบราว์เซอร์ให้อนุญาตสิทธิ์…');
-console.log('ถ้าไม่เปิดให้เอง ให้คัดลอกลิงก์นี้ไปเปิดเอง:\n');
+console.log('ถ้าไม่เปิดให้เอง ให้คัดลอก "ทั้งบรรทัด" ข้างล่างนี้ไปวางในเบราว์เซอร์:\n');
 console.log(authUrl + '\n');
 
 // เปิดเบราว์เซอร์ให้ (ไม่ได้ก็ไม่เป็นไร ผู้ใช้คัดลอกลิงก์ข้างบนไปเปิดเองได้)
+//
+// บน Windows ห้ามใช้ `cmd /c start` เพราะ cmd ตีความ & ในลิงก์เป็นตัวคั่นคำสั่ง
+// ลิงก์จะถูกตัดตั้งแต่ & ตัวแรก เหลือแค่ client_id แล้ว Google ตอบว่าขาด response_type
+// rundll32 ส่ง argument ตรง ๆ ไม่ผ่าน shell จึงปลอดภัย
 try {
-  const opener = process.platform === 'win32' ? ['cmd', ['/c', 'start', '', authUrl]]
-    : process.platform === 'darwin' ? ['open', [authUrl]]
+  const opener: [string, string[]] = process.platform === 'win32'
+    ? ['rundll32.exe', ['url.dll,FileProtocolHandler', authUrl]]
+    : process.platform === 'darwin'
+      ? ['open', [authUrl]]
       : ['xdg-open', [authUrl]];
-  spawn(opener[0] as string, opener[1] as string[], { detached: true, stdio: 'ignore' }).unref();
+  spawn(opener[0], opener[1], { detached: true, stdio: 'ignore' }).unref();
 } catch { /* เปิดเองไม่ได้ ก็ให้ผู้ใช้คัดลอกลิงก์ */ }
 
 const timer = setTimeout(() => rejectCode(new Error('รอเกิน 5 นาที — รันคำสั่งใหม่อีกครั้ง')), 5 * 60 * 1000);
