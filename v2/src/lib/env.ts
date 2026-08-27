@@ -4,11 +4,35 @@ const bool = (value: string | undefined, fallback = false) =>
 const number = (value: string | undefined, fallback: number) =>
   Number.isFinite(Number(value)) ? Number(value) : fallback;
 
-/** ค่าที่ขาดไม่ได้ — ล้มตั้งแต่ตอน start ดีกว่าไปพังกลางทางตอนพนักงานกดใช้งาน */
+/**
+ * ค่าที่ขาดไม่ได้ — ล้มตั้งแต่ตอน start ดีกว่าไปพังกลางทางตอนพนักงานกดใช้งาน
+ * ตัดช่องว่างและเครื่องหมายคำพูดหัวท้ายให้ เพราะการก๊อปค่าไปวางในหน้า Vercel
+ * มักติดช่องว่างหรือ " " มาด้วย แล้วไปพังตอน parse เป็น URL ทีหลังแบบงง ๆ
+ */
 export function requireEnv(name: string, hint = ''): string {
-  const value = process.env[name];
+  const raw = process.env[name];
+  const value = String(raw ?? '').trim().replace(/^['"]|['"]$/g, '');
   if (!value) throw new Error(`ยังไม่ได้ตั้ง ${name}${hint ? ` — ${hint}` : ''}`);
   return value;
+}
+
+/**
+ * เหมือน requireEnv แต่ต้องเป็น URL ที่ใช้ได้จริง
+ * ถ้าไม่บอกให้ชัดตรงนี้ จะไปโผล่เป็น "TypeError: Invalid URL" ตอน build ซึ่งอ่านไม่ออกว่าตัวไหนผิด
+ */
+export function requireUrl(name: string, hint = ''): string {
+  const value = requireEnv(name, hint);
+  try {
+    const url = new URL(value);
+    if (!/^https?:$/.test(url.protocol)) throw new Error('protocol');
+  } catch {
+    throw new Error(
+      `ค่าของ ${name} ไม่ใช่ URL ที่ใช้ได้ — ได้รับ "${value}"\n` +
+      `  ต้องเป็นแบบ https://xxxxxxxx.supabase.co เท่านั้น\n` +
+      `  เช็กว่าไม่ได้เผลอวางทั้งบรรทัด (${name}=https://...) ลงในช่องค่า${hint ? `\n  ${hint}` : ''}`
+    );
+  }
+  return value.replace(/\/+$/, '');            // ตัด / ท้ายออก กัน //auth/v1 ซ้อน
 }
 
 export const env = {
