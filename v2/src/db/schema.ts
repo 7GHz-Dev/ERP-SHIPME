@@ -160,10 +160,14 @@ export const settlements = pgTable('settlements', {
   // ใบที่สร้างใหม่ยังถูกกันซ้ำด้วย partial unique index ด้านล่างตามเดิม
   legacyDuplicate: boolean('legacy_duplicate').notNull().default(false)
 }, (t) => [
+  // ปิดบัญชีได้วันละ 1 ใบต่อคน — ยกเว้นใบที่ย้ายมาจากชีตเดิมซึ่งมีซ้ำอยู่ก่อนแล้ว
+  uniqueIndex('settlements_new_date_idx')
+    .on(t.username, t.inspectDate)
+    .where(sql`${t.legacyDuplicate} = false`),
+  // เลขที่รายการสลิปห้ามซ้ำทั้งระบบ กันเอาสลิปใบเดียวไปใช้ปิดหลายวัน
   uniqueIndex('settlements_slip_txn_idx')
     .on(sql`upper(${t.slipTxn})`)
-    .where(sql`${t.slipTxn} <> '' and ${t.legacyDuplicate} = false`),
-  index('settlements_user_idx').on(t.username, t.inspectDate.desc())
+    .where(sql`${t.slipTxn} <> ''`)
 ]);
 
 export const receipts = pgTable('receipts', {

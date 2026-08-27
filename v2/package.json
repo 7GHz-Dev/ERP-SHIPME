@@ -12,7 +12,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "import:sqlite": "tsx scripts/import-sqlite.ts"
+    "import:sqlite": "tsx scripts/import-sqlite.mts",
+    "check:db": "tsx scripts/check-db.mts"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.47.10",

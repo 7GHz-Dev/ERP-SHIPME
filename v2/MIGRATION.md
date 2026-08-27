@@ -50,6 +50,25 @@
 
 action ที่ยังไม่พอร์ตจะตอบ `not_implemented` พร้อมชื่อ action — ไม่เงียบหาย
 
+### ฐานข้อมูลจริง — ย้ายแล้ว (2026-08-27)
+
+Supabase project `buzitxvrqcoomlxkyhxn` (Singapore) — migrate + import ข้อมูลจาก `data/checkin.sqlite` เรียบร้อย
+
+| ตาราง | แถว | | ตาราง | แถว |
+|---|---|---|---|---|
+| users | 10 | | claims | 25 |
+| checkins | 65 | | settlements | 28 |
+| receipts | 8 | | transport_jobs | 1,245 |
+| app_options | 6 | | claim_rates / settle_rates | 12 / 9 |
+
+- **ข้าม sessions** โดยตั้งใจ ทุกคนต้องล็อกอินใหม่ (รหัสผ่านเดิมใช้ได้ ไม่ต้องตั้งใหม่)
+- **รูปเก่ายังเป็นลิงก์ Google Drive** — ข้อมูลชุดนี้ย้ายมาจากระบบ Sheets เดิม ไม่เคยมีไฟล์ในดิสก์
+  (`data/uploads/` ว่างเปล่า) รูปเก่าจึงยังเปิดได้ตราบใดที่ไฟล์ใน Drive ยังแชร์อยู่ **รูปใหม่เท่านั้น**ที่ไปอยู่ Supabase Storage
+- รันซ้ำได้: `npm run import:sqlite` ใช้ `ON CONFLICT DO NOTHING`
+
+ทดสอบผ่าน HTTP จริงแล้ว 20/20 (`scripts/smoke.mts`) — ล็อกอิน, citext ไม่สนตัวพิมพ์,
+อ่านข้อมูลที่ย้ายมาได้ครบ, EXTRA MOVEMENT ยังขั้นต่ำ 2 ตู้, action ที่ยังไม่พอร์ตตอบ `not_implemented`
+
 ### งานอื่นที่เหลือ
 - `public/index.html`, `public/admin.html` — ก๊อปมาจาก root แล้วแก้เฉพาะ **การอัปโหลดรูปใหญ่**
   (รูปใบปิดบัญชี PNG ~4,000px เกินลิมิต body 4.5 MB ของ Vercel ต้องเปลี่ยนไปใช้ `createSignedUpload`)
