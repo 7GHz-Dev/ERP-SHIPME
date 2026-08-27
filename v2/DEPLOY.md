@@ -10,6 +10,28 @@ repo นี้มี 2 ระบบอยู่ด้วยกัน — Fastify
    (Framework จะขึ้น **Next.js** ให้เอง ไม่ต้องแก้ Build Command / Output Directory)
 3. **ยังไม่ต้องกด Deploy** — ใส่ env ให้ครบก่อนตามข้อ 2
 
+### เช็กว่า Root Directory ถูกไหมจาก log
+
+ถ้าตั้งถูก log จะขึ้นแบบนี้:
+
+```
+Installing dependencies...
+added 69 packages
+Detected Next.js version: 15.1.9
+```
+
+ถ้าตั้งผิด (ชี้ไป root ของ repo) จะได้แบบนี้แทน — สังเกตจำนวน package ที่น้อยผิดปกติ
+เพราะไปเจอโปรเจกต์ Fastify เดิมที่มี dependency ตัวเดียว:
+
+```
+Warning: Detected "engines": { "node": ">=24" } in your package.json
+added 49 packages
+Error: No Next.js version detected.
+```
+
+แก้ที่ **Settings → General → Root Directory → `v2`** แล้ว **Redeploy**
+(ตั้งครั้งเดียวจำถาวร แต่ถ้าเผลอไปกดแก้ทีหลังจะกลับมาพังแบบเดิม)
+
 > ระบบนี้เป็น ERP ของบริษัท จึงใช้ Hobby plan ไม่ได้ตามเงื่อนไขของ Vercel — ต้องเป็น **Pro**
 
 ## 2. Environment Variables
@@ -101,3 +123,7 @@ npx tsx scripts/temp-user.mts create <username> <password> admin
 
 **ระบบเดิมยังอยู่** — Fastify ที่ root ยังรันได้ ยังไม่ต้องปิดจนกว่าจะมั่นใจว่า v2 ใช้งานได้ครบ
 แต่ **อย่าเปิดพร้อมกันสองระบบ** เพราะคนละฐานข้อมูล ข้อมูลจะแยกกันคนละทาง
+
+**Node บน Vercel ปักไว้ที่ 22.x** (`v2/package.json` → `engines`) ไม่ให้ขยับเองเวลา Vercel เปลี่ยนค่าเริ่มต้น
+ส่วน**บนเครื่องตัวเองต้องใช้ Node 24 ขึ้นไป** ถ้าจะรัน `scripts/import-sqlite.mts`
+เพราะอ่านไฟล์ `.sqlite` ด้วย `node:sqlite` ซึ่งเสถียรตั้งแต่ 24 (สคริปต์พวกนี้ไม่ได้รันบน Vercel)

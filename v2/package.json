@@ -3,6 +3,9 @@
   "version": "2.0.0",
   "private": true,
   "description": "Next.js + Supabase rewrite of the off-site check-in / claim / settlement system",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
