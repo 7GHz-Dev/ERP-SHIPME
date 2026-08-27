@@ -1,0 +1,3798 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1e40af">
+<title>เช็คชื่อเข้างาน</title>
+<style>
+  :root { --blue:#1e40af; --blue2:#2563eb; --bg:#f1f5f9; --card:#fff; --ok:#16a34a; --err:#dc2626; --muted:#64748b; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; font-family:-apple-system,'Segoe UI',Roboto,'Noto Sans Thai',sans-serif; background:var(--bg); color:#0f172a; }
+  .app { max-width:480px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column; }
+  header { background:var(--blue); color:#fff; padding:14px 16px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:10; }
+  header .title { font-weight:700; font-size:17px; }
+  header .sub { font-size:12px; opacity:.85; }
+  .btn { border:0; border-radius:12px; padding:14px 16px; font-size:16px; font-weight:600; width:100%; cursor:pointer; }
+  .btn-primary { background:var(--blue2); color:#fff; }
+  .btn-primary:disabled { background:#94a3b8; }
+  .btn-ghost { background:#e2e8f0; color:#0f172a; }
+  .btn-ok { background:#16a34a; color:#fff; }
+  .btn-link { background:none; color:#fff; border:1px solid rgba(255,255,255,.5); width:auto; padding:8px 12px; font-size:13px; border-radius:10px; }
+  .content { padding:16px; flex:1; }
+  .card { background:var(--card); border-radius:16px; padding:18px; box-shadow:0 1px 3px rgba(0,0,0,.08); margin-bottom:14px; }
+  label { font-size:13px; color:var(--muted); font-weight:600; display:block; margin-bottom:6px; }
+  input { width:100%; padding:13px; border:1px solid #cbd5e1; border-radius:12px; font-size:16px; margin-bottom:14px; }
+  input:focus, select:focus, textarea:focus { outline:none; border-color:var(--blue2); }
+  /* ช่องวันที่แบบพอดีเนื้อหา (ไม่ต้องกินความกว้างทั้งแถว) */
+  input.date-fit { width:auto; max-width:100%; padding:9px 11px; font-size:15px; margin-bottom:12px; display:block; }
+  .row { display:flex; gap:10px; }
+  .row > * { flex:1; }
+  .hidden { display:none !important; }
+  .info-line { display:flex; gap:10px; align-items:flex-start; padding:10px 0; border-bottom:1px solid #f1f5f9; font-size:14px; }
+  .info-line:last-child { border-bottom:0; }
+  .info-line .ico { font-size:18px; width:24px; text-align:center; }
+  .info-line .lbl { color:var(--muted); font-size:12px; }
+  .info-line .val { font-weight:600; word-break:break-word; }
+  .cam-wrap { position:relative; background:#000; border-radius:14px; overflow:hidden; width:100%; max-width:300px; height:200px; margin:0 auto; display:flex; align-items:center; justify-content:center; }
+  video, canvas, .cam-wrap img { width:100%; height:100%; object-fit:cover; display:block; }
+  .cam-hint { position:absolute; bottom:10px; left:0; right:0; text-align:center; color:#fff; font-size:12px; text-shadow:0 1px 3px #000; }
+  .clock { font-size:34px; font-weight:800; letter-spacing:1px; text-align:center; }
+  .date { text-align:center; color:var(--muted); font-size:14px; margin-top:2px; }
+  .status { font-size:13px; padding:10px 12px; border-radius:10px; margin-bottom:12px; }
+  .status.wait { background:#fef9c3; color:#854d0e; }
+  .status.ok { background:#dcfce7; color:#166534; }
+  .status.err { background:#fee2e2; color:#991b1b; }
+  .toast { position:fixed; left:50%; bottom:26px; transform:translateX(-50%); background:#0f172a; color:#fff; padding:12px 18px; border-radius:12px; font-size:14px; z-index:50; max-width:90%; text-align:center; box-shadow:0 8px 24px rgba(0,0,0,.25); }
+  .success-box { text-align:center; padding:10px 0; }
+  .success-box .big { font-size:56px; }
+  /* report table */
+  .report-tools { display:flex; gap:8px; margin-bottom:12px; }
+  .report-tools input { margin:0; }
+  .tbl-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; background:#fff; border-radius:14px; }
+  table { border-collapse:collapse; width:100%; font-size:13px; }
+  th, td { padding:9px 10px; text-align:left; border-bottom:1px solid #eef2f7; white-space:nowrap; }
+  th { background:#f8fafc; color:var(--muted); font-size:12px; position:sticky; top:0; }
+  td.addr { white-space:normal; min-width:180px; }
+  .thumb { width:44px; height:44px; object-fit:cover; border-radius:8px; }
+  .badge { padding:3px 8px; border-radius:999px; font-size:11px; font-weight:700; }
+  .badge.in { background:#dcfce7; color:#166534; }
+  .badge.out { background:#ffedd5; color:#9a3412; }
+  .hist-item { display:flex; gap:10px; align-items:center; border:1px solid #eef2f7; border-radius:12px; padding:10px; margin-bottom:10px; background:#fff; }
+  .hist-item .thumb { flex:0 0 auto; background:#eef2f7; }
+  .hist-item .info { flex:1; min-width:0; }
+  .hist-item .top { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  .hist-item .meta { font-size:12px; color:var(--muted); margin-top:3px; word-break:break-word; }
+  a { color:var(--blue2); }
+  .center-load { text-align:center; padding:40px 0; color:var(--muted); }
+  .spinner { width:22px; height:22px; border:3px solid #cbd5e1; border-top-color:var(--blue2); border-radius:50%; animation:spin 1s linear infinite; display:inline-block; vertical-align:middle; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .muted { color:var(--muted); font-size:13px; }
+  .foot { text-align:center; padding:14px; color:#94a3b8; font-size:11px; }
+  /* ---- การเบิกค่าใช้จ่าย ---- */
+  .cl-item { border:1px solid #e2e8f0; border-radius:12px; margin-bottom:10px; overflow:hidden; }
+  .cl-item.on { border-color:var(--blue2); background:#f8fbff; }
+  .cl-head { display:flex; align-items:center; gap:10px; padding:12px; margin:0; font-size:14px; font-weight:600; color:#0f172a; cursor:pointer; }
+  .cl-head input[type=checkbox] { width:20px; height:20px; flex:0 0 auto; margin:0; accent-color:var(--blue2); }
+  .cl-name { flex:1; word-break:break-word; }
+  .cl-amt { font-weight:800; color:var(--blue); white-space:nowrap; }
+  .cl-body { padding:0 12px 12px; }
+  .cl-body input { margin-bottom:8px; padding:10px; font-size:15px; }
+  .cl-rate { font-size:13px; color:var(--muted); padding-bottom:4px; }
+  .cl-rate b { color:#0f172a; }
+  .cl-warn { color:var(--err); font-size:12px; }
+  .cl-reason { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+  .cl-reason input[type=checkbox] { width:19px; height:19px; flex:0 0 auto; margin:0; accent-color:var(--blue2); }
+  .cl-reason .rname { flex:1; font-size:14px; word-break:break-word; }
+  .cl-reason input[type=text] { flex:1; min-width:0; margin:0; }
+  .cl-reason input[type=number] { width:96px; flex:0 0 auto; margin:0; text-align:right; }
+  .cl-reason .rdel { border:0; background:#fee2e2; color:#991b1b; border-radius:8px; width:32px; height:34px; font-size:14px; flex:0 0 auto; cursor:pointer; }
+  .cl-add { background:#e2e8f0; border:0; border-radius:10px; padding:9px 12px; font-size:13px; font-weight:600; cursor:pointer; }
+  /* dropdown เลือกจำนวนเงิน/จำนวนชุด (ค่าตะกั่ว, ค่าน็อคตู้, ค่าล่วงเวลา) */
+  .cl-sel { width:100%; padding:11px 10px; border:1px solid #cbd5e1; border-radius:12px; font-size:15px; background:#fff; margin-bottom:8px; }
+  .cl-reason select { width:104px; flex:0 0 auto; margin:0; padding:8px 6px; font-size:14px; border:1px solid #cbd5e1; border-radius:10px; background:#fff; }
+  /* ปุ่มเพิ่ม/ลดจำนวนตู้เฉพาะของ EXTRA MOVEMENT */
+  .cl-qty { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+  .cl-qty .qbtn { border:0; background:var(--blue2); color:#fff; width:42px; height:42px; border-radius:12px; font-size:20px; font-weight:800; flex:0 0 auto; cursor:pointer; }
+  .cl-qty .qbtn:disabled { background:#cbd5e1; }
+  .cl-qty input { width:74px; flex:0 0 auto; margin:0; text-align:center; font-weight:800; font-size:17px; padding:10px 4px; }
+  .cl-qty .qlbl { font-size:13px; color:var(--muted); }
+  .cl-toggle { display:flex; align-items:center; gap:8px; margin-bottom:12px; font-size:13px; color:#0f172a; font-weight:600; }
+  /* dropdown ขนาดเท่าช่องกรอกปกติ (ใช้กับจำนวนตู้ของใบเบิก) */
+  .sel-field { width:100%; padding:13px; border:1px solid #cbd5e1; border-radius:12px; font-size:16px; margin-bottom:14px; background:#fff; }
+  .cl-toggle input[type=checkbox] { width:19px; height:19px; margin:0; accent-color:var(--blue2); flex:0 0 auto; }
+  .cl-sum { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px; }
+  .cl-sum .n { font-size:28px; font-weight:800; color:var(--blue); }
+  .cl-row { border:1px solid #eef2f7; border-radius:12px; padding:12px; margin-bottom:10px; background:#fff; }
+  .cl-row .r-top { display:flex; justify-content:space-between; align-items:center; gap:8px; font-weight:700; }
+  .cl-row .r-meta { font-size:12px; color:var(--muted); margin-top:4px; }
+  .cl-row .r-act { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+  .cl-row .r-act .btn { flex:1 1 30%; min-width:96px; padding:9px 8px; font-size:14px; }
+  .cl-row .r-act .btn[disabled] { opacity:.45; }
+  /* ---- ประวัติการเบิก: รายการย่อยแยกตามครั้งที่บันทึก (ซ่อน/แสดงได้ คัดลอกแยกครั้งได้) ---- */
+  /* แถวย่อยทำให้กะทัดรัด: ป้ายสั้น (ครั้งแรก / แก้ไข1…) + ปุ่มกว้างพอดีข้อความ ไม่ยืดเต็มแถว */
+  .cl-revtoggle { width:100%; margin-top:8px; padding:7px; font-size:12px; }
+  .cl-rev { margin-top:6px; border-top:1px dashed #cbd5e1; padding-top:6px; }
+  .cl-revnote { font-size:11px; color:var(--muted); margin:0 2px 6px; }
+  .cl-revrow { display:flex; align-items:center; justify-content:space-between; gap:8px;
+               padding:5px 8px; margin-bottom:5px; background:#f7f9fc; border:1px solid #e5eaf2; border-radius:9px; }
+  .cl-revrow:last-child { margin-bottom:0; }
+  .cl-revlb { font-size:12px; font-weight:700; color:#334155; white-space:nowrap; }
+  .cl-revrow .cl-revcopy { flex:0 0 auto; width:auto; padding:5px 9px; font-size:11px; border-radius:8px; }
+  .locked { opacity:.4; pointer-events:none; }
+  /* ---- ปิดบัญชี: การ์ดต่อ 1 เลข BL (เน้นกรอบให้เห็นชัดว่าแต่ละใบจบที่ไหน) ---- */
+  .st-card { border:2px solid #b8c8e0; border-radius:14px; padding:0; margin-bottom:20px; background:#fff;
+             box-shadow:0 3px 10px rgba(15,23,42,.10); overflow:hidden; }
+  .st-card .st-top { display:flex; align-items:center; gap:9px; margin:0; padding:11px 12px;
+                     background:#e7effc; border-bottom:2px solid #b8c8e0; }
+  /* งานจากไฟล์ TRANSIT — กรอบสีแดงอ่อน ให้แยกออกจากงานฟรีโซนได้ทันที */
+  .st-card.src-transit { border-color:#f0a9a9; box-shadow:0 3px 10px rgba(185,28,28,.12); }
+  .st-card.src-transit .st-top { background:#fdeaea; border-bottom-color:#f0a9a9; }
+  .st-card.src-transit .st-no { background:#b91c1c; }
+  .st-card.src-transit .st-rowtotal { background:#fff6f6; border-top-color:#f0a9a9; }
+  .st-tag { font-size:10px; font-weight:800; padding:2px 7px; border-radius:999px; background:#fee2e2; color:#991b1b; white-space:nowrap; }
+  .st-pi.src-transit { border-color:#f0a9a9; background:#fffafa; }
+  .st-pi.src-transit.on { border-color:#b91c1c; background:#fdeaea; }
+  .st-no { background:var(--blue); color:#fff; font-weight:800; font-size:13px; width:30px; height:30px; border-radius:9px; display:flex; align-items:center; justify-content:center; flex:0 0 auto; }
+  .st-bl { flex:1; font-weight:800; font-size:15px; word-break:break-all; }
+  .st-del { border:0; background:#fee2e2; color:#991b1b; border-radius:8px; width:32px; height:32px; font-size:14px; flex:0 0 auto; cursor:pointer; }
+  .st-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; padding:12px; }
+  .st-f { display:flex; flex-direction:column; }
+  .st-f.full { grid-column:1 / -1; }
+  .st-f label { font-size:11px; margin-bottom:3px; }
+  .st-f input { margin:0; padding:9px 10px; font-size:15px; }
+  .st-f input[type=number] { text-align:right; }
+  .st-f select { margin:0; padding:9px 8px; font-size:15px; border:1px solid #cbd5e1; border-radius:12px; background:#fff; width:100%; }
+  .st-f select + input { margin-top:6px; }
+  /* ปุ่มคัดลอกท่าไปทุกรายการ BL */
+  .st-portall { margin-top:6px; border:1px solid var(--blue2); background:#eaf1ff; color:var(--blue);
+                border-radius:10px; padding:7px 8px; font-size:12px; font-weight:700; cursor:pointer; width:100%; }
+  /* ค่าล่วงเวลาในใบปิดบัญชี = ติ๊กเลือก แล้วคิดยอดต่อ 1 BL ให้เอง */
+  .st-chk { display:flex; align-items:center; gap:8px; border:1px solid #cbd5e1; border-radius:12px; padding:9px 10px; font-size:13px; font-weight:600; background:#fff; cursor:pointer; }
+  /* กล่องแนบสลิปโอนเงินคืนบริษัท */
+  .slip-box { border:1px dashed #cbd5e1; border-radius:12px; padding:12px; margin-bottom:14px; background:#f8fafc; }
+  .slip-box input[type=file] { font-size:13px; width:100%; }
+  .slip-row { display:flex; justify-content:space-between; gap:8px; padding:2px 0; }
+  .slip-row b { color:#0f172a; }
+  .st-chk input[type=checkbox] { width:19px; height:19px; margin:0; accent-color:var(--blue2); flex:0 0 auto; }
+  .st-rowtotal { display:flex; justify-content:space-between; align-items:center; margin:0; padding:11px 13px;
+                 border-top:2px dashed #b8c8e0; background:#f5f8ff; font-weight:800; }
+  .st-rowtotal .v { color:var(--blue); font-size:18px; }
+  .st-src { font-size:11px; color:var(--muted); }
+  .st-auto { color:var(--blue2); font-weight:700; }
+  /* ช่องที่มีขั้นต่ำจำนวนตู้ (EXTRA MOVEMENT) แต่ BL นี้ยังไม่ถึงขั้นต่ำ */
+  .st-min { color:var(--muted); font-weight:600; }
+  .st-sp { border:1px dashed #cbd5e1; border-radius:10px; padding:8px; }
+  .st-sprow { display:flex; align-items:center; gap:6px; margin-bottom:6px; flex-wrap:wrap; }
+  .st-sprow select { width:110px; flex:0 0 auto; margin:0; padding:8px 4px; font-size:13px; border:1px solid #cbd5e1; border-radius:10px; background:#fff; }
+  .st-sprow:last-child { margin-bottom:0; }
+  .st-sprow .spn { flex:1; font-size:13px; }
+  .st-sprow input[type=text] { flex:1; min-width:0; margin:0; padding:8px; font-size:14px; }
+  .st-sprow input[type=number] { width:92px; flex:0 0 auto; margin:0; padding:8px; font-size:14px; text-align:right; }
+  .st-sprow .spdel { border:0; background:#fee2e2; color:#991b1b; border-radius:8px; width:30px; height:32px; flex:0 0 auto; cursor:pointer; }
+  /* ---- ปิดบัญชี: รายการ BL ให้ติ๊กเลือก ---- */
+  .st-pi { display:flex; align-items:center; gap:10px; padding:11px 12px; border:1px solid #e2e8f0; border-radius:11px; margin-bottom:8px; cursor:pointer; }
+  .st-pi.on { border-color:var(--blue2); background:#f8fbff; }
+  .st-pi input[type=checkbox] { width:21px; height:21px; flex:0 0 auto; margin:0; accent-color:var(--blue2); }
+  .st-pi .i { flex:1; min-width:0; }
+  .st-pi .b { font-weight:700; font-size:14px; word-break:break-all; }
+  .st-pi .m { font-size:12px; color:var(--muted); margin-top:2px; word-break:break-word; }
+  .st-pi .n { font-weight:800; color:var(--blue); white-space:nowrap; font-size:13px; }
+  /* ---- ใบปิดบัญชี (รูปภาพ) ---- */
+  .modal-bg { position:fixed; inset:0; background:rgba(15,23,42,.6); display:flex; align-items:center; justify-content:center; z-index:70; padding:12px; }
+  .sheet-box { background:#fff; border-radius:16px; padding:14px; width:100%; max-width:520px; max-height:92vh; display:flex; flex-direction:column; }
+  .sheet-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .btn-x { border:0; background:#e2e8f0; width:34px; height:34px; border-radius:10px; font-size:15px; cursor:pointer; }
+  .sheet-img { flex:1; overflow:auto; -webkit-overflow-scrolling:touch; background:#f1f5f9; border-radius:10px; padding:8px; }
+  .sheet-img img { width:auto; max-width:none; min-width:100%; display:block; border-radius:4px; }
+  .sheet-act { margin-top:12px; }
+  /* ---- คู่มือเปิดสิทธิ์ตำแหน่ง (รูปจากหน้าตั้งค่าของเครื่อง) ---- */
+  .gps-step { margin-bottom:14px; }
+  .gps-step .cap { font-size:13px; font-weight:700; color:#0f172a; margin-bottom:6px; }
+  .gps-step img { width:100%; display:block; border:1px solid var(--line); border-radius:10px; background:#0f172a; }
+  .gps-step .miss { font-size:12px; color:var(--muted); background:#f7f9fc; border:1px dashed #cbd5e1;
+                    border-radius:10px; padding:10px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ======= LOGIN ======= -->
+  <div id="screen-login">
+    <header><div><div class="title">เช็คชื่อเข้างาน</div><div class="sub">ระบบลงเวลานอกสถานที่</div></div></header>
+    <div class="content">
+      <div class="card">
+        <h3 style="margin:0 0 14px">เข้าสู่ระบบ</h3>
+        <label>ชื่อผู้ใช้ (Username)</label>
+        <input id="in-user" type="text" autocomplete="username" placeholder="เช่น emp01">
+        <label>รหัสผ่าน (Password)</label>
+        <input id="in-pass" type="password" autocomplete="current-password" placeholder="รหัสผ่าน">
+        <div id="login-status" class="status err hidden"></div>
+        <button id="btn-login" class="btn btn-primary">เข้าสู่ระบบ</button>
+      </div>
+      <p class="muted" style="text-align:center">ระบบจะบันทึกเวลาและตำแหน่ง ณ ปัจจุบันเท่านั้น (พนักงานจัดส่งถ่ายรูปสดเพิ่มด้วย)</p>
+    </div>
+  </div>
+
+  <!-- ======= CHECK-IN ======= -->
+  <div id="screen-checkin" class="hidden">
+    <header>
+      <div><div class="title" id="hi-name">สวัสดี</div><div class="sub" id="hi-role">พนักงาน</div></div>
+      <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end">
+        <button id="btn-goclaim" class="btn-link hidden">เบิก</button>
+        <button id="btn-goreceipt" class="btn-link hidden">ส่งใบเสร็จ</button>
+        <button id="btn-gohistory" class="btn-link">ประวัติ</button>
+        <button id="btn-goreport" class="btn-link hidden">รายงาน</button>
+        <button id="btn-logout" class="btn-link">ออก</button>
+      </div>
+    </header>
+    <div class="content">
+      <div class="card">
+        <div class="clock" id="clock">--:--:--</div>
+        <div class="date" id="date">--</div>
+      </div>
+
+      <!-- อุปกรณ์ไม่ตรงกับเงื่อนไขของสิทธิ์ที่ได้รับ -->
+      <div id="device-block" class="card hidden" style="text-align:center">
+        <div style="font-size:46px" id="db-icon">🚫</div>
+        <h3 id="db-title" style="margin:10px 0 6px">ใช้อุปกรณ์นี้เข้างานไม่ได้</h3>
+        <p class="muted" id="db-msg" style="margin:0"></p>
+      </div>
+
+      <div class="card" id="cam-card">
+        <div class="cam-wrap" id="cam-wrap">
+          <video id="video" autoplay playsinline muted></video>
+          <canvas id="canvas" class="hidden"></canvas>
+          <div class="cam-hint" id="cam-hint">กำลังเปิดกล้อง…</div>
+        </div>
+        <p class="muted" style="text-align:center;margin:10px 0 0">📷 ตรวจดูภาพจากกล้องให้เรียบร้อยก่อน แล้วกดเข้างาน ระบบจะถ่ายรูปจากภาพนี้ทันที</p>
+        <button id="btn-camera" class="btn btn-ghost hidden" style="margin-top:10px">เปิดกล้องอีกครั้ง</button>
+      </div>
+
+      <div class="card" id="loc-card">
+        <div class="info-line">
+          <div class="ico">📍</div>
+          <div style="flex:1">
+            <div class="lbl">ตำแหน่งปัจจุบัน</div>
+            <div class="val" id="loc-val">กำลังหาตำแหน่ง…</div>
+            <div class="muted" id="loc-acc"></div>
+          </div>
+        </div>
+        <button id="btn-loc-allow" class="btn btn-ghost hidden" style="margin-bottom:8px">📖 ดูวิธีเปิดสิทธิ์ตำแหน่ง</button>
+        <div id="loc-help" class="status wait hidden"></div>
+        <div class="info-line">
+          <div class="ico">🕒</div>
+          <div style="flex:1">
+            <div class="lbl">เวลา (บันทึกจริงจากเซิร์ฟเวอร์)</div>
+            <div class="val" id="time-val">—</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="ci-actions">
+        <div id="ci-status" class="status wait">เตรียมข้อมูล: รอสัญญาณตำแหน่ง</div>
+        <div class="row">
+          <button id="btn-checkin" class="btn btn-primary" disabled>✅ เข้างาน</button>
+        </div>
+      </div>
+    </div>
+    <div class="foot" id="ci-foot">พิกัด เวลา และรูป ถูกบันทึกอัตโนมัติ แก้ไขไม่ได้</div>
+  </div>
+
+  <!-- ======= SUCCESS ======= -->
+  <div id="screen-success" class="hidden">
+    <header><div class="title">บันทึกสำเร็จ</div></header>
+    <div class="content">
+      <div class="card success-box">
+        <div class="big">✅</div>
+        <h2 id="suc-type" style="margin:6px 0">เข้างานแล้ว</h2>
+        <div class="info-line"><div class="ico">🕒</div><div><div class="lbl">เวลา</div><div class="val" id="suc-time"></div></div></div>
+        <div class="info-line"><div class="ico">📍</div><div><div class="lbl">สถานที่</div><div class="val" id="suc-addr"></div></div></div>
+        <img id="suc-photo" class="hidden" style="width:100%;border-radius:12px;margin-top:12px" alt="รูปที่บันทึก">
+      </div>
+      <button id="btn-back" class="btn btn-primary">กลับหน้าเช็คชื่อ</button>
+    </div>
+  </div>
+
+  <!-- ======= REPORT (admin) ======= -->
+  <div id="screen-report" class="hidden">
+    <header>
+      <div class="title">รายงานการลงเวลา</div>
+      <button id="btn-backci" class="btn-link">กลับ</button>
+    </header>
+    <div class="content">
+      <div class="report-tools">
+        <input id="rep-search" type="text" placeholder="ค้นหา ชื่อ / วันที่ / สถานที่">
+        <button id="btn-refresh" class="btn btn-ghost" style="width:auto;padding:0 16px">↻</button>
+      </div>
+      <div id="rep-summary" class="muted" style="margin-bottom:10px"></div>
+      <div class="tbl-wrap">
+        <table id="rep-table">
+          <thead><tr>
+            <th>รูป</th><th>ชื่อ</th><th>ประเภท</th><th>เวลา</th><th>สถานที่</th><th>พิกัด</th>
+          </tr></thead>
+          <tbody id="rep-body">
+            <tr><td colspan="6"><div class="center-load"><span class="spinner"></span> กำลังโหลด…</div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======= CLAIM (การเบิกค่าใช้จ่าย) ======= -->
+  <div id="screen-claim" class="hidden">
+    <header>
+      <div><div class="title">การเบิกค่าใช้จ่าย</div><div class="sub" id="cl-mode">รายการใหม่</div></div>
+      <button id="btn-claim-back" class="btn-link">กลับ</button>
+    </header>
+    <div class="content">
+      <div id="cl-saved" class="status ok hidden"></div>
+
+      <!-- ขั้นที่ 1: วันที่ตรวจปล่อย + จำนวนตู้ -->
+      <div class="card">
+        <label>1) วันที่ตรวจปล่อย</label>
+        <div class="row" style="margin-bottom:14px">
+          <input id="cl-date" type="date" style="margin:0">
+          <button id="cl-today" class="btn btn-ghost" style="flex:0 0 auto; width:auto; padding:0 14px; font-size:14px">วันนี้</button>
+        </div>
+        <label>2) จำนวนตู้ <span class="muted">(เลื่อนเลือก 1–50 ตู้)</span></label>
+        <select id="cl-cont" class="sel-field"></select>
+      </div>
+
+      <!-- ขั้นที่ 2: เลือกค่าใช้จ่าย -->
+      <div class="card">
+        <h3 style="margin:0 0 4px; font-size:16px">3) เลือกค่าใช้จ่ายที่ใช้</h3>
+        <p class="muted" style="margin:0 0 12px">อัตราต่อ 1 ตู้ กำหนดโดยผู้ดูแล/ผู้จัดการ • หัวข้อที่ไม่คิดตามจำนวนตู้ให้กรอกจำนวนเงินเอง</p>
+        <label class="cl-toggle">
+          <input id="cl-showall" type="checkbox">
+          <span>แสดงหัวข้อค่าใช้จ่ายทั้งหมด <span class="muted" id="cl-showall-hint"></span></span>
+        </label>
+        <div id="cl-lock" class="status wait hidden">เลือกวันที่ตรวจปล่อยและจำนวนตู้ก่อน จึงจะเลือกค่าใช้จ่ายและบันทึกได้</div>
+        <div id="cl-items"><div class="center-load"><span class="spinner"></span> กำลังโหลดหัวข้อค่าใช้จ่าย…</div></div>
+      </div>
+
+      <!-- สรุป + บันทึก -->
+      <div class="card">
+        <div class="cl-sum"><div style="font-weight:700">ยอดรวมเบิก</div><div><span class="n" id="cl-total">0</span> บาท</div></div>
+        <button id="cl-save" class="btn btn-primary hidden" style="margin-bottom:10px">💾 บันทึกเบิก + คัดลอก</button>
+        <button id="cl-copy" class="btn btn-ghost hidden" style="margin-bottom:10px">📋 คัดลอกข้อความล่าสุดอีกครั้ง</button>
+        <button id="cl-new" class="btn btn-ghost hidden">✕ ยกเลิกการแก้ไข</button>
+      </div>
+
+      <h3 style="margin:18px 2px 10px; font-size:16px">ประวัติการเบิกของฉัน</h3>
+      <p class="muted" style="margin:0 0 10px">ใบที่ปิดบัญชีแล้วจะไม่แสดงที่นี่ — ดู/แก้ไขได้ที่ประวัติการปิดบัญชี</p>
+      <div id="cl-list"><div class="muted" style="padding:10px">—</div></div>
+      <button id="btn-settle-hist" class="btn btn-ghost hidden" style="margin-top:6px">🧾 ประวัติการปิดบัญชีของฉัน</button>
+    </div>
+  </div>
+
+  <!-- ======= SETTLEMENT (ปิดบัญชี) ======= -->
+  <div id="screen-settle" class="hidden">
+    <header>
+      <div><div class="title">ปิดบัญชี</div><div class="sub" id="st-mode">รายการใหม่</div></div>
+      <button id="btn-settle-back" class="btn-link">กลับ</button>
+    </header>
+    <div class="content">
+      <div id="st-saved" class="status ok hidden"></div>
+
+      <!-- ขั้นที่ 1: เลือกวันที่ตรวจปล่อย (จากวันที่เคยเบิกไว้) -->
+      <div class="card">
+        <label>1) วันที่ตรวจปล่อย <span class="muted">(เลือกจากวันที่เคยทำใบเบิก)</span></label>
+        <div id="st-dateload" class="status wait"><span class="spinner"></span> กำลังโหลดรายการวันที่ตรวจปล่อย…</div>
+        <select id="st-date" style="width:100%;padding:13px;border:1px solid #cbd5e1;border-radius:12px;font-size:16px;margin-bottom:12px;background:#fff">
+          <option value="">— เลือกวันที่ —</option>
+        </select>
+        <div class="info-line" style="border:0;padding:4px 0">
+          <div class="ico">👤</div>
+          <div style="flex:1"><div class="lbl">ชื่อ SHIPPING</div><div class="val" id="st-shipping">—</div></div>
+        </div>
+        <div class="info-line" style="border:0;padding:4px 0">
+          <div class="ico">💵</div>
+          <div style="flex:1"><div class="lbl">ยอดเบิกเงิน</div><div class="val" id="st-claim">— บาท</div></div>
+        </div>
+        <button id="st-reload" class="btn btn-ghost hidden" style="margin-top:8px">↻ ดึงข้อมูล BL ใหม่</button>
+      </div>
+
+      <!-- ขั้นที่ 2: เลือกเลข BL ที่จะปิดบัญชี -->
+      <div class="card">
+        <h3 style="margin:0 0 4px; font-size:16px">2) เลือกเลข BL ที่จะปิดบัญชี</h3>
+        <p class="muted" style="margin:0 0 12px">เลข BL ทั้งหมดของคุณในวันที่เลือก (ดึงจาก <b>ทุกแท็บของทุกไฟล์</b>ชีตงานขนส่ง เรียงตามลำดับไฟล์ที่ตั้งไว้) — ติ๊กใบที่ต้องการ เพื่อเพิ่มเข้าไปในส่วนกรอกค่าใช้จ่ายด้านล่าง</p>
+        <div id="st-blstatus" class="status wait">เลือกวันที่ตรวจปล่อยก่อน</div>
+        <div id="st-picksum" class="muted hidden" style="margin-bottom:10px"></div>
+        <div id="st-pick"></div>
+        <button id="st-pickall" class="cl-add hidden" style="width:100%;padding:11px">☑️ เลือกทั้งหมด</button>
+      </div>
+
+      <!-- ขั้นที่ 3: กรอกค่าใช้จ่ายของ BL ที่เลือก -->
+      <div class="card">
+        <h3 style="margin:0 0 4px; font-size:16px">3) กรอกค่าใช้จ่ายของแต่ละ BL</h3>
+        <p class="muted" style="margin:0 0 12px">ท่า / ชื่อลูกค้า / จำนวนตู้ ดึงมาให้แล้ว (แก้ไขได้) เหลือกรอกค่าใช้จ่ายที่จ่ายจริง</p>
+        <label id="st-showall-wrap" class="hidden" style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:13px;color:#0f172a;font-weight:600">
+          <input id="st-showall" type="checkbox" style="width:19px;height:19px;margin:0;accent-color:var(--blue2)">
+          <span>แสดงหัวข้อค่าใช้จ่ายทั้งหมด <span class="muted" id="st-showall-hint"></span></span>
+        </label>
+        <div id="st-empty" class="status wait">ยังไม่ได้เลือกเลข BL — ติ๊กเลือกจากรายการด้านบน</div>
+        <div id="st-rows"></div>
+        <button id="st-add" class="cl-add hidden" style="width:100%;padding:12px">＋ เพิ่มรายการเอง (กรณีไม่มีในชีตงานขนส่ง)</button>
+      </div>
+
+      <!-- ขั้นที่ 4: สรุป -->
+      <div class="card" id="st-sum-card">
+        <div class="cl-sum"><div style="font-weight:700">รวมค่าใช้จ่าย</div><div><span class="n" id="st-expense">0</span> บาท</div></div>
+        <div class="info-line"><div class="ico">➖</div><div style="flex:1"><div class="lbl">หัก ยอดเบิก</div><div class="val" id="st-claim2">0 บาท</div></div></div>
+        <div class="info-line"><div class="ico">🧾</div><div style="flex:1"><div class="lbl" id="st-balance-lbl">คงเหลือ</div><div class="val" id="st-balance" style="font-size:20px;color:var(--blue)">0 บาท</div></div></div>
+        <!-- โอนคืนบริษัท: บังคับเลือกวันที่ + แนบสลิป (โชว์เฉพาะตอนคงเหลือเป็นบวก) -->
+        <div id="st-return-wrap" class="hidden">
+          <label style="margin-top:12px">วันที่โอนคืนบริษัท <span style="color:var(--err)">*</span></label>
+          <input id="st-returned" type="date" class="date-fit">
+
+          <label>สลิปโอนเงิน <span style="color:var(--err)">*</span> <span class="muted">(ทุกธนาคาร — ระบบอ่านยอดและวันที่ให้)</span></label>
+          <div class="slip-box">
+            <input id="st-slip-file" type="file" accept="image/*" style="margin:0">
+            <div id="st-slip-prev" class="hidden" style="margin-top:10px">
+              <img id="st-slip-img" alt="สลิปโอนเงิน" style="width:100%;max-width:220px;border-radius:10px;display:block">
+            </div>
+            <div id="st-slip-status" class="status wait" style="margin:10px 0 0">แนบสลิปโอนเงินของยอดที่ต้องโอนคืน</div>
+            <div id="st-slip-info" class="muted hidden" style="margin-top:6px"></div>
+
+            <!-- อ่านค่าไม่ผ่าน → เพิ่มความละเอียดรูปให้ OCR อ่านง่ายขึ้น -->
+            <div id="st-slip-hires-wrap" class="hidden" style="margin-top:10px">
+              <button type="button" id="st-slip-hires" class="btn btn-ghost">🔍 เพิ่มความละเอียดรูป 2 เท่า</button>
+              <div class="muted" id="st-slip-size" style="margin-top:6px"></div>
+            </div>
+
+            <!-- อ่านสลิปอัตโนมัติไม่ได้ → ลองอ่านซ้ำ หรือกรอกค่าจากสลิปเอง (ยอด/วันที่ยังต้องตรงกับที่ต้องโอน) -->
+            <div id="st-slip-manual" class="hidden" style="margin-top:10px; border-top:1px dashed #cbd5e1; padding-top:10px">
+              <button type="button" id="st-slip-retry" class="btn btn-ghost" style="margin-bottom:10px">🔄 ลองอ่านสลิปอีกครั้ง</button>
+              <div class="muted" style="margin-bottom:8px">หรือ <b>กรอกค่าจากสลิปเอง</b> แล้วผู้ดูแลจะตรวจสลิปย้อนหลังให้</div>
+              <label>ยอดเงินในสลิป (บาท)</label>
+              <input id="st-slip-amt" type="number" inputmode="decimal" min="0" step="0.01" style="margin-bottom:8px">
+              <label>วันที่โอนในสลิป</label>
+              <input id="st-slip-date" type="date" style="margin-bottom:8px">
+              <label>เลขที่รายการในสลิป</label>
+              <input id="st-slip-txn" type="text" maxlength="60" placeholder="เช่น 016222120426DPM19021" style="margin-bottom:10px">
+              <button type="button" id="st-slip-confirm" class="btn btn-ghost">✔️ ยืนยันค่าจากสลิป</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="st-company-wrap" class="hidden">
+          <label>วันที่บริษัทโอนคืน <span class="muted">(เฉพาะพนักงานบัญชี)</span></label>
+          <input id="st-company" type="date">
+        </div>
+        <div id="st-need" class="status wait hidden" style="margin-top:4px"></div>
+        <button id="st-save" class="btn btn-primary hidden" style="margin-bottom:10px">💾 บันทึกปิดบัญชี + คัดลอก</button>
+        <button id="st-sheet" class="btn btn-ok hidden" style="margin-bottom:10px">🧾 สร้างใบปิดบัญชี (รูปภาพ)</button>
+        <button id="st-copy" class="btn btn-ghost hidden" style="margin-bottom:10px">📋 คัดลอกข้อความล่าสุดอีกครั้ง</button>
+        <button id="st-new" class="btn btn-ghost hidden">✕ ยกเลิกการแก้ไข</button>
+      </div>
+
+      <h3 style="margin:18px 2px 10px; font-size:16px">ประวัติการปิดบัญชีของฉัน</h3>
+      <div id="st-list"><div class="muted" style="padding:10px">—</div></div>
+    </div>
+  </div>
+
+  <!-- ======= ใบปิดบัญชี (รูปภาพ) ======= -->
+  <div id="sheet-modal" class="modal-bg hidden">
+    <div class="sheet-box">
+      <div class="sheet-head">
+        <b>ใบปิดบัญชี</b>
+        <button id="sheet-close" class="btn-x">✕</button>
+      </div>
+      <div class="sheet-img"><img id="sheet-img" alt="ใบปิดบัญชี"></div>
+      <div id="sheet-drive" class="status wait" style="margin:10px 0 0"></div>
+      <p class="muted" style="margin:8px 0 0">เลื่อนดูภาพได้ • บนไอโฟนถ้าปุ่มบันทึกไม่ทำงาน ให้ <b>กดค้างที่รูป</b> แล้วเลือก "บันทึกลงในรูปภาพ"</p>
+      <div class="sheet-act">
+        <button id="sheet-save" class="btn btn-primary">💾 บันทึกรูปลงมือถือ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======= คู่มือเปิดสิทธิ์ตำแหน่ง (ขึ้นเมื่อรอพิกัดเกิน 7 วินาที) ======= -->
+  <div id="gps-modal" class="modal-bg hidden">
+    <div class="sheet-box">
+      <div class="sheet-head">
+        <b id="gps-title">วิธีเปิดสิทธิ์ตำแหน่ง</b>
+        <button id="gps-close" class="btn-x">✕</button>
+      </div>
+      <div class="status wait" style="margin:0 0 12px">ทำตามรูป และ log in อีกครั้ง</div>
+      <div class="sheet-img" id="gps-steps" style="background:#fff; padding:0"></div>
+      <div class="sheet-act"><button id="gps-done" class="btn btn-primary">เข้าใจแล้ว</button></div>
+    </div>
+  </div>
+
+  <!-- ======= HISTORY (employee) ======= -->
+  <div id="screen-history" class="hidden">
+    <header>
+      <div class="title">ประวัติการเข้างานของฉัน</div>
+      <button id="btn-history-back" class="btn-link">กลับ</button>
+    </header>
+    <div class="content">
+      <div id="hist-summary" class="muted" style="margin-bottom:10px"></div>
+      <div id="hist-list"><div class="center-load"><span class="spinner"></span> กำลังโหลด…</div></div>
+    </div>
+  </div>
+
+  <!-- ======= ส่งใบเสร็จ (ถ่ายรูปสด คล้ายเมนูเข้างาน แต่ส่งได้หลายครั้งต่อวัน) ======= -->
+  <div id="screen-receipt" class="hidden">
+    <header>
+      <div><div class="title">ส่งใบเสร็จ</div><div class="sub">ถ่ายรูปใบเสร็จส่งเข้าระบบ</div></div>
+      <button id="btn-receipt-back" class="btn-link">กลับ</button>
+    </header>
+    <div class="content">
+      <div id="rc-saved" class="status ok hidden"></div>
+
+      <!-- ขั้นที่ 1: เลือกวันที่ตรวจปล่อย (1 วันที่ = 1 รูป) -->
+      <div class="card">
+        <label>1) วันที่ตรวจปล่อย <span class="muted">(1 วันที่ = 1 รูป)</span></label>
+        <div class="row">
+          <input id="rc-date" type="date" style="margin:0">
+          <button id="rc-today" class="btn btn-ghost" style="flex:0 0 auto; width:auto; padding:0 14px; font-size:14px">วันนี้</button>
+        </div>
+        <div id="rc-datemsg" class="status wait" style="margin:12px 0 0">เลือกวันที่ตรวจปล่อยก่อน จึงจะเปิดกล้องถ่ายรูปได้</div>
+
+        <!-- วันที่นี้ส่งไปแล้ว: โชว์รูปเดิม + ปุ่มถ่ายใหม่แทน -->
+        <div id="rc-exist" class="hidden" style="margin-top:12px">
+          <div class="hist-item" style="margin-bottom:10px">
+            <img id="rc-exist-img" class="thumb" alt="ใบเสร็จที่ส่งแล้ว">
+            <div class="info">
+              <div class="top"><b>รูปที่ส่งไว้แล้ว</b></div>
+              <div class="meta" id="rc-exist-meta"></div>
+            </div>
+          </div>
+          <button id="rc-retake" class="btn btn-ghost">📷 ถ่ายใหม่แทนรูปเดิม</button>
+        </div>
+      </div>
+
+      <!-- ขั้นที่ 2: ถ่ายรูป (เปิดให้เมื่อเลือกวันที่แล้วเท่านั้น) -->
+      <div class="card hidden" id="rc-cam-card">
+        <label>2) ถ่ายรูปใบเสร็จ</label>
+        <div class="cam-wrap">
+          <video id="rc-video" autoplay playsinline muted></video>
+          <canvas id="rc-canvas" class="hidden"></canvas>
+          <div class="cam-hint" id="rc-hint">กำลังเปิดกล้อง…</div>
+        </div>
+        <p class="muted" style="text-align:center;margin:10px 0 0">📷 วางใบเสร็จให้เห็นครบทั้งใบและอ่านตัวเลขได้ชัด แล้วกดส่ง ระบบจะถ่ายรูปทันที</p>
+        <button id="rc-camera" class="btn btn-ghost hidden" style="margin-top:10px">เปิดกล้องอีกครั้ง</button>
+      </div>
+
+      <div class="card">
+        <div class="info-line">
+          <div class="ico">📍</div>
+          <div style="flex:1">
+            <div class="lbl">ตำแหน่งปัจจุบัน</div>
+            <div class="val" id="rc-loc">กำลังหาตำแหน่ง…</div>
+            <div class="muted" id="rc-acc"></div>
+          </div>
+        </div>
+        <button id="rc-loc-allow" class="btn btn-ghost hidden" style="margin:8px 0">📖 ดูวิธีเปิดสิทธิ์ตำแหน่ง</button>
+        <div id="rc-loc-help" class="status wait hidden"></div>
+        <label style="margin-top:12px">หมายเหตุ (ไม่บังคับ)</label>
+        <input id="rc-note" type="text" placeholder="เช่น เลข BL / รายการที่จ่าย" maxlength="300">
+      </div>
+
+      <div class="card">
+        <div id="rc-status" class="status wait">เลือกวันที่ตรวจปล่อยก่อน</div>
+        <button id="rc-send" class="btn btn-primary" disabled>📤 ส่งใบเสร็จ</button>
+        <p class="muted" style="text-align:center;margin:12px 0 0">1 วันที่ตรวจปล่อย ส่งได้ 1 รูป • เวลาและตำแหน่งบันทึกอัตโนมัติ แก้ไขไม่ได้</p>
+      </div>
+
+      <h3 style="margin:18px 2px 10px; font-size:16px">ใบเสร็จที่ส่งล่าสุด</h3>
+      <div id="rc-list"><div class="muted" style="padding:10px">—</div></div>
+    </div>
+  </div>
+
+</div>
+<div id="toast" class="toast hidden"></div>
+
+<script>
+/* API อยู่โดเมนเดียวกับหน้าเว็บ — Fastify ให้บริการทั้ง frontend และ backend */
+var API_URL = '/api';
+
+// ---------- state ----------
+var state = { token:null, user:null, photo:null, loc:null, watchId:null, stream:null, policy:null,
+              camReady:false, rcReady:false, blocked:false };
+var $ = function(id){ return document.getElementById(id); };
+
+// ---------- ROLE & DEVICE ----------
+// manager / employee-office  : เข้างานจากคอมพิวเตอร์ Windows เท่านั้น ใช้แค่ตำแหน่ง ไม่ต้องถ่ายรูป
+// employee-shipping          : เข้างานจากคอมพิวเตอร์ Windows ไม่ได้ ต้องเปิดกล้องเห็นภาพก่อนกดเข้างาน
+var ROLE_TH = {
+  admin:'ผู้ดูแลระบบ', manager:'ผู้จัดการ',
+  'employee-office':'พนักงานสำนักงาน', 'employee-shipping':'พนักงานจัดส่ง'
+};
+
+// เซิร์ฟเวอร์ส่ง policy มากับข้อมูลผู้ใช้ — เผื่อ backend ยังไม่ได้ deploy เวอร์ชันใหม่ ให้เดาจาก role แทน
+function policyOf(user){
+  if(user && user.policy) return user.policy;
+  var r=String((user&&user.role)||'').trim().toLowerCase();
+  if(r==='manager'||r==='employee-office') return { canCheckin:true, device:'windows', photo:false };
+  if(r==='admin') return { canCheckin:false, device:'any', photo:false };
+  return { canCheckin:true, device:'mobile', photo:true };   // employee เดิม = employee-shipping
+}
+
+// userAgentData.platform เชื่อถือได้กว่าและ Chromium ให้ค่านี้โดยไม่ต้องขอสิทธิ์ — ไม่มีค่อยถอยไปดู userAgent
+function isWindowsDevice(){
+  var d=navigator.userAgentData;
+  if(d && d.platform) return String(d.platform).toLowerCase().indexOf('windows')>=0;
+  var ua=navigator.userAgent||'';
+  return /Windows NT/i.test(ua) && !/Windows Phone/i.test(ua);
+}
+
+// ---------- helpers ----------
+function show(screen){
+  ['login','checkin','success','report','history','claim','settle','receipt'].forEach(function(s){
+    $('screen-'+s).classList.toggle('hidden', s!==screen);
+  });
+}
+function toast(msg, ms){
+  var t=$('toast'); t.textContent=msg; t.classList.remove('hidden');
+  clearTimeout(toast._t); toast._t=setTimeout(function(){ t.classList.add('hidden'); }, ms||2500);
+}
+function saveSession(){
+  try { localStorage.setItem('ci_sess', JSON.stringify({token:state.token, user:state.user})); } catch(e){}
+}
+function loadSession(){
+  try { var s=JSON.parse(localStorage.getItem('ci_sess')||'null'); if(s&&s.token){ state.token=s.token; state.user=s.user; return true; } } catch(e){}
+  return false;
+}
+function clearSession(){ try{ localStorage.removeItem('ci_sess'); }catch(e){} state.token=null; state.user=null; }
+
+// เรียก API โดเมนเดียวกัน จึงใช้ JSON มาตรฐานได้โดยไม่มี CORS
+function api(payload){
+  payload = payload || {};
+  return fetch(API_URL, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json;charset=utf-8' },
+    body: JSON.stringify(payload)
+  }).then(function(r){ return r.json(); });
+}
+
+// ---- อัปโหลดรูปใหญ่ ----
+// รูปใบปิดบัญชี (PNG ~4,000px) และสลิปความละเอียดสูง มีขนาดเกินลิมิต 4.5 MB
+// ที่เซิร์ฟเวอร์รับได้ต่อ 1 request จึงต้องอัปตรงไปที่พื้นที่เก็บไฟล์แทนการส่งผ่าน API
+// (รูปเข้างาน/ใบเสร็จตัวเล็ก ยังส่งผ่าน API ตามเดิม)
+function dataUrlToBlob(dataUrl){
+  var parts = String(dataUrl||'').split(',');
+  var mime = (/data:([^;]+)/.exec(parts[0]) || [])[1] || 'image/jpeg';
+  var bin = atob(parts[1] || '');
+  var buf = new Uint8Array(bin.length);
+  for(var i=0;i<bin.length;i++) buf[i] = bin.charCodeAt(i);
+  return new Blob([buf], { type:mime });
+}
+
+// ขอที่อยู่สำหรับอัป → ส่งไฟล์ขึ้นตรง ๆ → คืน key ให้เอาไปบันทึกต่อ
+// opts = { purpose:'settlement'|'slip', id?, expectDate? }
+function uploadLarge(blob, opts){
+  var payload = { action:'signUpload', token:state.token, purpose:opts.purpose };
+  if(opts.id) payload.id = opts.id;
+  if(opts.expectDate) payload.expectDate = opts.expectDate;
+  return api(payload).then(function(res){
+    if(!res.ok) throw res;
+    return fetch(res.uploadUrl, {
+      method:'PUT',
+      headers:{ 'Content-Type': blob.type || 'application/octet-stream' },
+      body: blob
+    }).then(function(r){
+      if(!r.ok) throw { ok:false, error:'upload_failed', detail:'HTTP '+r.status };
+      return res;                      // { key, url, fileId }
+    });
+  });
+}
+
+var ERR_TH = {
+  invalid_credentials:'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง',
+  missing_credentials:'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน',
+  account_disabled:'บัญชีนี้ถูกปิดใช้งาน',
+  no_location:'ยังไม่พบตำแหน่ง GPS',
+  no_photo:'ยังไม่ได้ถ่ายรูป',
+  location_inaccurate:'สัญญาณ GPS ยังไม่แม่นพอ กรุณารอสักครู่แล้วลองใหม่',
+  session_expired:'หมดเวลาการเข้าสู่ระบบ กรุณาเข้าสู่ระบบใหม่',
+  invalid_token:'เซสชันไม่ถูกต้อง กรุณาเข้าสู่ระบบใหม่',
+  forbidden:'สิทธิ์ไม่เพียงพอ',
+  already_checked_in:'วันนี้คุณเช็คชื่อเข้างานไปแล้ว',
+  windows_required:'สิทธิ์ของคุณเข้างานได้จากคอมพิวเตอร์ Windows เท่านั้น',
+  mobile_required:'สิทธิ์ของคุณเข้างานผ่านคอมพิวเตอร์ Windows ไม่ได้ กรุณาใช้โทรศัพท์มือถือ',
+  checkin_not_allowed:'บัญชีนี้ไม่มีสิทธิ์เช็คชื่อเข้างาน',
+  missing_inspect_date:'กรุณาเลือกวันที่ตรวจปล่อย',
+  invalid_containers:'กรุณาระบุจำนวนตู้ (อย่างน้อย 1 ตู้)',
+  no_claim_items:'กรุณาเลือกค่าใช้จ่ายอย่างน้อย 1 รายการ',
+  claim_not_found:'ไม่พบใบเบิกนี้ (อาจถูกลบไปแล้ว)',
+  claim_date_exists:'วันที่ตรวจปล่อยนี้ทำใบเบิกไว้แล้ว (เบิกได้วันละ 1 ใบ) — แก้ใบเดิมจากประวัติด้านล่าง ถ้าไม่เห็นแสดงว่าปิดบัญชีไปแล้ว',
+  claim_edit_limit:'ใบเบิกนี้แก้ไขครบ 5 ครั้งแล้ว แก้เพิ่มไม่ได้ — แจ้งผู้ดูแลระบบให้แก้ในชีตแทน',
+  bad_request:'ข้อมูลไม่ครบถ้วน',
+  no_settle_rows:'ยังไม่มีรายการ BL ให้ปิดบัญชี',
+  settlement_not_found:'ไม่พบใบปิดบัญชีนี้',
+  transport_sheet_unavailable:'ยังไม่พบข้อมูลงานขนส่ง — แจ้งผู้ดูแลให้นำเข้าไฟล์ CSV',
+  transport_sheet_not_set:'ยังไม่ได้นำเข้าข้อมูลงานขนส่ง',
+  settle_folder_unavailable:'เปิดพื้นที่เก็บรูปบนเซิร์ฟเวอร์ไม่ได้ — แจ้งผู้ดูแล',
+  settle_folder_not_set:'ยังไม่ได้ตั้งค่าโฟลเดอร์เก็บรูปใบปิดบัญชี',
+  settle_image_save_failed:'บันทึกไฟล์รูปบนเซิร์ฟเวอร์ไม่สำเร็จ',
+  receipt_not_allowed:'บัญชีนี้ไม่มีสิทธิ์ส่งใบเสร็จ (เฉพาะพนักงานจัดส่ง)',
+  receipt_photo_save_failed:'บันทึกรูปใบเสร็จบนเซิร์ฟเวอร์ไม่สำเร็จ — ลองส่งอีกครั้ง',
+  receipt_date_exists:'วันที่ตรวจปล่อยนี้ส่งใบเสร็จไปแล้ว (1 วันที่ = 1 รูป) — กด "ถ่ายใหม่แทนรูปเดิม" ถ้าต้องการเปลี่ยนรูป',
+  returned_date_required:'ต้องเลือกวันที่โอนคืนบริษัทก่อน',
+  slip_required:'ต้องแนบสลิปโอนเงินคืนบริษัทก่อน',
+  slip_mismatch:'สลิปไม่ตรงกับยอด/วันที่ที่ต้องโอนคืน',
+  slip_unreadable:'อ่านข้อมูลในสลิปไม่ออก — ถ่าย/แคปสลิปให้ชัดแล้วแนบใหม่',
+  slip_recheck_required:'ยอดหรือวันที่เปลี่ยนไปจากสลิปเดิม — แนบสลิปใหม่ให้ตรงก่อน',
+  slip_txn_duplicate:'สลิปใบนี้ (เลขที่รายการเดิม) ถูกใช้กับใบปิดบัญชีอื่นไปแล้ว',
+  slip_not_verified:'ยังไม่ได้ตรวจสลิปใบนี้ — แนบสลิปใหม่อีกครั้ง',
+  slip_not_found:'ไม่พบไฟล์สลิปในระบบ — แนบใหม่อีกครั้ง',
+  upload_failed:'อัปโหลดรูปไม่สำเร็จ — ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่',
+  upload_missing:'รูปที่อัปโหลดหายไประหว่างทาง — ลองใหม่อีกครั้ง',
+  slip_not_required:'ใบนี้ไม่ต้องโอนคืนบริษัท จึงไม่ต้องแนบสลิป',
+  slip_save_failed:'บันทึกไฟล์สลิปบนเซิร์ฟเวอร์ไม่สำเร็จ',
+  slip_folder_unavailable:'เปิดพื้นที่เก็บสลิปไม่ได้ — แจ้งผู้ดูแล',
+  slip_manual_not_allowed:'สลิปนี้ระบบอ่านได้อยู่แล้ว ไม่ต้องกรอกเอง',
+  slip_ocr_unavailable:'ยังไม่ได้ตั้งค่าบริการ OCR — กรุณากรอกค่าจากสลิปเอง',
+  slip_ocr_scope:'บริการ OCR ยังไม่ได้รับสิทธิ์ — แจ้งผู้ดูแลระบบ',
+  slip_ocr_rate:'บริการ OCR เต็มชั่วคราว — รอสักครู่แล้วลองอีกครั้ง',
+  slip_ocr_failed:'อ่านสลิปไม่สำเร็จ',
+  slip_ocr_empty:'อ่านข้อความจากรูปสลิปไม่ได้',
+};
+function errTH(code){ return ERR_TH[code] || ('เกิดข้อผิดพลาด: '+code); }
+
+// ---------- LOGIN ----------
+$('btn-login').addEventListener('click', doLogin);
+$('in-pass').addEventListener('keydown', function(e){ if(e.key==='Enter') doLogin(); });
+
+function doLogin(){
+  var u=$('in-user').value.trim(), p=$('in-pass').value;
+  var st=$('login-status');
+  st.classList.add('hidden');
+  if(!u||!p){ st.textContent='กรุณากรอกชื่อผู้ใช้และรหัสผ่าน'; st.classList.remove('hidden'); return; }
+  if(API_URL.indexOf('PASTE_')===0){ st.textContent='ยังไม่ได้ตั้งค่า API_URL ในไฟล์ index.html'; st.classList.remove('hidden'); return; }
+  var btn=$('btn-login'); btn.disabled=true; btn.textContent='กำลังเข้าสู่ระบบ…';
+  api({action:'login', username:u, password:p, device:navigator.userAgent}).then(function(res){
+    btn.disabled=false; btn.textContent='เข้าสู่ระบบ';
+    if(!res.ok){ st.textContent=errTH(res.error); st.classList.remove('hidden'); return; }
+    state.token=res.token; state.user=res.user;
+    if(state.user.role==='admin' || state.user.role==='manager'){
+      try { localStorage.setItem('admin_sess', JSON.stringify({token:state.token, user:state.user})); } catch(e){}
+      window.location.href = 'admin.html';
+      return;
+    }
+    saveSession();
+    enterApp();
+  }).catch(function(e){
+    btn.disabled=false; btn.textContent='เข้าสู่ระบบ';
+    st.textContent='เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ตรวจสอบ API_URL / อินเทอร์เน็ต'; st.classList.remove('hidden');
+  });
+}
+
+// ---------- ENTER APP ----------
+function enterApp(){
+  state.policy = policyOf(state.user);
+  // เคลียร์สถานะหน้าจอของผู้ใช้คนก่อน (เผื่อออกจากระบบแล้วเข้าใหม่ด้วยสิทธิ์คนละแบบ)
+  state.blocked=false; state.checkedInToday=false; state.lastRecord=null; state.photo=null;
+  $('device-block').classList.add('hidden');
+  $('loc-card').classList.remove('hidden');
+  $('ci-actions').classList.remove('hidden');
+  $('btn-camera').classList.add('hidden');
+  $('hi-name').textContent = 'สวัสดี, ' + (state.user.name||state.user.username);
+  $('hi-role').textContent = ROLE_TH[state.user.role] || 'พนักงาน';
+  $('btn-goreport').classList.toggle('hidden', state.user.role!=='admin');
+  // เมนูการเบิก + ส่งใบเสร็จ — เฉพาะพนักงานจัดส่ง (ปุ่มปิดบัญชีอยู่ในรายการประวัติการเบิก ทีละใบ)
+  $('btn-goclaim').classList.toggle('hidden', state.user.role!=='employee-shipping');
+  $('btn-goreceipt').classList.toggle('hidden', state.user.role!=='employee-shipping');
+  // role ที่ไม่ต้องถ่ายรูป ไม่ต้องเห็นการ์ดกล้องเลย
+  $('cam-card').classList.toggle('hidden', !state.policy.photo);
+  $('ci-foot').textContent = state.policy.photo
+    ? 'พิกัด เวลา และรูป ถูกบันทึกอัตโนมัติ แก้ไขไม่ได้'
+    : 'พิกัดและเวลา ถูกบันทึกอัตโนมัติ แก้ไขไม่ได้';
+  show('checkin');
+  startClock();
+
+  if(!checkDevice()) return;   // อุปกรณ์ไม่ตรงเงื่อนไข — ขึ้นคำเตือนแล้วไม่ต้องเปิดกล้อง/GPS
+
+  api({action:'todayStatus', token:state.token}).then(function(res){
+    if(res.ok && res.checkedIn){
+      state.checkedInToday = true;
+      state.lastRecord = res.record;
+      showAlreadyCheckedIn(res.record);
+    } else {
+      startCheckinInputs();
+    }
+  }).catch(function(){
+    // เช็คสถานะไม่สำเร็จ — เปิดหาตำแหน่งตามปกติ เซิร์ฟเวอร์จะกันเช็คชื่อซ้ำอีกชั้นอยู่แล้ว
+    startCheckinInputs();
+  });
+}
+
+// เปิดแหล่งข้อมูลที่ต้องใช้ตอนเข้างาน — GPS เสมอ ส่วนกล้องเปิดค้างไว้ให้เห็นภาพก่อนกด (เฉพาะพนักงานจัดส่ง)
+function startCheckinInputs(){
+  startLocation();
+  if(state.policy.photo) startCamera().catch(function(){});
+  refreshReady();
+}
+
+// ---------- DEVICE GATE ----------
+function checkDevice(){
+  if(!state.policy.canCheckin){
+    blockDevice('🚫','บัญชีนี้ไม่มีเมนูเข้างาน','บัญชีของคุณใช้สำหรับดูแลระบบเท่านั้น ไม่ต้องเช็คชื่อเข้างาน');
+    return false;
+  }
+  var win = isWindowsDevice();
+  if(state.policy.device==='windows' && !win){
+    blockDevice('💻','ต้องเข้างานผ่านคอมพิวเตอร์ Windows',
+      'สิทธิ์ของคุณกำหนดให้กดเข้างานได้จากคอมพิวเตอร์ระบบปฏิบัติการ Windows เท่านั้น กรุณาเปิดหน้านี้จากคอมพิวเตอร์ที่ทำงาน');
+    return false;
+  }
+  if(state.policy.device==='mobile' && win){
+    blockDevice('📱','ต้องเข้างานผ่านโทรศัพท์มือถือ',
+      'สิทธิ์ของคุณกดเข้างานผ่านคอมพิวเตอร์ Windows ไม่ได้ กรุณาเปิดหน้านี้จากโทรศัพท์มือถือของคุณ');
+    return false;
+  }
+  return true;
+}
+
+function blockDevice(icon, title, msg){
+  state.blocked = true;
+  stopCamera();
+  if(state.watchId!=null){ navigator.geolocation.clearWatch(state.watchId); state.watchId=null; }
+  $('db-icon').textContent=icon; $('db-title').textContent=title; $('db-msg').textContent=msg;
+  $('device-block').classList.remove('hidden');
+  $('cam-card').classList.add('hidden');
+  $('loc-card').classList.add('hidden');
+  $('ci-actions').classList.add('hidden');
+}
+
+// ---------- เช็คชื่อวันนี้ไปแล้ว (จำกัดเข้างานได้วันละ 1 ครั้ง) ----------
+function showAlreadyCheckedIn(rec){
+  stopCamera();
+  if(state.watchId!=null){ navigator.geolocation.clearWatch(state.watchId); state.watchId=null; }
+  $('ci-status').className='status ok';
+  $('ci-status').textContent = 'คุณเช็คชื่อเข้างานวันนี้แล้ว' + (rec&&rec.time ? (' เวลา '+fmtDT(rec.time)) : '');
+  $('cam-card').classList.add('hidden');    // เช็คชื่อแล้ว ไม่ต้องเปิดกล้องค้างไว้
+  $('btn-camera').classList.add('hidden');
+  $('btn-checkin').disabled = true;
+}
+
+// กลับเข้าหน้าเช็คชื่อจากหน้าอื่น — เปิด GPS/กล้อง ตามสถานะล่าสุด
+function resumeCheckin(){
+  show('checkin');
+  if(state.blocked) return;
+  if(state.checkedInToday){ showAlreadyCheckedIn(state.lastRecord); return; }
+  startCheckinInputs();
+}
+
+// ---------- CLOCK ----------
+function startClock(){
+  function tick(){
+    var d=new Date();
+    var pad=function(n){ return (n<10?'0':'')+n; };
+    $('clock').textContent = pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());
+    $('date').textContent = d.toLocaleDateString('th-TH-u-ca-gregory',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+    $('time-val').textContent = fmtDT(d);
+  }
+  tick(); clearInterval(startClock._t); startClock._t=setInterval(tick,1000);
+}
+
+// ---------- CAMERA (เปิดค้างไว้ให้เห็นภาพก่อนกดปุ่ม แล้วถ่ายสดตอนกด) ----------
+// ใช้ร่วมกัน 2 หน้าจอ: เข้างาน (CAM_CI) และส่งใบเสร็จ (CAM_RC) — เปิดได้ทีละหน้าจอเท่านั้น
+// (กล้องมีสตรีมเดียว state.stream การเปลี่ยนหน้าจอจะ stopCamera() ก่อนเสมอ)
+var CAM_CI = { video:'video',    canvas:'canvas',    hint:'cam-hint', retry:'btn-camera',
+               flag:'camReady', hintReady:'ตรวจดูภาพให้ชัดเจน แล้วกดเข้างาน', wide:false };
+var CAM_RC = { video:'rc-video', canvas:'rc-canvas', hint:'rc-hint',  retry:'rc-camera',
+               flag:'rcReady',  hintReady:'วางใบเสร็จให้เต็มกรอบ แล้วกดส่งใบเสร็จ', wide:true };
+
+// คืนค่าเป็น Promise ที่ resolve เมื่อกล้องมีภาพจริง ๆ แล้ว (พร้อมถ่าย)
+function startCameraOn(c){
+  var video=$(c.video), hint=$(c.hint), retry=$(c.retry);
+  stopCamera();
+  state[c.flag]=false; retry.classList.add('hidden'); camStateChanged();
+  return new Promise(function(resolve, reject){
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      hint.textContent='อุปกรณ์นี้ไม่รองรับกล้อง';
+      retry.classList.remove('hidden');
+      reject(new Error('unsupported'));
+      return;
+    }
+    hint.textContent='กำลังเปิดกล้อง…';
+    // ใบเสร็จต้องอ่านตัวเลขออก จึงขอความละเอียดสูงกว่ารูปเข้างาน
+    var size = c.wide ? { width:{ ideal:1920 }, height:{ ideal:1080 } } : { width:{ ideal:640 }, height:{ ideal:480 } };
+    navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:'environment' }, width:size.width, height:size.height }, audio:false })
+      .then(function(stream){
+        state.stream=stream; video.srcObject=stream;
+        $(c.canvas).classList.add('hidden'); video.classList.remove('hidden');
+        hint.textContent=c.hintReady;
+        var ready=function(){ state[c.flag]=true; camStateChanged(); resolve(); };
+        if(video.readyState >= 2){ ready(); }
+        else { video.onloadeddata = ready; }
+      }).catch(function(e){
+        hint.textContent='เปิดกล้องไม่ได้ — อนุญาตสิทธิ์กล้อง แล้วกดเปิดกล้องอีกครั้ง';
+        retry.classList.remove('hidden');
+        state[c.flag]=false; camStateChanged();
+        reject(e);
+      });
+  });
+}
+function startCamera(){ return startCameraOn(CAM_CI); }
+function stopCamera(){
+  if(state.stream){ state.stream.getTracks().forEach(function(t){t.stop();}); state.stream=null; }
+  state.camReady=false; state.rcReady=false;
+}
+// สถานะกล้อง/ตำแหน่งเปลี่ยน = อัปเดตปุ่มของทั้งสองหน้าจอ (หน้าที่ซ่อนอยู่ไม่มีผลอะไร)
+function camStateChanged(){ refreshReady(); rcRefresh(); }
+$('btn-camera').addEventListener('click', function(){ startCamera().catch(function(){}); });
+
+// ถ่ายภาพจากกล้องสด ณ วินาทีที่กดปุ่ม (แก้ไข/เลือกรูปเก่าไม่ได้)
+function captureFrame(videoEl, canvasEl, maxW, quality){
+  var video=videoEl||$('video'), canvas=canvasEl||$('canvas');
+  if(!state.stream) return null;
+  var vw=video.videoWidth||640, vh=video.videoHeight||480;
+  var scale=Math.min(1, (maxW||480)/vw);         // ย่อรูปให้เล็ก อัปโหลด/บันทึกเร็วขึ้น
+  var w=Math.round(vw*scale), h=Math.round(vh*scale);
+  canvas.width=w; canvas.height=h;
+  canvas.getContext('2d').drawImage(video,0,0,w,h);
+  return canvas.toDataURL('image/jpeg', quality||0.55);   // เข้างาน 0.55 = ไฟล์เล็กลงมาก
+}
+
+// ---------- LOCATION ----------
+// valId/accId = ช่องที่จะแสดงผล (ค่าเริ่มต้นเป็นของหน้าเข้างาน) — state.loc ใช้ร่วมกันทุกหน้าจอ
+// รอพิกัดเกิน 7 วินาที (หรือเบราว์เซอร์ถูกตั้งเป็นปฏิเสธไว้) = ขึ้นปุ่ม "ดูวิธีเปิดสิทธิ์ตำแหน่ง"
+// เปิดคู่มือเป็นรูปจากหน้าตั้งค่าของเครื่องจริง แยกตามเบราว์เซอร์ที่ใช้ (Safari / Chrome)
+// ไม่มีการวนขอสิทธิ์ซ้ำ ๆ อีก — iOS จะไม่เด้งกล่องถามอีกเลยถ้าเคยกดปฏิเสธ ต้องไปเปิดในตั้งค่าเท่านั้น
+// (แต่ยังจับสัญญาณ watchPosition ไว้ และลองอ่านพิกัดอีกครั้งตอนกลับมาที่หน้านี้)
+var LOC_WAIT_MS = 7000;
+
+/* ★ รูปคู่มือเปิดสิทธิ์ตำแหน่ง — วางไฟล์รูปไว้โฟลเดอร์เดียวกับ index.html
+   ถ้าเก็บที่อื่นให้ใส่ URL เต็มแทน (เช่น 'https://.../apps_safari_gps.jpg')
+   นามสกุลอื่นก็ได้ ระบบจะลอง .jpg แล้ว .png ให้เอง ★ */
+var GPS_GUIDE = {
+  // เข้าผ่านคอม (ผู้จัดการ / พนักงานสำนักงาน) — เปิดสิทธิ์ที่ไอคอนข้างช่อง URL ของเบราว์เซอร์เอง
+  desktop: [
+    { file:'desktop_gps', cap:'1) กดไอคอนหน้าชื่อเว็บ (ซ้ายช่อง URL) → 2) เปิดสวิตช์ "ตำแหน่ง" ให้เป็นสีน้ำเงิน แล้วเข้าระบบใหม่อีกครั้ง' }
+  ],
+  safari: [
+    { file:'apps_safari_gps',    cap:'1) ตั้งค่า → แอป → Safari → ตำแหน่ง → เลือก "อนุญาต"' },
+    { file:'privacy_safari_gps', cap:'2) ตั้งค่า → ความเป็นส่วนตัวและความปลอดภัย → บริการหาตำแหน่งที่ตั้ง → เว็บไซต์ Safari → "ในระหว่างใช้แอป" (เปิดตำแหน่งที่ตั้งจริงด้วย)' }
+  ],
+  chrome: [
+    { file:'apps_chrome_gps',    cap:'1) ตั้งค่า → แอป → Chrome → ตำแหน่งที่ตั้ง → "ในระหว่างใช้แอป"' },
+    { file:'privacy_chrome_gps', cap:'2) ตั้งค่า → ความเป็นส่วนตัวและความปลอดภัย → บริการหาตำแหน่งที่ตั้ง → Chrome → "ในระหว่างใช้แอป" (เปิดตำแหน่งที่ตั้งจริงด้วย)' }
+  ]
+};
+
+// เบราว์เซอร์ที่ใช้อยู่ (Chrome บน iOS ใช้ CriOS) — ตัดสินว่าจะโชว์คู่มือชุดไหน
+function browserKind(){
+  var ua=String(navigator.userAgent||'');
+  if(/Edg|EdgiOS|OPR|OPiOS|FxiOS|Firefox/i.test(ua)) return 'safari';   // เบราว์เซอร์อื่นบน iOS ใช้ขั้นตอนเดียวกับ Safari
+  return /CriOS|Chrome|Chromium/i.test(ua) ? 'chrome' : 'safari';
+}
+
+// เข้าผ่านคอม (role ที่เช็คชื่อจากคอมพิวเตอร์) ใช้คู่มืออีกชุด — เปิดสิทธิ์จากไอคอนข้างช่อง URL ไม่ใช่ตั้งค่าของเครื่อง
+function isDesktopDevice(){
+  if(isWindowsDevice()) return true;
+  return !/Android|iPhone|iPad|iPod|Mobile/i.test(String(navigator.userAgent||''));
+}
+
+function gpsGuideKind(){ return isDesktopDevice() ? 'desktop' : browserKind(); }
+
+function locTargets(valId, accId){
+  var v=valId||'loc-val';
+  return {
+    val: $(v), acc: $(accId||'loc-acc'),
+    btn: $(v==='rc-loc' ? 'rc-loc-allow' : 'btn-loc-allow'),
+    help: $(v==='rc-loc' ? 'rc-loc-help' : 'loc-help')
+  };
+}
+
+function startLocation(valId, accId){
+  var t=locTargets(valId, accId);
+  state.locTarget={ val:valId||'loc-val', acc:accId||'loc-acc' };
+  if(t.btn) t.btn.classList.add('hidden');
+  if(t.help) t.help.classList.add('hidden');
+  if(!navigator.geolocation){ t.val.textContent='อุปกรณ์ไม่รองรับ GPS'; return; }
+
+  t.val.textContent='กำลังหาตำแหน่ง…';
+  if(state.watchId!=null) navigator.geolocation.clearWatch(state.watchId);
+  state.watchId = navigator.geolocation.watchPosition(function(pos){
+    onLocationFix(pos, t);
+  }, function(err){
+    t.val.textContent='หาตำแหน่งไม่ได้ — เปิด GPS และอนุญาตสิทธิ์ตำแหน่ง';
+    t.acc.textContent='';
+    showLocGuideBtn(t, err);            // ปฏิเสธ/หาไม่เจอ = ให้ดูคู่มือเปิดสิทธิ์
+  }, { enableHighAccuracy:true, timeout:20000, maximumAge:0 });
+
+  // เคยกดปฏิเสธไว้ = เบราว์เซอร์ไม่ถามอีกแล้ว ขึ้นปุ่มคู่มือทันที ไม่ต้องรอครบ 7 วินาที
+  if(navigator.permissions && navigator.permissions.query){
+    try {
+      navigator.permissions.query({ name:'geolocation' }).then(function(p){
+        if(p.state==='denied' && !state.loc) showLocGuideBtn(t, { code:1 });
+        // เพิ่งไปเปิดสิทธิ์ในตั้งค่ามา = อ่านพิกัดให้ทันที
+        p.onchange=function(){ if(p.state==='granted' && !state.loc) locTryOnce(t); };
+      }).catch(function(){});
+    } catch(e){}
+  }
+
+  // รอ 7 วินาทีแล้วยังไม่ได้พิกัด = ขึ้นปุ่มให้กดดูคู่มือ
+  clearTimeout(startLocation._t);
+  startLocation._t=setTimeout(function(){
+    if(!state.loc) showLocGuideBtn(t, null);
+  }, LOC_WAIT_MS);
+
+  locHookVisible();
+}
+
+// อ่านพิกัดครั้งเดียวแบบเงียบ ๆ (ใช้ตอนกลับมาที่หน้านี้ / สิทธิ์เปลี่ยนเป็นอนุญาต)
+function locTryOnce(t){
+  if(state.loc || !navigator.geolocation) return;
+  var tt=t||locTargets(state.locTarget && state.locTarget.val, state.locTarget && state.locTarget.acc);
+  navigator.geolocation.getCurrentPosition(function(pos){ onLocationFix(pos, tt); },
+    function(){}, { enableHighAccuracy:true, timeout:15000, maximumAge:0 });
+}
+
+// กลับมาที่หน้านี้ (เช่น เพิ่งไปเปิดสิทธิ์ในตั้งค่าเครื่องมา) = ลองอ่านพิกัดอีกครั้ง
+function locHookVisible(){
+  if(locHookVisible._done || !document.addEventListener) return;
+  locHookVisible._done=true;
+  document.addEventListener('visibilitychange', function(){
+    if(!document.hidden && !state.loc) locTryOnce();
+  });
+}
+
+function onLocationFix(pos, t){
+  state.loc={ lat:pos.coords.latitude, lng:pos.coords.longitude, accuracy:pos.coords.accuracy };
+  clearTimeout(startLocation._t);
+  var tt = t || locTargets(state.locTarget && state.locTarget.val, state.locTarget && state.locTarget.acc);
+  if(tt.val) tt.val.textContent = pos.coords.latitude.toFixed(6)+', '+pos.coords.longitude.toFixed(6);
+  if(tt.acc) tt.acc.textContent = 'ความแม่นยำ ± '+Math.round(pos.coords.accuracy)+' ม.';
+  if(tt.btn) tt.btn.classList.add('hidden');
+  if(tt.help) tt.help.classList.add('hidden');
+  camStateChanged();
+}
+
+// โชว์ปุ่ม "ดูวิธีเปิดสิทธิ์ตำแหน่ง" + บอกสั้น ๆ ว่าให้ทำอะไร
+function showLocGuideBtn(t, err){
+  if(state.loc || !t.btn) return;
+  t.btn.classList.remove('hidden');
+  if(!t.help) return;
+  t.help.className='status wait';
+  t.help.textContent = (err && err.code===1)
+    ? 'เบราว์เซอร์ถูกตั้งเป็น "ปฏิเสธตำแหน่ง" ไว้ — กดปุ่มด้านบนดูวิธีเปิดสิทธิ์ แล้วเข้าระบบใหม่'
+    : 'ยังไม่ได้พิกัด — กดปุ่มด้านบนดูวิธีเปิดสิทธิ์ตำแหน่ง แล้วเข้าระบบใหม่';
+  t.help.classList.remove('hidden');
+}
+
+// ---- คู่มือเปิดสิทธิ์ตำแหน่ง (รูปจากหน้าตั้งค่าของเครื่อง แยกตามเบราว์เซอร์) ----
+var GPS_GUIDE_NAME = { desktop:'คอมพิวเตอร์', chrome:'Chrome', safari:'Safari' };
+function openGpsGuide(){
+  var kind=gpsGuideKind();
+  var steps=GPS_GUIDE[kind]||GPS_GUIDE.safari;
+  $('gps-title').textContent='วิธีเปิดสิทธิ์ตำแหน่ง ('+(GPS_GUIDE_NAME[kind]||'Safari')+')';
+  $('gps-steps').innerHTML = steps.map(function(s){
+    // รูปหาไม่เจอ (ยังไม่ได้อัปไฟล์ / นามสกุลไม่ตรง) = ลอง .png แล้วค่อยเหลือแต่ข้อความขั้นตอน
+    return '<div class="gps-step">'+
+      '<div class="cap">'+esc(s.cap)+'</div>'+
+      '<img src="'+esc(s.file)+'.jpg" alt="'+esc(s.cap)+'" '+
+        'onerror="gpsImgFallback(this, \''+esc(s.file)+'\')">'+
+      '<div class="miss hidden">ไม่พบไฟล์รูป <b>'+esc(s.file)+'</b> — ทำตามข้อความด้านบนได้เลย</div>'+
+    '</div>';
+  }).join('');
+  $('gps-modal').classList.remove('hidden');
+}
+window.gpsImgFallback=function(img, file){
+  if(img.getAttribute('data-alt')!=='1'){ img.setAttribute('data-alt','1'); img.src=file+'.png'; return; }
+  img.classList.add('hidden');
+  var miss=img.parentNode && img.parentNode.querySelector('.miss');
+  if(miss) miss.classList.remove('hidden');
+};
+function closeGpsGuide(){ $('gps-modal').classList.add('hidden'); }
+
+$('btn-loc-allow').addEventListener('click', openGpsGuide);
+$('rc-loc-allow').addEventListener('click', openGpsGuide);
+$('gps-close').addEventListener('click', closeGpsGuide);
+$('gps-done').addEventListener('click', closeGpsGuide);
+
+// ---------- READY STATE ----------
+// ต้องมีตำแหน่ง GPS เสมอ — ถ้าเป็น role ที่ต้องถ่ายรูป ต้องรอให้กล้องมีภาพก่อนด้วย
+function refreshReady(){
+  if(state.checkedInToday || state.blocked) return;
+  var needCam = !!(state.policy && state.policy.photo);
+  var hasLoc = !!state.loc;
+  var ready = hasLoc && (!needCam || state.camReady);
+  var st=$('ci-status');
+  $('btn-checkin').disabled = !ready;
+  if(ready){
+    st.className='status ok';
+    st.textContent = needCam ? 'พร้อม — ตรวจดูภาพจากกล้อง แล้วกดเข้างาน ระบบจะถ่ายรูปทันที'
+                             : 'พร้อม — กดเข้างานเพื่อบันทึกเวลาและตำแหน่ง';
+  } else {
+    var wait=[];
+    if(!hasLoc) wait.push('สัญญาณตำแหน่ง');
+    if(needCam && !state.camReady) wait.push('กล้อง');
+    st.className='status wait'; st.textContent='รอ: '+wait.join(' และ ');
+  }
+}
+
+// ---------- SUBMIT ----------
+$('btn-checkin').addEventListener('click', submit);
+
+function submit(){
+  if(state.checkedInToday || state.blocked){ return; }
+  if(!state.loc){ toast('ยังไม่พบตำแหน่ง กรุณารอสักครู่'); return; }
+  var needCam = !!(state.policy && state.policy.photo);
+  var btn=$('btn-checkin');
+  var old=btn.textContent;
+  btn.disabled=true;
+
+  // พนักงานจัดส่ง: ถ่ายจากภาพสดที่เปิดค้างอยู่ ณ วินาทีที่กด (เลือกรูปเก่ามาแนบไม่ได้)
+  state.photo = null;
+  if(needCam){
+    if(!state.camReady){ btn.disabled=false; refreshReady(); toast('กล้องยังไม่พร้อม กรุณารอสักครู่'); return; }
+    var photo = captureFrame($('video'), $('canvas'), 480, 0.55);
+    if(!photo){
+      btn.disabled=false; refreshReady();
+      toast('ถ่ายรูปไม่สำเร็จ กดเปิดกล้องอีกครั้งแล้วลองใหม่');
+      return;
+    }
+    state.photo = photo;
+    stopCamera();
+  }
+
+  btn.textContent='กำลังบันทึก…';
+  $('ci-status').className='status wait'; $('ci-status').textContent='กำลังบันทึกข้อมูล…';
+  api({
+    action:'checkin', token:state.token, type:'in',
+    lat:state.loc.lat, lng:state.loc.lng, accuracy:state.loc.accuracy,
+    deviceTime:fmtDT(new Date()),
+    photo: state.photo || '', userAgent: navigator.userAgent
+  }).then(function(res){
+    btn.textContent=old;
+    if(!res.ok){
+      if(res.error==='session_expired'||res.error==='invalid_token'){ toast(errTH(res.error)); return logout(); }
+      toast(errTH(res.error));
+      if(res.error==='already_checked_in'){ state.checkedInToday=true; state.lastRecord=res.record; showAlreadyCheckedIn(res.record); return; }
+      btn.disabled=false;
+      if(needCam) startCamera().catch(function(){});   // เปิดกล้องกลับมาให้ลองใหม่ได้
+      refreshReady();
+      return;
+    }
+    state.checkedInToday = true;
+    showSuccess(res.record);
+  }).catch(function(e){
+    btn.disabled=false; btn.textContent=old;
+    if(needCam) startCamera().catch(function(){});
+    refreshReady();
+    toast('บันทึกไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต');
+  });
+}
+
+function showSuccess(rec){
+  $('suc-type').textContent = 'เข้างานแล้ว';
+  $('suc-time').textContent = fmtDT(rec.time);
+  $('suc-addr').textContent = rec.address;
+  if(state.photo){ $('suc-photo').src=state.photo; $('suc-photo').classList.remove('hidden'); }
+  else { $('suc-photo').classList.add('hidden'); }
+  state.lastRecord = rec;
+  stopCamera();
+  show('success');
+}
+$('btn-back').addEventListener('click', function(){
+  state.photo=null;
+  show('checkin');
+  showAlreadyCheckedIn(state.lastRecord);
+});
+
+// ---------- LOGOUT ----------
+$('btn-logout').addEventListener('click', logout);
+function logout(){ stopCamera(); if(state.watchId!=null) navigator.geolocation.clearWatch(state.watchId); clearSession(); state.photo=null; state.loc=null; show('login'); }
+
+// ---------- REPORT ----------
+$('btn-goreport').addEventListener('click', openReport);
+$('btn-backci').addEventListener('click', resumeCheckin);
+$('btn-refresh').addEventListener('click', loadReport);
+$('rep-search').addEventListener('input', renderReport);
+var repData=[];
+
+function openReport(){ stopCamera(); show('report'); loadReport(); }
+function loadReport(){
+  $('rep-body').innerHTML='<tr><td colspan="6"><div class="center-load"><span class="spinner"></span> กำลังโหลด…</div></td></tr>';
+  api({action:'report', token:state.token}).then(function(res){
+    if(!res.ok){
+      if(res.error==='session_expired'||res.error==='invalid_token'){ toast(errTH(res.error)); return logout(); }
+      $('rep-body').innerHTML='<tr><td colspan="6" style="color:#dc2626;padding:16px">'+errTH(res.error)+'</td></tr>'; return;
+    }
+    repData=res.rows||[]; renderReport();
+  }).catch(function(){ $('rep-body').innerHTML='<tr><td colspan="6" style="padding:16px">โหลดข้อมูลไม่ได้</td></tr>'; });
+}
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+// รองรับทั้งไฟล์ใหม่บนเซิร์ฟเวอร์และลิงก์ Drive ของประวัติเก่า
+function driveId(url){ var m=/[-\w]{25,}/.exec(url||''); return m?m[0]:''; }
+function photoThumb(url){
+  if(!url || url.indexOf('/files/')===0 || url.indexOf('drive.google.com')<0) return url;
+  var id=driveId(url); return id?('https://drive.google.com/thumbnail?id='+id+'&sz=w200'):url;
+}
+function renderReport(){
+  var q=$('rep-search').value.trim().toLowerCase();
+  var rows=repData.filter(function(r){
+    if(!q) return true;
+    var t=fmtDT(r.time);
+    return (r.name+' '+r.username+' '+r.address+' '+r.type+' '+t).toLowerCase().indexOf(q)>=0;
+  });
+  $('rep-summary').textContent='ทั้งหมด '+repData.length+' รายการ'+(q?(' • ตรงคำค้น '+rows.length):'');
+  if(!rows.length){ $('rep-body').innerHTML='<tr><td colspan="6" style="padding:16px" class="muted">ไม่มีข้อมูล</td></tr>'; return; }
+  var html='';
+  rows.forEach(function(r){
+    var t=r.time?fmtDT(r.time):'';
+    var isOut=String(r.type).indexOf('เลิก')>=0;
+    var badge='<span class="badge '+(isOut?'out':'in')+'">'+esc(r.type)+'</span>';
+    var img = r.photoUrl ? '<a href="'+esc(r.photoUrl)+'" target="_blank"><img class="thumb" src="'+esc(photoThumb(r.photoUrl))+'" loading="lazy" alt="" onerror="this.style.display=\'none\'"></a>' : '—';
+    var map = r.mapLink ? '<a href="'+esc(r.mapLink)+'" target="_blank">แผนที่</a>' : '';
+    html += '<tr><td>'+img+'</td><td>'+esc(r.name)+'</td><td>'+badge+'</td><td>'+esc(t)+'</td>'+
+            '<td class="addr">'+esc(r.address)+'</td><td>'+map+'</td></tr>';
+  });
+  $('rep-body').innerHTML=html;
+}
+
+// ---------- HISTORY (ประวัติการเข้างานของตัวเอง) ----------
+$('btn-gohistory').addEventListener('click', openHistory);
+$('btn-history-back').addEventListener('click', resumeCheckin);
+
+function openHistory(){
+  stopCamera();
+  show('history');
+  loadMyCheckins();
+}
+
+function loadMyCheckins(){
+  $('hist-list').innerHTML='<div class="center-load"><span class="spinner"></span> กำลังโหลด…</div>';
+  api({action:'myCheckins', token:state.token}).then(function(res){
+    if(!res.ok){
+      if(res.error==='session_expired'||res.error==='invalid_token'){ toast(errTH(res.error)); return logout(); }
+      $('hist-summary').textContent='';
+      $('hist-list').innerHTML='<div class="muted" style="padding:10px">โหลดไม่สำเร็จ: '+esc(errTH(res.error))+'</div>';
+      return;
+    }
+    renderHistory(res.rows||[]);
+  }).catch(function(){
+    $('hist-summary').textContent='';
+    $('hist-list').innerHTML='<div class="muted" style="padding:10px">โหลดไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต</div>';
+  });
+}
+
+function renderHistory(rows){
+  $('hist-summary').textContent = rows.length ? ('ทั้งหมด '+rows.length+' รายการ (ล่าสุดก่อน)') : '';
+  if(!rows.length){ $('hist-list').innerHTML='<div class="muted" style="padding:10px">ยังไม่มีประวัติการเข้างาน</div>'; return; }
+  var html='';
+  rows.forEach(function(r){
+    var t=r.time?fmtDT(r.time):'';
+    var isOut=String(r.type).indexOf('เลิก')>=0;
+    var badge='<span class="badge '+(isOut?'out':'in')+'">'+esc(r.type)+'</span>';
+    var img=r.photoUrl?('<img class="thumb" src="'+esc(photoThumb(r.photoUrl))+'" loading="lazy" alt="" onerror="this.style.display=\'none\'">'):'<div class="thumb"></div>';
+    var map=r.mapLink?('<a href="'+esc(r.mapLink)+'" target="_blank">แผนที่</a>'):'';
+    html += '<div class="hist-item">'+
+      (r.photoUrl?('<a href="'+esc(r.photoUrl)+'" target="_blank">'+img+'</a>'):img)+
+      '<div class="info">'+
+        '<div class="top">'+badge+'<span class="meta">'+esc(t)+'</span></div>'+
+        '<div class="meta">'+esc(r.address||'')+(map?(' • '+map):'')+'</div>'+
+      '</div>'+
+    '</div>';
+  });
+  $('hist-list').innerHTML=html;
+}
+
+// ---------- CLAIM (การเบิกค่าใช้จ่าย) ----------
+// ขั้นตอน: เลือกวันที่ตรวจปล่อย → ใส่จำนวนตู้ → ติ๊กเลือกค่าใช้จ่าย → บันทึก → คัดลอกข้อความสรุป
+// อัตราต่อตู้แก้ได้เฉพาะ admin/manager (ที่หน้า admin.html) หน้านี้แสดงเป็นข้อมูลอย่างเดียว
+var claim = { cfg:[], form:null, list:[], loaded:false, lastText:'', showAll:false,
+              options:{ ports:[], sealValues:[], knockValues:[], overtime:{ perSet:400, maxSets:20 }, knockLabel:'ค่าน็อคตู้' } };
+
+function fmtM(n){
+  var v=Math.round((Number(n)||0)*100)/100;
+  var s=(v%1===0)?String(v):v.toFixed(2);
+  var p=s.split('.');
+  p[0]=p[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return p.join('.');
+}
+// รูปแบบวันที่มาตรฐานของทั้งระบบ: d/M/yyyy ค.ศ. เช่น 8/8/2026
+function fmtD(ymd){
+  var m=/^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(ymd||'').trim());
+  if(!m) return String(ymd||'—');
+  return Number(m[3])+'/'+Number(m[2])+'/'+Number(m[1]);
+}
+// วันที่ + เวลา เช่น 8/8/2026 14:22
+function fmtDT(v){
+  if(!v) return '';
+  var d=(v instanceof Date)?v:new Date(v);
+  if(isNaN(d.getTime())) return String(v);
+  var p=function(n){ return (n<10?'0':'')+n; };
+  return d.getDate()+'/'+(d.getMonth()+1)+'/'+d.getFullYear()+' '+p(d.getHours())+':'+p(d.getMinutes());
+}
+function todayYMD(){
+  var d=new Date(), p=function(x){ return (x<10?'0':'')+x; };
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+}
+function cfgOf(key){ return claim.cfg.filter(function(c){ return c.key===key; })[0]; }
+
+$('btn-goclaim').addEventListener('click', openClaim);
+$('btn-claim-back').addEventListener('click', resumeCheckin);
+
+function openClaim(){
+  stopCamera();
+  show('claim');
+  if(!claim.loaded) loadClaimConfig();
+  loadMyClaims();
+}
+
+function loadClaimConfig(){
+  api({action:'claimConfig', token:state.token}).then(function(res){
+    if(!res.ok){
+      if(res.error==='session_expired'||res.error==='invalid_token'){ toast(errTH(res.error)); return logout(); }
+      $('cl-items').innerHTML='<div class="muted" style="padding:10px">โหลดหัวข้อค่าใช้จ่ายไม่สำเร็จ: '+esc(errTH(res.error))+'</div>';
+      return;
+    }
+    claim.cfg=res.items||[]; claim.loaded=true;
+    if(res.options) claim.options=res.options;
+    newClaimForm(null);
+  }).catch(function(){
+    $('cl-items').innerHTML='<div class="muted" style="padding:10px">โหลดหัวข้อค่าใช้จ่ายไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต</div>';
+  });
+}
+
+// สร้างฟอร์มเปล่า หรือโหลดใบเบิกเดิมเข้ามาแก้ไข (rec)
+function newClaimForm(rec){
+  var f={ id:null, editCount:0, inspectDate:'', containers:1, sel:{}, orig:null };
+  claim.cfg.forEach(function(c){
+    f.sel[c.key]={
+      on:false, amount:0, note:'',
+      // qty ใช้กับ 2 แบบ: หัวข้อที่มีจำนวนตู้ของตัวเอง (EXTRA MOVEMENT) และหัวข้อที่คิดเป็นชุด (ค่าล่วงเวลา)
+      qty: c.ownQty ? 1 : (c.input==='sets' ? 1 : 0),
+      qtyAuto: !!c.ownQty,      // ยังไม่แตะปุ่มเพิ่ม/ลด = จำนวนตู้วิ่งตามจำนวนตู้ของใบเบิก
+      reasons:(c.reasons||[]).map(function(r){ return { label:r.label, amount:Number(r.rate)||0, on:false, preset:true }; })
+    };
+  });
+
+  if(rec){
+    f.id=rec.id; f.editCount=Number(rec.editCount)||0;
+    f.inspectDate=rec.inspectDate||''; f.containers=Number(rec.containers)||1;
+    (rec.items||[]).forEach(function(it){
+      var s=f.sel[it.key]; if(!s) return;
+      var c=cfgOf(it.key);
+      s.on=true; s.amount=Number(it.amount)||0; s.note=it.note||'';
+      if(c && (c.ownQty || c.input==='sets')){
+        // 0 ตู้ = ใบเดิมเป็นใบตู้เดียวที่ไม่คิด EXTRA MOVEMENT ให้ — ต้องคงไว้ ไม่ดันขึ้นเป็น 1
+        s.qty=Math.max(c.ownQty?0:1, parseInt(it.qty,10)||0);
+        s.qtyAuto=false;                      // ใบเดิมเคยระบุจำนวนไว้แล้ว ไม่ต้องวิ่งตามจำนวนตู้
+      }
+      if(it.key==='special'){
+        var chosen=(it.reasons||[]).map(function(r){ return { label:String(r.label||''), amount:Number(r.amount)||0 }; });
+        s.reasons=mergeReasons(s.reasons, chosen);
+      }
+    });
+    f.orig=claimSnapshot(rec);                // เก็บใบก่อนแก้ไว้เทียบ ตอนคัดลอก "รายการที่เพิ่ม"
+  }
+
+  claim.form=f;
+  syncOwnQty();
+  claim.showAll=false;
+  $('cl-showall').checked=false;
+  $('cl-date').value=f.inspectDate;
+  renderContainerOptions(f.containers);       // ต้องสร้างตัวเลือกก่อน ค่อยตั้งค่าที่เลือก
+  $('cl-cont').value=f.containers;
+  $('cl-mode').textContent = f.id
+    ? ('แก้ไขรายการ • แก้ไขมาแล้ว '+f.editCount+' ครั้ง (เหลืออีก '+Math.max(0, CLAIM_MAX_EDITS-f.editCount)+' ครั้ง)')
+    : 'รายการใหม่';
+  $('cl-save').textContent = f.id ? '💾 บันทึกการแก้ไข + คัดลอกรายการที่เพิ่ม' : '💾 บันทึกเบิก + คัดลอก';
+  $('cl-new').classList.toggle('hidden', !f.id);                 // ปุ่มยกเลิก มีเฉพาะตอนแก้ไขใบเดิม
+  $('cl-copy').classList.toggle('hidden', !claim.lastText);       // คัดลอกซ้ำได้ ถ้าเคยบันทึกไปแล้ว
+  $('cl-saved').classList.add('hidden');
+  renderClaimItems();
+  updateClaimLock();
+}
+
+// ภาพของใบเบิกก่อนแก้ไข (ยอดต่อหัวข้อ + ยอดต่อเหตุผลย่อย) ใช้หา "รายการที่เพิ่ม"
+function claimSnapshot(rec){
+  var snap={ items:{}, total:Number(rec.total)||0 };
+  (rec.items||[]).forEach(function(it){
+    var reasons={};
+    (it.reasons||[]).forEach(function(r){ reasons[String(r.label||'').trim()]=Number(r.amount)||0; });
+    snap.items[it.key]={ amount:Number(it.amount)||0, qty:Number(it.qty)||0, reasons:reasons };
+  });
+  return snap;
+}
+
+// จำนวนตู้ของใบเบิก = เลื่อนเลือก 1–50 ตู้ (ใบเก่าที่เกินช่วงนี้ จะถูกเติมเป็นตัวเลือกให้ ค่าเดิมจึงไม่หาย)
+var CLAIM_CONTAINER_MAX = 50;
+function renderContainerOptions(cur){
+  var n=Math.max(0, parseInt(cur,10)||0), h='';
+  for(var i=1;i<=CLAIM_CONTAINER_MAX;i++) h+='<option value="'+i+'">'+i+' ตู้</option>';
+  if(n>CLAIM_CONTAINER_MAX) h+='<option value="'+n+'">'+n+' ตู้</option>';
+  $('cl-cont').innerHTML=h;
+}
+
+// ---- ขั้นต่ำจำนวนตู้ที่เริ่มคิดให้อัตโนมัติ (เซิร์ฟเวอร์กำหนด — EXTRA MOVEMENT เริ่มที่ 2 ตู้) ----
+// ใบเบิกที่มีตู้เดียว = ไม่คิดค่า EXTRA MOVEMENT ให้เอง (ตั้งต้น 0 ตู้) แต่ยังกดปุ่ม ＋ เบิกเองได้ถ้ามีจริง
+function minCont(c){ return Math.max(0, Number(c && c.minContainers)||0); }
+function belowMinCont(c){ var m=minCont(c); return !!m && (Number(claim.form && claim.form.containers)||0) < m; }
+// จำนวนตู้ต่ำสุดของช่อง "จำนวนตู้เฉพาะหัวข้อนี้" — ปกติ 1 ตู้ ยกเว้นหัวข้อที่ใบนี้ยังไม่ถึงขั้นต่ำ (ลงถึง 0 = ไม่คิด)
+function qtyFloor(c){ return belowMinCont(c) ? 0 : 1; }
+function autoOwnQty(c){ return belowMinCont(c) ? 0 : Math.max(1, Number(claim.form.containers)||1); }
+
+// จำนวนตู้ของ EXTRA MOVEMENT ที่ยังไม่ถูกแก้เอง ให้วิ่งตามจำนวนตู้ของใบเบิก
+function syncOwnQty(){
+  var f=claim.form; if(!f) return;
+  claim.cfg.forEach(function(c){
+    if(!c.ownQty) return;
+    var s=f.sel[c.key]; if(!s) return;
+    if(s.qtyAuto) s.qty=autoOwnQty(c);
+    else s.qty=Math.max(qtyFloor(c), Number(s.qty)||0);   // แก้เองไว้แล้ว แต่ต้องไม่ต่ำกว่าขั้นต่ำของจำนวนตู้ชุดใหม่
+  });
+}
+
+// เหตุผลที่เคยบันทึกไว้ = ติ๊กไว้ให้ ส่วนเหตุผลตั้งต้นที่ไม่ได้เลือกยังคงอยู่ให้ติ๊กเพิ่มได้
+function mergeReasons(presets, chosen){
+  var out=presets.map(function(p){
+    var m=chosen.filter(function(c){ return c.label===p.label; })[0];
+    return m ? { label:p.label, amount:m.amount, on:true, preset:true } : p;
+  });
+  chosen.forEach(function(c){
+    if(!presets.some(function(p){ return p.label===c.label; })) out.push({ label:c.label, amount:c.amount, on:true, preset:false });
+  });
+  return out;
+}
+
+// ---- คำนวณ ----
+// จำนวนตู้ที่ใช้คิดของหัวข้อนี้: EXTRA MOVEMENT ใช้จำนวนของตัวเอง หัวข้ออื่นใช้จำนวนตู้ของใบเบิก
+function itemQty(c){
+  var f=claim.form, s=f&&f.sel[c.key];
+  if(!s) return 0;
+  if(c.ownQty) return Math.max(qtyFloor(c), Number(s.qty)||0);
+  if(c.input==='sets') return Math.max(0, Number(s.qty)||0);
+  return Math.max(0, Number(f.containers)||0);
+}
+function otPerSet(){ return Number((claim.options.overtime||{}).perSet)||0; }
+function otMaxSets(){ return Math.max(1, Number((claim.options.overtime||{}).maxSets)||20); }
+
+function itemAmount(key){
+  var f=claim.form, s=f&&f.sel[key], c=cfgOf(key);
+  if(!s || !s.on || !c) return 0;
+  if(c.perContainer) return r2((Number(c.rate)||0) * itemQty(c));
+  if(c.input==='sets') return r2(otPerSet() * itemQty(c));
+  if(key==='special') return r2(s.reasons.reduce(function(t,r){ return t + (r.on ? (Number(r.amount)||0) : 0); }, 0));
+  return r2(Number(s.amount)||0);
+}
+function claimTotal(){ return r2(claim.cfg.reduce(function(t,c){ return t+itemAmount(c.key); }, 0)); }
+function r2(n){ return Math.round((Number(n)||0)*100)/100; }
+
+// ---- แสดงผล ----
+// โชว์เฉพาะ 5 หัวข้อหลัก (LIFT ON, ค่าบริการเพิ่มเติม(ฟรีโซน), EXTRA MOVEMENT, LIFT OFF, เงินสำรอง)
+// ที่เหลือซ่อนไว้จนกดสวิตช์ "แสดงหัวข้อทั้งหมด" — หัวข้อที่ติ๊กไว้แล้วจะไม่ถูกซ่อน (กันข้อมูลหาย)
+function claimVisible(c){
+  if(claim.showAll || c.primary) return true;
+  var s=claim.form && claim.form.sel[c.key];
+  return !!(s && s.on);
+}
+
+function renderClaimItems(){
+  if(!claim.form) return;
+  $('cl-items').innerHTML = claim.cfg.filter(claimVisible).map(function(c){
+    var s=claim.form.sel[c.key];
+    return '<div class="cl-item'+(s.on?' on':'')+'" data-key="'+c.key+'">'+
+      '<label class="cl-head">'+
+        '<input type="checkbox" class="cl-chk"'+(s.on?' checked':'')+'>'+
+        '<span class="cl-name">'+esc(c.label)+'</span>'+
+        '<span class="cl-amt" id="amt-'+c.key+'">'+fmtM(itemAmount(c.key))+'</span>'+
+      '</label>'+
+      '<div class="cl-body'+(s.on?'':' hidden')+'">'+claimBodyHTML(c)+'</div>'+
+    '</div>';
+  }).join('');
+  updateClaimShowAllHint();
+  updateAmounts();
+}
+
+function updateClaimShowAllHint(){
+  var hidden=claim.cfg.filter(function(c){ return !c.primary && !(claim.form && claim.form.sel[c.key].on); }).length;
+  $('cl-showall-hint').textContent = claim.showAll
+    ? '(แสดงครบทุกหัวข้อ)'
+    : (hidden ? ('(ซ่อนอยู่ '+hidden+' หัวข้อ)') : '');
+}
+
+// รายการตัวเลือกจำนวนเงินของ dropdown — เติมค่าที่ใช้อยู่เข้าไปด้วยถ้าไม่มีในรายการ (ใบเก่าจะไม่เพี้ยน)
+function amountOptionsHTML(values, cur, zeroLabel){
+  var list=(values||[]).slice(), c=Number(cur)||0;
+  if(c>0 && list.map(Number).indexOf(c)<0){ list.push(c); list.sort(function(a,b){ return a-b; }); }
+  var h='<option value="0"'+(c?'':' selected')+'>'+esc(zeroLabel||'— เลือกจำนวนเงิน —')+'</option>';
+  list.forEach(function(v){
+    h+='<option value="'+v+'"'+(Number(v)===c?' selected':'')+'>'+fmtM(v)+' บาท</option>';
+  });
+  return h;
+}
+
+function claimBodyHTML(c){
+  var f=claim.form, s=f.sel[c.key];
+  var noRate = '<div class="cl-warn">ยังไม่ได้ตั้งอัตราของหัวข้อนี้ — แจ้งผู้ดูแล/ผู้จัดการให้ตั้งค่าก่อน</div>';
+
+  // EXTRA MOVEMENT: มีจำนวนตู้ของตัวเอง กดปุ่ม ＋ / − เพิ่มลดได้
+  if(c.perContainer && c.ownQty){
+    var q=itemQty(c), lo=qtyFloor(c);
+    // ใบที่ยังไม่ถึงขั้นต่ำ (EXTRA MOVEMENT + ใบตู้เดียว) — ไม่คิดให้อัตโนมัติ แต่กด ＋ เบิกเองได้
+    var minNote = belowMinCont(c)
+      ? '<div class="cl-rate" style="color:var(--blue2)">ใบนี้มี '+f.containers+' ตู้ — <b>ไม่คิด '+esc(c.label)+
+        ' ให้อัตโนมัติ</b> (เริ่มคิดตั้งแต่ '+minCont(c)+' ตู้ขึ้นไป) • ถ้ามีค่าใช้จ่ายจริงให้กด ＋ เพิ่มจำนวนตู้เอง</div>'
+      : '';
+    return minNote+
+      '<div class="cl-rate">จำนวนตู้ที่คิด '+esc(c.label)+' <b>เฉพาะหัวข้อนี้</b>'+
+        '<span class="cl-qauto'+((s.qtyAuto && !belowMinCont(c))?'':' hidden')+'"> (ตั้งต้นตามจำนวนตู้ของใบเบิก)</span></div>'+
+      '<div class="cl-qty">'+
+        '<button type="button" class="qbtn cl-qminus"'+(q<=lo?' disabled':'')+'>−</button>'+
+        '<input type="number" class="cl-qty-in" inputmode="numeric" min="'+lo+'" step="1" value="'+q+'">'+
+        '<span class="qlbl">ตู้ × '+fmtM(c.rate)+' บาท/ตู้</span>'+
+        '<button type="button" class="qbtn cl-qplus">＋</button>'+
+      '</div>'+
+      '<div class="cl-rate">รวม <b id="qsum-'+c.key+'">'+fmtM(itemAmount(c.key))+'</b> บาท</div>'+
+      (Number(c.rate)>0 ? '' : noRate);
+  }
+
+  if(c.perContainer){
+    return '<div class="cl-rate">อัตรา <b>'+fmtM(c.rate)+'</b> บาท/ตู้ × <b>'+f.containers+'</b> ตู้ = <b>'+fmtM(itemAmount(c.key))+'</b> บาท</div>'+
+      (Number(c.rate)>0 ? '' : noRate);
+  }
+
+  // ค่าล่วงเวลา: เลือกจำนวนชุด (1 ชุด = ค่าที่ผู้ดูแลตั้งไว้)
+  if(c.input==='sets'){
+    var sets=itemQty(c), per=otPerSet(), h='';
+    for(var i=1;i<=otMaxSets();i++){
+      h+='<option value="'+i+'"'+(i===sets?' selected':'')+'>'+i+' ชุด = '+fmtM(i*per)+' บาท</option>';
+    }
+    return '<div class="cl-rate">1 ชุด = <b>'+fmtM(per)+'</b> บาท (ตั้งค่าโดยผู้ดูแล/ผู้จัดการ)</div>'+
+      '<select class="cl-sel cl-sets">'+h+'</select>'+
+      '<div class="cl-rate">รวม <b id="qsum-'+c.key+'">'+fmtM(itemAmount(c.key))+'</b> บาท</div>'+
+      (per>0 ? '' : noRate);
+  }
+
+  // ค่าตะกั่ว: เลือกจำนวนเงินจาก dropdown (เพิ่มค่าได้ที่หน้า admin)
+  if(c.input==='select'){
+    var vals = (c.optionKey==='knock') ? claim.options.knockValues : claim.options.sealValues;
+    return '<div class="cl-rate">เลือกจำนวนเงินจากรายการ (เพิ่มค่าได้ที่ผู้ดูแล/ผู้จัดการ)</div>'+
+      '<select class="cl-sel cl-amtsel">'+amountOptionsHTML(vals, s.amount)+'</select>'+
+      '<input type="text" class="cl-note" placeholder="หมายเหตุ (ถ้ามี)" value="'+esc(s.note)+'">';
+  }
+
+  if(c.key==='special'){
+    var knockLabel=claim.options.knockLabel||'ค่าน็อคตู้';
+    var rows=s.reasons.map(function(r, i){
+      // ค่าน็อคตู้ = เลือกจำนวนเงินจาก dropdown ทีละขั้นตามที่ผู้ดูแลตั้งไว้
+      var money = (r.preset && r.label===knockLabel)
+        ? '<select class="cl-rsel">'+amountOptionsHTML(claim.options.knockValues, r.amount, '— เลือก —')+'</select>'
+        : '<input type="number" class="cl-ramount" inputmode="decimal" min="0" step="1" placeholder="บาท" value="'+(r.amount?r.amount:'')+'">';
+      return '<div class="cl-reason" data-idx="'+i+'">'+
+        '<input type="checkbox" class="cl-rchk"'+(r.on?' checked':'')+'>'+
+        (r.preset ? '<span class="rname">'+esc(r.label)+'</span>'
+                  : '<input type="text" class="cl-rlabel" placeholder="ระบุเหตุผล" value="'+esc(r.label)+'">')+
+        money+
+        (r.preset ? '' : '<button type="button" class="rdel">✕</button>')+
+      '</div>';
+    }).join('');
+    return '<div class="cl-rate">ติ๊กเหตุผลที่ใช้ และกรอกจำนวนเงินของแต่ละเหตุผล</div>'+rows+
+      '<button type="button" class="cl-add cl-radd">＋ เพิ่มเหตุผลอื่น</button>';
+  }
+
+  var hint = Number(c.rate)>0 ? '<div class="cl-rate">ค่ามาตรฐาน '+fmtM(c.rate)+' บาท (แก้ไขได้)</div>' : '<div class="cl-rate">กรอกจำนวนเงินที่ใช้จริง (ไม่คิดตามจำนวนตู้)</div>';
+  return hint+
+    '<input type="number" class="cl-amount" inputmode="decimal" min="0" step="1" placeholder="จำนวนเงิน (บาท)" value="'+(s.amount?s.amount:'')+'">'+
+    '<input type="text" class="cl-note" placeholder="'+(c.key==='other'?'ระบุรายละเอียดค่าใช้จ่าย':'หมายเหตุ (ถ้ามี)')+'" value="'+esc(s.note)+'">';
+}
+
+function refreshItem(key){
+  var el=$('cl-items').querySelector('.cl-item[data-key="'+key+'"]'); if(!el) return;
+  var s=claim.form.sel[key];
+  el.classList.toggle('on', s.on);
+  var body=el.querySelector('.cl-body');
+  body.classList.toggle('hidden', !s.on);
+  body.innerHTML=claimBodyHTML(cfgOf(key));
+}
+
+function updateAmounts(){
+  claim.cfg.forEach(function(c){
+    var el=$('amt-'+c.key);
+    if(el) el.textContent=fmtM(itemAmount(c.key));
+    var sum=$('qsum-'+c.key);                    // บรรทัด "รวม" ของหัวข้อที่มีจำนวนตู้/ชุดของตัวเอง
+    if(sum) sum.textContent=fmtM(itemAmount(c.key));
+  });
+  $('cl-total').textContent=fmtM(claimTotal());
+  updateClaimShowAllHint();
+}
+
+// ปรับจำนวนตู้เฉพาะของหัวข้อนี้ (ปุ่ม ＋ / −) — อัปเดตเฉพาะจุดที่เปลี่ยน ไม่ re-render ทั้งกล่อง
+function bumpItemQty(key, delta){
+  var s=claim.form.sel[key]; if(!s) return;
+  var lo=qtyFloor(cfgOf(key));
+  var q=Math.max(lo, Math.min(999, (Number(s.qty)||0)+delta));
+  s.qty=q; s.qtyAuto=false;
+  var el=$('cl-items').querySelector('.cl-item[data-key="'+key+'"]');
+  if(el){
+    var inp=el.querySelector('.cl-qty-in'); if(inp) inp.value=q;
+    var minus=el.querySelector('.cl-qminus'); if(minus) minus.disabled=(q<=lo);
+    var note=el.querySelector('.cl-qauto'); if(note) note.classList.add('hidden');
+  }
+  updateAmounts();
+}
+
+$('cl-showall').addEventListener('change', function(){
+  claim.showAll=this.checked;
+  renderClaimItems();
+});
+
+function updateClaimLock(){
+  var f=claim.form; if(!f) return;
+  var ready = !!f.inspectDate && f.containers>0;
+  $('cl-items').classList.toggle('locked', !ready);
+  $('cl-lock').classList.toggle('hidden', ready);
+  // ยังไม่เลือกวันที่/จำนวนตู้ = ซ่อนปุ่มบันทึกไปเลย
+  // (พอบันทึกเสร็จฟอร์มถูกล้าง จึงเหลือแต่ปุ่มคัดลอก จนกว่าจะเริ่มกรอกใบใหม่)
+  $('cl-save').classList.toggle('hidden', !ready);
+  $('cl-save').disabled=!ready;
+  if(ready) warnDuplicateClaimDate();
+}
+
+// เบิกได้วันละ 1 ใบ — เตือนตั้งแต่เลือกวันที่ ไม่ต้องรอให้กดบันทึกแล้วเด้ง error
+function warnDuplicateClaimDate(){
+  var f=claim.form; if(!f || f.id) return;
+  var settled = (claim.settledDates||[]).indexOf(f.inspectDate)>=0;
+  var dup = claim.list.filter(function(r){ return r.inspectDate===f.inspectDate; })[0];
+  if(settled || dup){
+    $('cl-saved').className='status wait';
+    $('cl-saved').textContent = settled
+      ? ('วันที่ '+fmtD(f.inspectDate)+' ปิดบัญชีไปแล้ว จึงทำใบเบิกใหม่ไม่ได้')
+      : ('วันที่ '+fmtD(f.inspectDate)+' ทำใบเบิกไว้แล้ว (เบิกได้วันละ 1 ใบ) — กดแก้ไขใบเดิมจากประวัติด้านล่าง');
+    $('cl-saved').classList.remove('hidden');
+    $('cl-save').disabled=true;
+  } else {
+    $('cl-save').disabled=false;
+    if($('cl-saved').className.indexOf('wait')>=0) $('cl-saved').classList.add('hidden');
+  }
+}
+
+// ---- อินพุตขั้นที่ 1 ----
+$('cl-date').addEventListener('change', function(){
+  if(!claim.form) return;
+  claim.form.inspectDate=this.value; updateClaimLock();
+});
+$('cl-today').addEventListener('click', function(){
+  $('cl-date').value=todayYMD();
+  if(claim.form){ claim.form.inspectDate=todayYMD(); updateClaimLock(); }
+});
+$('cl-cont').addEventListener('change', function(){
+  if(!claim.form) return;
+  claim.form.containers=Math.max(0, parseInt(this.value,10)||0);
+  syncOwnQty();           // EXTRA MOVEMENT ที่ยังไม่ถูกแก้เอง ให้วิ่งตามจำนวนตู้ของใบเบิก
+  renderClaimItems();     // หัวข้อที่คิดตามจำนวนตู้ต้องคำนวณใหม่ทั้งหมด
+  updateClaimLock();
+});
+
+// ---- อินพุตในรายการค่าใช้จ่าย (event delegation) ----
+function itemKeyOf(t){ var el=t.closest && t.closest('.cl-item'); return el?el.getAttribute('data-key'):null; }
+function reasonIdx(t){ var row=t.closest && t.closest('.cl-reason'); return row?(Number(row.getAttribute('data-idx'))||0):-1; }
+
+$('cl-items').addEventListener('change', function(e){
+  var t=e.target, key=itemKeyOf(t); if(!key || !claim.form) return;
+  var s=claim.form.sel[key], c=cfgOf(key);
+
+  if(t.classList.contains('cl-chk')){
+    s.on=t.checked;
+    // หัวข้อกรอกเอง: เติมค่ามาตรฐานให้ครั้งแรกที่ติ๊ก (แก้ไขทับได้)
+    if(s.on && !c.perContainer && c.input!=='sets' && key!=='special' && !s.amount && Number(c.rate)>0) s.amount=Number(c.rate);
+    refreshItem(key); updateAmounts();
+    return;
+  }
+  // จำนวนชุดของค่าล่วงเวลา
+  if(t.classList.contains('cl-sets')){
+    s.qty=Math.max(1, parseInt(t.value,10)||1); s.qtyAuto=false;
+    updateAmounts();
+    return;
+  }
+  // จำนวนเงินแบบ dropdown (ค่าตะกั่ว)
+  if(t.classList.contains('cl-amtsel')){
+    s.amount=Math.max(0, Number(t.value)||0);
+    updateAmounts();
+    return;
+  }
+  // จำนวนเงินแบบ dropdown ของเหตุผลย่อย (ค่าน็อคตู้)
+  if(t.classList.contains('cl-rsel')){
+    var ri=reasonIdx(t);
+    if(ri>=0 && s.reasons[ri]){
+      s.reasons[ri].amount=Math.max(0, Number(t.value)||0);
+      // เลือกจำนวนเงินแล้วถือว่าใช้เหตุผลนี้ / เลือกกลับเป็น "— เลือก —" = ไม่ใช้
+      s.reasons[ri].on = s.reasons[ri].amount>0;
+      var box=t.closest('.cl-reason').querySelector('.cl-rchk');
+      if(box) box.checked=s.reasons[ri].on;
+      updateAmounts();
+    }
+    return;
+  }
+  if(t.classList.contains('cl-rchk')){
+    var i=reasonIdx(t);
+    if(i>=0 && s.reasons[i]){ s.reasons[i].on=t.checked; updateAmounts(); }
+  }
+});
+
+$('cl-items').addEventListener('input', function(e){
+  var t=e.target, key=itemKeyOf(t); if(!key || !claim.form) return;
+  var s=claim.form.sel[key];
+
+  if(t.classList.contains('cl-amount')){ s.amount=Math.max(0, Number(t.value)||0); updateAmounts(); return; }
+  if(t.classList.contains('cl-note')){ s.note=t.value; return; }
+  // พิมพ์จำนวนตู้ของ EXTRA MOVEMENT เอง (ไม่ re-render กันโฟกัสหลุดขณะพิมพ์)
+  if(t.classList.contains('cl-qty-in')){
+    var q=parseInt(t.value,10), lo=qtyFloor(cfgOf(key));
+    s.qty=(q>0)?Math.min(999,q):lo; s.qtyAuto=false;
+    var minus=t.closest('.cl-body').querySelector('.cl-qminus'); if(minus) minus.disabled=(s.qty<=lo);
+    var note=t.closest('.cl-body').querySelector('.cl-qauto'); if(note) note.classList.add('hidden');
+    updateAmounts();
+    return;
+  }
+
+  var i=reasonIdx(t); if(i<0 || !s.reasons[i]) return;
+  var row=t.closest('.cl-reason');
+  if(t.classList.contains('cl-ramount')){
+    s.reasons[i].amount=Math.max(0, Number(t.value)||0);
+    if(s.reasons[i].amount>0 && !s.reasons[i].on){        // กรอกเงินแล้วถือว่าเลือกใช้เหตุผลนี้
+      s.reasons[i].on=true;
+      var cb=row.querySelector('.cl-rchk'); if(cb) cb.checked=true;
+    }
+    updateAmounts();
+  } else if(t.classList.contains('cl-rlabel')){
+    s.reasons[i].label=t.value;
+  }
+});
+
+$('cl-items').addEventListener('click', function(e){
+  if(!claim.form) return;
+  var t=e.target;
+  // ปุ่มเพิ่ม/ลดจำนวนตู้เฉพาะของหัวข้อ (EXTRA MOVEMENT)
+  var plus=t.closest && t.closest('.cl-qplus'), minus=t.closest && t.closest('.cl-qminus');
+  if(plus || minus){
+    var qk=itemKeyOf(t);
+    if(qk) bumpItemQty(qk, plus?1:-1);
+    return;
+  }
+  if(t.closest && t.closest('.cl-radd')){
+    claim.form.sel['special'].reasons.push({ label:'', amount:0, on:true, preset:false });
+    refreshItem('special');
+    var inputs=$('cl-items').querySelectorAll('.cl-rlabel');
+    if(inputs.length) inputs[inputs.length-1].focus();
+    return;
+  }
+  if(t.closest && t.closest('.rdel')){
+    var i=reasonIdx(t);
+    if(i>=0){ claim.form.sel['special'].reasons.splice(i,1); refreshItem('special'); updateAmounts(); }
+  }
+});
+
+// ---- ข้อความสรุป (ปุ่มเดียว บันทึก + คัดลอกทั้งรายละเอียดและยอดรวม) ----
+// editCountOverride: ตอนกดบันทึกการแก้ไข ต้องคัดลอกเลขครั้งที่แก้ "หลัง" บันทึก (ปัจจุบัน+1)
+// เพราะเราคัดลอกก่อนยิงไปเซิร์ฟเวอร์ (ดูเหตุผลที่ปุ่มบันทึก)
+function claimText(editCountOverride){
+  var f=claim.form, L=[];
+  L.push('📋 สรุปยอดเบิก');
+  L.push('วันที่ตรวจปล่อย: '+fmtD(f.inspectDate));
+  L.push('จำนวนตู้: '+f.containers+' ตู้');
+  L.push('--------------------------------');
+  claim.cfg.forEach(function(c){
+    var s=f.sel[c.key]; if(!s.on) return;
+    if(c.ownQty && itemQty(c)<=0) return;   // จำนวนตู้ 0 = ไม่ต้องขึ้นบรรทัดในข้อความสรุป
+    if(c.key==='special'){
+      var rs=s.reasons.filter(function(r){ return r.on && String(r.label||'').trim(); });
+      if(!rs.length) return;
+      L.push(c.label+' = '+fmtM(itemAmount(c.key)));
+      rs.forEach(function(r){ L.push('   - '+String(r.label).trim()+' = '+fmtM(r.amount)); });
+      return;
+    }
+    L.push(claimLine(c));
+  });
+  L.push('--------------------------------');
+  L.push('รวมทั้งสิ้น '+fmtM(claimTotal())+' บาท');
+  L.push('ผู้เบิก: '+(state.user.name||state.user.username));
+  var ec = (editCountOverride==null) ? f.editCount : editCountOverride;
+  if(ec>0) L.push('(แก้ไขครั้งที่ '+ec+')');
+  return L.join('\n');
+}
+
+// 1 บรรทัดต่อ 1 หัวข้อ (รูปแบบเดียวกับที่เซิร์ฟเวอร์เขียนลงคอลัมน์ detail)
+function claimLine(c){
+  var f=claim.form, s=f.sel[c.key];
+  if(c.perContainer) return c.label+' = '+fmtM(c.rate)+' x '+itemQty(c)+' ตู้ = '+fmtM(itemAmount(c.key));
+  if(c.input==='sets') return c.label+' = '+fmtM(otPerSet())+' x '+itemQty(c)+' ชุด = '+fmtM(itemAmount(c.key));
+  return c.label+(s.note?(' ('+s.note+')'):'')+' = '+fmtM(itemAmount(c.key));
+}
+
+// ---- ข้อความ "เฉพาะรายการที่เพิ่ม" (ใช้เมื่อกดบันทึกการแก้ไขใบเบิก) ----
+// เทียบกับใบก่อนแก้ (f.orig): หัวข้อที่เพิ่มใหม่ / หัวข้อที่ยอดเพิ่มขึ้น / เหตุผลย่อยที่เพิ่มเข้ามา
+// ถ้าไม่มีอะไรเพิ่มเลย (เช่น แก้ยอดลง หรือแก้แต่ข้อความ) จะคัดลอกใบเต็มให้แทน
+function claimAddedText(editCount){
+  var f=claim.form, orig=(f && f.orig) || { items:{} }, L=[], added=0, n=0;
+  claim.cfg.forEach(function(c){
+    var s=f.sel[c.key]; if(!s.on) return;
+    if(c.ownQty && itemQty(c)<=0) return;   // จำนวนตู้ 0 = ไม่มียอดเพิ่ม
+    var prev=orig.items[c.key];
+
+    if(c.key==='special'){
+      var prevR=(prev && prev.reasons) || {};
+      var diff=0, lines=[];
+      s.reasons.filter(function(r){ return r.on && String(r.label||'').trim(); }).forEach(function(r){
+        var lb=String(r.label).trim(), was=Number(prevR[lb])||0, now=Number(r.amount)||0;
+        if(now<=was) return;
+        diff+=now-was;
+        lines.push('   - '+lb+' = '+fmtM(now)+(was?(' (เพิ่มจาก '+fmtM(was)+')'):''));
+      });
+      if(!lines.length) return;
+      n++; added+=diff;
+      L.push(c.label+' + '+fmtM(diff));
+      lines.forEach(function(x){ L.push(x); });
+      return;
+    }
+
+    var amt=itemAmount(c.key);
+    if(!prev){ n++; added+=amt; L.push(claimLine(c)+'  ← เพิ่มใหม่'); return; }
+    if(amt>prev.amount){
+      n++; added+=amt-prev.amount;
+      L.push(claimLine(c)+' (เพิ่มจาก '+fmtM(prev.amount)+' = +'+fmtM(amt-prev.amount)+')');
+    }
+  });
+
+  if(!n) return claimText(editCount);
+
+  var out=[];
+  out.push('📋 รายการเบิกที่เพิ่ม'+(editCount>0?(' (แก้ไขครั้งที่ '+editCount+')'):''));
+  out.push('วันที่ตรวจปล่อย: '+fmtD(f.inspectDate));
+  out.push('จำนวนตู้: '+f.containers+' ตู้');
+  out.push('--------------------------------');
+  L.forEach(function(x){ out.push(x); });
+  out.push('--------------------------------');
+  out.push('ยอดที่เพิ่ม '+fmtM(added)+' บาท');      // สรุปเฉพาะยอดที่เพิ่ม ไม่รวมยอดเดิมของใบ
+  out.push('ผู้เบิก: '+(state.user.name||state.user.username));
+  return out.join('\n');
+}
+
+function copyText(text, quiet){
+  function fallback(){
+    var ta=document.createElement('textarea');
+    ta.value=text; ta.style.position='fixed'; ta.style.top='-1000px'; ta.setAttribute('readonly','');
+    document.body.appendChild(ta);
+    ta.select(); ta.setSelectionRange(0, ta.value.length);
+    var ok=false; try { ok=document.execCommand('copy'); } catch(e){}
+    ta.remove();
+    if(ok){ if(!quiet) toast('คัดลอกแล้ว ✓'); }
+    else { toast('คัดลอกไม่สำเร็จ กรุณากดค้างเพื่อคัดลอกเอง'); }
+  }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(function(){ if(!quiet) toast('คัดลอกแล้ว ✓'); }).catch(fallback);
+  } else { fallback(); }
+}
+
+// ปุ่มคัดลอกซ้ำ — ใช้ข้อความของใบที่บันทึกไปล่าสุด
+$('cl-copy').addEventListener('click', function(){
+  if(!claim.lastText){ toast('ยังไม่มีข้อความให้คัดลอก'); return; }
+  copyText(claim.lastText);
+});
+
+// ---- บันทึก ----
+function buildClaimItems(){
+  var f=claim.form, out=[];
+  if(!f) return out;
+  claim.cfg.forEach(function(c){
+    var s=f.sel[c.key]; if(!s.on) return;
+    if(c.ownQty && itemQty(c)<=0) return;   // ติ๊กไว้แต่จำนวนตู้เป็น 0 (ใบตู้เดียวที่ไม่คิด EXTRA MOVEMENT) = ยังไม่นับ
+    var it={ key:c.key, amount:itemAmount(c.key), note:(s.note||'').trim() };
+    // จำนวนตู้เฉพาะหัวข้อ (EXTRA MOVEMENT) และจำนวนชุด (ค่าล่วงเวลา) — เซิร์ฟเวอร์คิดยอดใหม่จากค่านี้
+    if(c.ownQty || c.input==='sets') it.qty=itemQty(c);
+    if(c.key==='special'){
+      it.reasons=s.reasons.filter(function(r){ return r.on && String(r.label||'').trim(); })
+                          .map(function(r){ return { label:String(r.label).trim(), amount:Number(r.amount)||0 }; });
+      if(!it.reasons.length) return;      // ติ๊กหัวข้อแต่ยังไม่ได้เลือกเหตุผล = ยังไม่นับ
+    }
+    out.push(it);
+  });
+  return out;
+}
+
+// ปุ่มเดียว: บันทึก + คัดลอก แล้วล้างฟอร์มให้พร้อมทำใบถัดไป
+$('cl-save').addEventListener('click', function(){
+  var f=claim.form; if(!f) return;
+  if(!f.inspectDate){ toast('กรุณาเลือกวันที่ตรวจปล่อยก่อน'); return; }
+  if(!(f.containers>0)){ toast('กรุณาระบุจำนวนตู้'); return; }
+  var items=buildClaimItems();
+  if(!items.length){ toast('กรุณาเลือกค่าใช้จ่ายอย่างน้อย 1 รายการ'); return; }
+
+  // คัดลอกทันทีในจังหวะที่ผู้ใช้กดปุ่ม — เบราว์เซอร์มือถือยอมให้เขียนคลิปบอร์ดเฉพาะช่วงสั้น ๆ หลังการกดเท่านั้น
+  // ถ้ารอให้เซิร์ฟเวอร์บันทึกเสร็จก่อนค่อยคัดลอก จะโดนบล็อกบ่อย (โดยเฉพาะ iOS)
+  // แก้ไขใบเดิม = คัดลอกเฉพาะรายการที่เพิ่ม / ใบใหม่ = คัดลอกทั้งใบ
+  var wasEdit = !!f.id;
+  var text = wasEdit ? claimAddedText(f.editCount+1) : claimText(0);
+  copyText(text, true);
+
+  var b=$('cl-save'), old=b.textContent;
+  b.disabled=true; b.textContent='กำลังบันทึก…';
+  api({ action:'saveClaim', token:state.token, claim:{ id:f.id, inspectDate:f.inspectDate, containers:f.containers, items:items } })
+  .then(function(res){
+    b.disabled=false; b.textContent=old;
+    if(!res.ok){
+      if(res.error==='session_expired'||res.error==='invalid_token'){ toast(errTH(res.error)); return logout(); }
+      toast('คัดลอกข้อความแล้ว แต่บันทึกไม่สำเร็จ: '+errTH(res.error), 4000);
+      return;
+    }
+    var rec=res.record;
+    claim.lastText=text;
+
+    var savedDate=fmtD(rec.inspectDate), savedTotal=fmtM(rec.total);
+    newClaimForm(null);          // ล้างค่าใหม่ พร้อมทำใบถัดไป (ปุ่มบันทึกจะซ่อนจนกว่าจะเลือกวันที่ใหม่)
+    $('cl-saved').textContent = (res.mode==='updated'
+      ? ('บันทึกการแก้ไขครั้งที่ '+rec.editCount+' ของใบวันที่ '+savedDate+' แล้ว')
+      : ('บันทึกใบเบิกวันที่ '+savedDate+' แล้ว'))
+      + ' • ยอดรวม '+savedTotal+' บาท • '
+      + (res.mode==='updated' ? 'คัดลอกเฉพาะรายการที่เพิ่มให้แล้ว ✓' : 'คัดลอกข้อความให้แล้ว ✓')
+      + ' — ฟอร์มถูกล้างพร้อมทำรายการใหม่ (แก้ไขใบเดิมได้จากประวัติด้านล่าง)';
+    $('cl-saved').classList.remove('hidden');
+    toast('บันทึกและคัดลอกแล้ว ✓');
+    loadMyClaims();
+  }).catch(function(){
+    b.disabled=false; b.textContent=old;
+    toast('คัดลอกข้อความแล้ว แต่บันทึกไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต', 4000);
+  });
+});
+
+// ยกเลิกการแก้ไขใบเดิม กลับไปเริ่มใบใหม่
+$('cl-new').addEventListener('click', function(){
+  newClaimForm(null);
+  window.scrollTo(0,0);
+});
+
+// ---- ประวัติการเบิกของตัวเอง ----
+function loadMyClaims(){
+  api({action:'myClaims', token:state.token}).then(function(res){
+    if(!res.ok){
+      if(res.error==='session_expired'||res.error==='invalid_token'){ toast(errTH(res.error)); return logout(); }
+      $('cl-list').innerHTML='<div class="muted" style="padding:10px">โหลดประวัติไม่สำเร็จ: '+esc(errTH(res.error))+'</div>';
+      return;
+    }
+    claim.list=res.rows||[];
+    claim.settledDates=res.settledDates||[];
+    renderClaimList();
+    // มีใบที่ปิดบัญชีไปแล้ว = ต้องมีทางเข้าไปดู/แก้ เพราะใบเบิกนั้นไม่อยู่ในรายการแล้ว
+    $('btn-settle-hist').classList.toggle('hidden', !claim.settledDates.length);
+  }).catch(function(){
+    $('cl-list').innerHTML='<div class="muted" style="padding:10px">โหลดประวัติไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต</div>';
+  });
+}
+
+// ---- รายการย่อยแยกตามครั้งที่บันทึก (ครั้งแรก / แก้ไขครั้งที่ 1..5) ----
+// ข้อความของแต่ละครั้งมาจากชีต (คอลัมน์ detail_first / edit_detail_1..5) จึงคัดลอกย้อนหลังได้ตรงกับตอนที่บันทึก
+// ใบที่บันทึกไว้ก่อนมีคอลัมน์เหล่านี้จะไม่มีข้อความของครั้งเก่า ๆ — แสดงเป็นบรรทัดจาง ๆ ไม่มีปุ่มคัดลอก
+function claimRevisions(r){
+  var out=[{ n:0, label:'ครั้งแรก', text:String(r.detailFirst||'') }];
+  var eds=r.editDetails||[];
+  var n=Number(r.editCount)||0;
+  // เซิร์ฟเวอร์ส่งช่องว่างมาครบ 5 ช่องเสมอ จึงนับจาก "ครั้งที่แก้ไข" เป็นหลัก
+  // แต่ถ้ามีข้อความอยู่เกินเลขครั้งที่บันทึก (ข้อมูลเก่า/แก้ในชีตเอง) ก็ยังแสดงให้ครบ ไม่ให้ข้อความหาย
+  for(var j=eds.length-1;j>=0;j--){ if(String(eds[j]||'')){ n=Math.max(n, j+1); break; } }
+  // ป้ายสั้น ๆ ให้พอดีบรรทัดบนมือถือ: ครั้งแรก / แก้ไข1 … แก้ไข5
+  for(var k=1;k<=n;k++) out.push({ n:k, label:'แก้ไข'+k, text:String(eds[k-1]||'') });
+  return out;
+}
+
+var CLAIM_MAX_EDITS = 5;
+
+function renderClaimList(){
+  if(!claim.list.length){ $('cl-list').innerHTML='<div class="muted" style="padding:10px">ยังไม่มีรายการเบิก</div>'; return; }
+  $('cl-list').innerHTML = claim.list.map(function(r, i){
+    var upd=r.updated?fmtDT(r.updated):'';
+    var max=Number(r.maxEdits)||CLAIM_MAX_EDITS;
+    var used=Number(r.editCount)||0;
+    var left=Math.max(0, max-used);
+    var revs=claimRevisions(r);
+    var revHTML='<div class="cl-revnote">แต่ละครั้ง = เฉพาะรายการที่เพิ่มจากครั้งก่อนหน้า</div>'+
+      revs.map(function(v){
+        return '<div class="cl-revrow">'+
+          '<span class="cl-revlb">'+(v.n===0?'🟢 ':'✏️ ')+esc(v.label)+'</span>'+
+          (v.text
+            ? '<button class="btn btn-ghost cl-revcopy" onclick="claimCopyRev('+i+','+v.n+')">📋 คัดลอกข้อความ</button>'
+            : '<span class="muted" style="font-size:11px">ไม่มีข้อความ (ใบก่อนอัปเดตระบบ)</span>')+
+        '</div>';
+      }).join('');
+    return '<div class="cl-row">'+
+      '<div class="r-top"><span>ตรวจปล่อย '+esc(fmtD(r.inspectDate))+'</span><span class="cl-amt">'+fmtM(r.total)+' ฿</span></div>'+
+      '<div class="r-meta">'+esc(r.containers)+' ตู้ • '+r.items.length+' หัวข้อ'+
+        (used>0?(' • <b>แก้ไขครั้งที่ '+used+'</b>'):'')+
+        ' • '+(left>0?('แก้ไขได้อีก '+left+' ครั้ง'):'<b style="color:#dc2626">แก้ไขครบ '+max+' ครั้งแล้ว</b>')+
+        '<br>บันทึกล่าสุด '+esc(upd)+'</div>'+
+      '<div class="r-act">'+
+        (left>0
+          ? '<button class="btn btn-ghost" onclick="claimEdit('+i+')">✏️ แก้ไข</button>'
+          : '<button class="btn btn-ghost" disabled title="แก้ไขครบ '+max+' ครั้งแล้ว">✏️ แก้ไข</button>')+
+        '<button class="btn btn-ghost" onclick="claimCopy('+i+')">📋 คัดลอกรวม</button>'+
+        '<button class="btn btn-primary" onclick="claimSettle('+i+')">🧾 ปิดบัญชี</button>'+
+      '</div>'+
+      '<button class="btn btn-ghost cl-revtoggle" id="cl-revbtn-'+i+'" onclick="claimToggleRev('+i+')">'+
+        '🔽 แสดงรายการแยกครั้ง ('+revs.length+')</button>'+
+      '<div class="cl-rev hidden" id="cl-rev-'+i+'">'+revHTML+'</div>'+
+    '</div>';
+  }).join('');
+}
+
+// ซ่อน/แสดงรายการแยกครั้งของใบนั้น
+window.claimToggleRev=function(i){
+  var box=$('cl-rev-'+i), btn=$('cl-revbtn-'+i);
+  if(!box) return;
+  var show=box.classList.contains('hidden');
+  box.classList.toggle('hidden', !show);
+  if(btn){
+    var n=claimRevisions(claim.list[i]||{}).length;
+    btn.textContent=(show?'🔼 ซ่อนรายการแยกครั้ง':'🔽 แสดงรายการแยกครั้ง ('+n+')');
+  }
+};
+
+// คัดลอกข้อความของครั้งนั้นครั้งเดียว (n=0 คือครั้งแรก, n>=1 คือการแก้ไขครั้งที่ n)
+window.claimCopyRev=function(i, n){
+  var rec=claim.list[i]; if(!rec) return;
+  var revs=claimRevisions(rec), hit=null;
+  for(var k=0;k<revs.length;k++) if(revs[k].n===n) hit=revs[k];
+  if(!hit || !hit.text){ toast('ใบนี้ไม่มีข้อความของครั้งนั้นเก็บไว้'); return; }
+  copyText(hit.text);
+};
+
+// เปิดหน้าปิดบัญชีของวันที่ในใบเบิกใบนี้ (ปุ่มอยู่ในรายการประวัติการเบิก)
+window.claimSettle=function(i){
+  var rec=claim.list[i]; if(!rec) return;
+  openSettle(rec.inspectDate);
+};
+$('btn-settle-hist').addEventListener('click', function(){ openSettle(null); });
+
+window.claimEdit=function(i){
+  var rec=claim.list[i]; if(!rec) return;
+  if(!claim.loaded){ toast('กำลังโหลดหัวข้อค่าใช้จ่าย กรุณารอสักครู่'); return; }
+  var max=Number(rec.maxEdits)||CLAIM_MAX_EDITS;
+  if((Number(rec.editCount)||0) >= max){ toast('ใบนี้แก้ไขครบ '+max+' ครั้งแล้ว แก้เพิ่มไม่ได้', 4000); return; }
+  newClaimForm(rec);
+  $('cl-saved').textContent='กำลังแก้ไขใบเบิกวันที่ตรวจปล่อย '+fmtD(rec.inspectDate)+
+    ' (แก้ไขมาแล้ว '+rec.editCount+' ครั้ง • เหลืออีก '+(max-(Number(rec.editCount)||0))+' ครั้ง)';
+  $('cl-saved').classList.remove('hidden');
+  window.scrollTo(0,0);
+};
+window.claimCopy=function(i){
+  var rec=claim.list[i]; if(!rec) return;
+  copyText(rec.detailAll || rec.detail || '');
+};
+
+// ---------- ปิดบัญชี (SETTLEMENT) ----------
+// เลือกวันที่ตรวจปล่อย → ดึงเลข BL + จำนวนตู้ จากชีตงานขนส่ง → กรอกค่าใช้จ่ายจริงต่อ BL
+// → รวมค่าใช้จ่าย หัก ยอดเบิก = คงเหลือ (โครงตามฟอร์มปิดบัญชีของบริษัท)
+var settle = { cols:[], dates:[], form:null, list:[], loaded:false, lastText:'', lastSaved:null, canCompany:false,
+               specialLabel:'ค่าบริการเพิ่มเติมพิเศษ', presets:[], autoRates:{}, autoMin:{}, autoPorts:{},
+               options:{ ports:[], sealValues:[], knockValues:[], overtime:{ perSet:400, maxSets:20 }, knockLabel:'ค่าน็อคตู้' },
+               sourceStyles:{}, slipStrict:false, slip:null,
+               keysByDate:{}, claimDates:0, dateKeys:[], showAll:false };
+
+// ---- ตัวช่วยของช่องแบบ dropdown ในใบปิดบัญชี ----
+function settleOtRate(){ return Number((settle.options.overtime||{}).perSet)||0; }
+function settleKnockLabel(){ return settle.options.knockLabel||'ค่าน็อคตู้'; }
+function colOf(key){ return settle.cols.filter(function(c){ return c.key===key; })[0] || {}; }
+function optValuesOf(optionKey){
+  return (optionKey==='knock') ? (settle.options.knockValues||[]) : (settle.options.sealValues||[]);
+}
+// ค่าที่ใช้อยู่ไม่มีในรายการ = ถือว่าเป็นค่าที่พิมพ์เอง (โชว์ช่องพิมพ์ให้ ไม่ให้ค่าหาย)
+function isOffList(values, v){
+  var n=Number(v)||0;
+  return n>0 && (values||[]).map(Number).indexOf(n)<0;
+}
+function settleSelectHTML(values, cur, cls, dataAttr, zeroLabel){
+  var n=Number(cur)||0, off=isOffList(values, n);
+  var h='<select class="'+cls+'" '+dataAttr+'>';
+  h+='<option value="0"'+(n?'':' selected')+'>'+esc(zeroLabel||'— ไม่คิด —')+'</option>';
+  (values||[]).forEach(function(v){
+    h+='<option value="'+v+'"'+(Number(v)===n?' selected':'')+'>'+fmtM(v)+'</option>';
+  });
+  h+='<option value="__other"'+(off?' selected':'')+'>อื่นๆ (พิมพ์เอง)</option>';
+  return h+'</select>';
+}
+
+// หัวข้อที่ "เบิกไว้" ของวันที่เลือก = ช่องที่โชว์ให้กรอก ส่วนที่เหลือซ่อนไว้ (กดแสดงทั้งหมดได้)
+// ยกเว้น "หัวข้อหลัก" (primary — เช่น ค่าตะกั่ว) ที่โชว์ในทุกรายการ BL เสมอ
+// ช่องที่มีตัวเลขอยู่แล้ว (เช่น โหลดใบเก่ามาแก้) จะไม่ถูกซ่อน กันข้อมูลหาย
+function colVisible(key, r){
+  if(settle.showAll) return true;
+  if(key!=='__special' && colOf(key).primary) return true;
+  var claimKey = (key==='__special') ? 'special' : key;      // คีย์ในใบเบิกของหัวข้อพิเศษคือ special
+  if(settle.dateKeys.indexOf(claimKey)>=0) return true;
+  if(key==='__special') return !!(r && (r.specials||[]).some(function(s){ return Number(s.amount)>0; }));
+  return !!(r && Number(r.costs[key]));
+}
+
+// ตั้งบริบทของวันที่ที่เลือก: หัวข้อที่เบิกไว้ + รีเซ็ตสวิตช์แสดงทั้งหมด
+// ใช้ keysByDate (มีครบทุกวัน) ไม่ใช่ dates ที่เป็นตัวเลือก เพราะใบที่ปิดบัญชีแล้วไม่อยู่ในตัวเลือกแต่ยังเปิดมาแก้ได้
+function syncDateKeys(date){
+  settle.dateKeys = (settle.keysByDate && settle.keysByDate[date]) || [];
+  settle.showAll = false;
+  var cb=$('st-showall'); if(cb) cb.checked=false;
+  updateShowAllBar();
+}
+
+// กลับไปหน้าเบิก เพราะเข้ามาที่นี่จากปุ่มในรายการประวัติการเบิก
+$('btn-settle-back').addEventListener('click', openClaim);
+
+// preDate = วันที่ตรวจปล่อยของใบเบิกที่กดมา (เลือกให้อัตโนมัติ + ดึง BL ให้เลย)
+function openSettle(preDate){
+  stopCamera();
+  show('settle');
+  window.scrollTo(0,0);
+  // โหลดใหม่ทุกครั้งที่เข้าหน้านี้ ไม่งั้นใบเบิกที่เพิ่งทำจะไม่โผล่ในรายการวันที่
+  loadSettleConfig()
+    .then(function(){ return loadMySettlements(); })
+    .then(function(){ if(preDate) applySettleDate(preDate); })
+    .catch(function(){});
+}
+
+// เคยปิดบัญชีวันนี้ไว้แล้ว → เปิดใบเดิมมาแก้ ไม่สร้างใบซ้ำ
+function applySettleDate(date){
+  if(!settle.form) return;
+  var exist=settle.list.filter(function(r){ return r.inspectDate===date; })[0];
+  if(exist){
+    newSettleForm(exist);
+    $('st-saved').textContent='วันที่ '+fmtD(date)+' เคยปิดบัญชีไว้แล้ว — เปิดใบเดิมขึ้นมาแก้ไข (แก้ไขมาแล้ว '+exist.editCount+' ครั้ง)';
+    $('st-saved').classList.remove('hidden');
+    fetchBL(false);   // ดึงรายการ BL มาโชว์ด้วย เผื่อต้องการติ๊กเพิ่มใบที่ยังไม่ได้ลง
+    return;
+  }
+  if(!settle.dates.some(function(d){ return d.date===date; })) return;
+  $('st-date').value=date;
+  onSettleDateChange();
+}
+
+function showSettleSaved(msg){ $('st-saved').textContent=msg; $('st-saved').classList.remove('hidden'); }
+
+// ไม่มีวันให้เลือก มีได้ 2 กรณี — ยังไม่เคยเบิก กับ เบิกไว้แต่ปิดบัญชีครบหมดแล้ว
+function noDateMsg(){
+  return settle.claimDates
+    ? 'ใบเบิกทุกใบปิดบัญชีครบแล้ว — ดู/แก้ไขใบเดิมได้ที่ประวัติการปิดบัญชีด้านล่าง'
+    : 'ยังไม่มีประวัติการเบิก — ทำใบเบิกที่เมนู "เบิก" ก่อน จึงจะปิดบัญชีได้';
+}
+
+// สถานะการโหลด "รายการวันที่ตรวจปล่อย" ของขั้นที่ 1
+// mode: 'loading' = กำลังโหลด (ล็อก dropdown ไว้ก่อน) / 'error' / 'hint' / 'done' = ซ่อนแถบสถานะ
+function setDateLoading(mode, msg){
+  var box=$('st-dateload'), sel=$('st-date');
+  if(mode==='loading'){
+    sel.disabled=true;
+    sel.innerHTML='<option value="">กำลังโหลด…</option>';
+    box.className='status wait';
+    box.innerHTML='<span class="spinner"></span> '+esc(msg||'กำลังโหลดรายการวันที่ตรวจปล่อย…');
+    box.classList.remove('hidden');
+    return;
+  }
+  sel.disabled=false;
+  if(mode==='error' || mode==='hint'){
+    box.className=(mode==='error')?'status err':'status wait';
+    box.textContent=msg||'';
+    box.classList.remove('hidden');
+    // โหลดไม่สำเร็จ = ต้องคืน dropdown ให้เป็นตัวเลือกเปล่า ไม่ให้ค้างคำว่า "กำลังโหลด…"
+    if(mode==='error') sel.innerHTML='<option value="">— เลือกวันที่ —</option>';
+    return;
+  }
+  box.classList.add('hidden');
+}
+
+function loadSettleConfig(){
+  setDateLoading('loading');
+  return api({action:'settleConfig', token:state.token}).then(function(res){
+    if(!res.ok){
+      if(res.error==='session_expired'||res.error==='invalid_token'){ toast(errTH(res.error)); return logout(); }
+      setDateLoading('error', 'โหลดรายการวันที่ตรวจปล่อยไม่สำเร็จ: '+errTH(res.error)+' — กดกลับแล้วเข้าหน้านี้อีกครั้ง');
+      $('st-blstatus').className='status err';
+      $('st-blstatus').textContent='โหลดข้อมูลตั้งต้นไม่สำเร็จ: '+errTH(res.error);
+      return;
+    }
+    settle.cols=res.columns||[]; settle.dates=res.dates||[]; settle.canCompany=!!res.canSetCompanyReturn;
+    settle.specialLabel=res.specialLabel||'ค่าบริการเพิ่มเติมพิเศษ';
+    settle.presets=res.specialPresets||[];
+    settle.autoRates=res.autoRates||{};
+    settle.autoMin=res.autoMin||{};          // ขั้นต่ำจำนวนตู้ที่เริ่มคิดให้อัตโนมัติ (EXTRA MOVEMENT = 2 ตู้)
+    settle.autoPorts=res.autoPorts||{};       // ท่าที่คิดให้อัตโนมัติ (EXTRA MOVEMENT คิดเฉพาะท่าที่ admin ตั้งไว้)
+    if(res.options) settle.options=res.options;
+    // หน้าตารูปใบปิดบัญชีที่ admin ตั้งไว้ (ความกว้าง/ขนาดตัวอักษร/ตำแหน่งข้อความของแต่ละช่อง)
+    if(res.options && res.options.sheet) sheetLayout=res.options.sheet;
+    settle.sourceStyles=res.sourceStyles||{};
+    settle.slipStrict=!!res.slipStrict;
+    settle.keysByDate=res.keysByDate||{};
+    settle.claimDates=Number(res.claimDates)||0;
+    settle.loaded=true;
+    $('st-company-wrap').classList.toggle('hidden', !settle.canCompany);
+    $('st-date').innerHTML='<option value="">— เลือกวันที่ —</option>'+settle.dates.map(function(d){
+      return '<option value="'+esc(d.date)+'">'+esc(fmtD(d.date))+' • ยอดเบิก '+fmtM(d.claimTotal)+' บาท</option>';
+    }).join('');
+    if(!settle.dates.length){
+      setDateLoading('hint', 'ยังไม่มีวันที่ให้เลือก');
+      $('st-blstatus').className='status wait';
+      $('st-blstatus').textContent=noDateMsg();
+    } else {
+      setDateLoading('done');
+    }
+    newSettleForm(null);
+  }).catch(function(){
+    setDateLoading('error', 'โหลดรายการวันที่ตรวจปล่อยไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต');
+    $('st-blstatus').className='status err';
+    $('st-blstatus').textContent='โหลดข้อมูลตั้งต้นไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต';
+  });
+}
+
+function newSettleForm(rec){
+  // available = เลข BL ที่ดึงมาได้ (ยังไม่นับว่าเลือก) / rows = ใบที่ติ๊กเลือกแล้ว = ส่วนกรอกค่าใช้จ่าย
+  var f={ id:null, editCount:0, inspectDate:'', claimTotal:0, available:[], rows:[], cache:{}, returnedDate:'', companyReturnedDate:'' };
+  if(rec){
+    f.id=rec.id; f.editCount=Number(rec.editCount)||0;
+    f.inspectDate=rec.inspectDate||''; f.claimTotal=Number(rec.claimTotal)||0;
+    f.returnedDate=rec.returnedDate||''; f.companyReturnedDate=rec.companyReturnedDate||'';
+    f.rows=(rec.rows||[]).map(function(r){
+      return { bl:r.bl||'', port:r.port||'', customer:r.customer||'', containers:Number(r.containers)||0,
+               otherDetail:r.otherDetail||'', costs:cloneCosts(r.costs),
+               specials:mergeSpecials(r.specials), auto:{}, other:{}, src:'', source:r.source||'' };
+    });
+  }
+  settle.form=f;
+  syncDateKeys(f.inspectDate);
+  // สลิปที่แนบไว้แล้วในใบเดิม — ไม่ต้องแนบใหม่ ถ้ายอด/วันที่ยังเหมือนเดิม
+  resetSlip();
+  if(rec && rec.slipUrl){
+    settle.slip={ fileId:'', url:rec.slipUrl, txn:rec.slipTxn||'', amount:Number(rec.slipAmount)||0,
+                  date:rec.slipDate||'', status:'saved', label:rec.slipStatus||'สลิปที่แนบไว้แล้ว', canSave:true,
+                  expectAmount:r2(Number(rec.balance)||0), expectDate:rec.returnedDate||'' };
+    setSlipStatus('ok','📎 มีสลิปที่แนบไว้แล้ว — '+esc(rec.slipStatus||''));
+    $('st-slip-info').innerHTML=
+      slipInfoRow('ยอดในสลิป', rec.slipAmount?(fmtM(rec.slipAmount)+' บาท'):'—', !!rec.slipAmount)+
+      slipInfoRow('วันที่ในสลิป', rec.slipDate?fmtD(rec.slipDate):'—', !!rec.slipDate)+
+      slipInfoRow('เลขที่รายการ', rec.slipTxn||'—', !!rec.slipTxn)+
+      '<div class="slip-row"><span>ไฟล์สลิป</span><b><a href="'+esc(rec.slipUrl)+'" target="_blank">เปิดดู</a></b></div>';
+    $('st-slip-info').classList.remove('hidden');
+  }
+  $('st-date').value=f.inspectDate;
+  $('st-returned').value=f.returnedDate;
+  $('st-company').value=f.companyReturnedDate;
+  $('st-shipping').textContent=state.user.name||state.user.username;
+  $('st-mode').textContent = f.id ? ('แก้ไขรายการ • แก้ไขมาแล้ว '+f.editCount+' ครั้ง') : 'รายการใหม่';
+  $('st-save').textContent = f.id ? '💾 บันทึกการแก้ไข + คัดลอก' : '💾 บันทึกปิดบัญชี + คัดลอก';
+  $('st-new').classList.toggle('hidden', !f.id);
+  $('st-copy').classList.toggle('hidden', !settle.lastText);
+  $('st-sheet').classList.toggle('hidden', !settle.lastSaved);
+  $('st-saved').classList.add('hidden');
+  $('st-reload').classList.toggle('hidden', !f.inspectDate);
+  if(!f.id && !f.inspectDate){
+    $('st-blstatus').className='status wait';
+    $('st-blstatus').textContent = settle.dates.length ? 'เลือกวันที่ตรวจปล่อยก่อน' : noDateMsg();
+    $('st-blstatus').classList.remove('hidden');
+  } else {
+    $('st-blstatus').classList.add('hidden');
+  }
+  renderBlPicker();
+  renderSettleRows();
+  updateSettleSummary();
+}
+
+function cloneCosts(src){
+  var out={}; src=src||{};
+  settle.cols.forEach(function(c){ out[c.key]=Number(src[c.key])||0; });
+  return out;
+}
+// หัวข้อย่อยของค่าบริการเพิ่มเติมพิเศษ: แสดงหัวข้อตั้งต้นเสมอ + หัวข้อที่เคยบันทึกไว้เอง
+function mergeSpecials(saved){
+  var out=settle.presets.map(function(lb){ return { label:lb, amount:0, preset:true }; });
+  (saved||[]).forEach(function(s){
+    var lb=String(s.label||'').trim(); if(!lb) return;
+    var at=-1;
+    for(var i=0;i<out.length;i++) if(out[i].label===lb) at=i;
+    if(at>=0) out[at].amount=Number(s.amount)||0;
+    else out.push({ label:lb, amount:Number(s.amount)||0, preset:false });
+  });
+  return out;
+}
+function emptyRow(){
+  return { bl:'', port:'', customer:'', containers:0, otherDetail:'',
+           costs:cloneCosts({}), specials:mergeSpecials([]), auto:{}, other:{}, src:'', source:'' };
+}
+// ช่องที่คิดจากจำนวนตู้ให้อัตโนมัติ — เฉพาะหัวข้อที่เบิกไว้ และช่องที่ผู้ใช้ยังไม่ได้พิมพ์ทับ
+// (หัวข้อที่ไม่ได้เบิกจะถูกซ่อน จึงไม่เติมค่าให้ ไม่งั้นยอดจะบวกเพิ่มโดยผู้ใช้มองไม่เห็น)
+// ช่องแบบติ๊กเลือก (ค่าล่วงเวลา) ไม่คิดจากจำนวนตู้ — คิดต่อ 1 BL ตอนติ๊กเท่านั้น
+// ขั้นต่ำจำนวนตู้ของช่องนั้น (0 = ไม่มีขั้นต่ำ) — EXTRA MOVEMENT เริ่มคิดให้ตั้งแต่ 2 ตู้ขึ้นไป
+function stMinCont(key){ return Math.max(0, Number((settle.autoMin||{})[key])||0); }
+function stBelowMin(key, n){ var m=stMinCont(key); return !!m && (Number(n)||0) < m; }
+
+// ---- ท่าที่คิดให้อัตโนมัติ (EXTRA MOVEMENT คิดเฉพาะท่าที่ผู้ดูแลตั้งไว้) ----
+// เทียบชื่อท่าแบบไม่สนตัวพิมพ์/ช่องว่าง/ขีด เพราะชีตงานขนส่งเขียนได้หลายแบบ (D1D2 / d1-d2 / D1 D2)
+function portKey(p){ return String(p==null?'':p).toUpperCase().replace(/[^A-Z0-9ก-๙]/g,''); }
+function stPortList(key){ var l=(settle.autoPorts||{})[key]; return Array.isArray(l) ? l : null; }
+// ช่องนี้จำกัดท่าไหม (null = ไม่จำกัด คิดให้ทุกท่าเหมือนเดิม)
+function stPortLimited(key){ return stPortList(key)!==null; }
+function stPortOk(key, port){
+  var list=stPortList(key);
+  if(list===null) return true;                     // ไม่ได้จำกัดท่า = คิดให้ตามปกติ
+  var k=portKey(port);
+  if(!k) return false;                             // ยังไม่เลือกท่า = ยังไม่คิดให้
+  for(var i=0;i<list.length;i++) if(portKey(list[i])===k) return true;
+  return false;
+}
+
+function applyAutoRates(r){
+  var n=Number(r.containers)||0;
+  for(var k in settle.autoRates){
+    if(!settle.autoRates.hasOwnProperty(k)) continue;
+    if(r.costs[k]===undefined) continue;
+    if(colOf(k).input==='check') continue;
+    if(settle.dateKeys.indexOf(k)<0) continue;
+    if(r.costs[k] && !r.auto[k]) continue;          // ผู้ใช้พิมพ์เองไว้ = ไม่ทับ
+    // ไม่เข้าเงื่อนไขที่คิดให้อัตโนมัติ — BL ตู้เดียว หรือท่าที่ไม่อยู่ในรายการของช่องนั้น (EXTRA MOVEMENT)
+    // = ปล่อยว่างให้กรอกเองถ้ามีค่าใช้จ่ายจริง
+    if(stBelowMin(k, n) || !stPortOk(k, r.port)){ r.costs[k]=0; r.auto[k]=false; continue; }
+    r.costs[k]=r2((Number(settle.autoRates[k])||0)*n);
+    r.auto[k]=true;
+  }
+}
+
+// อัปเดตแถบ "แสดงหัวข้อทั้งหมด" ตามวันที่ที่เลือก
+function updateShowAllBar(){
+  var f=settle.form;
+  var on = !!(f && f.inspectDate);
+  $('st-showall-wrap').classList.toggle('hidden', !on);
+  if(!on) return;
+  var hidden=settle.cols.filter(function(c){ return !c.primary && settle.dateKeys.indexOf(c.key)<0; }).length
+           + (settle.dateKeys.indexOf('special')<0 ? 1 : 0);
+  $('st-showall-hint').textContent = hidden ? ('(ซ่อนอยู่ '+hidden+' หัวข้อที่ไม่ได้เบิกไว้)') : '(เบิกไว้ครบทุกหัวข้อแล้ว)';
+}
+
+$('st-showall').addEventListener('change', function(){
+  settle.showAll=this.checked;
+  renderSettleRows(); updateSettleSummary();
+});
+
+// ---- เลือกวันที่ → ดึง BL ----
+$('st-date').addEventListener('change', onSettleDateChange);
+function onSettleDateChange(){
+  var f=settle.form; if(!f) return;
+  f.inspectDate=$('st-date').value;
+  var d=settle.dates.filter(function(x){ return x.date===f.inspectDate; })[0];
+  f.claimTotal = d ? Number(d.claimTotal)||0 : 0;
+  syncDateKeys(f.inspectDate);
+  $('st-reload').classList.toggle('hidden', !f.inspectDate);
+  f.rows=[]; f.available=[]; f.cache={};      // เปลี่ยนวันที่ = เริ่มเลือก BL ใหม่
+  renderSettleRows(); updateSettleSummary();
+  if(!f.inspectDate){ renderBlPicker(); return; }
+  fetchBL(false);
+}
+$('st-reload').addEventListener('click', function(){ fetchBL(true); });
+
+function fetchBL(refresh){
+  var f=settle.form; if(!f || !f.inspectDate) return;
+  var st=$('st-blstatus');
+  st.classList.remove('hidden'); st.className='status wait';
+  st.innerHTML='<span class="spinner"></span> กำลังดึงเลข BL และจำนวนตู้จากชีตงานขนส่ง…';
+  $('st-add').classList.add('hidden');
+  return api({action:'blLookup', token:state.token, date:f.inspectDate, refresh:!!refresh}).then(function(res){
+    if(!res.ok){
+      if(res.error==='session_expired'||res.error==='invalid_token'){ toast(errTH(res.error)); return logout(); }
+      st.className='status err';
+      st.textContent=errTH(res.error)+(res.detail?(' — '+res.detail):'')+' • กรอกรายการเองได้ด้วยปุ่มด้านล่าง';
+      f.available=[];
+      $('st-add').classList.remove('hidden');
+      renderBlPicker(); updateSettleSummary();
+      return;
+    }
+    f.available=(res.rows||[]).map(function(r){
+      // ที่มา = ชื่อไฟล์ › ชื่อแท็บ (มีหลายไฟล์ชีตงานขนส่ง จึงต้องบอกให้ครบว่ามาจากไฟล์ไหน)
+      var src=r.sheet||'';
+      if(r.file) src = r.file + (src?(' › '+src):'');
+      return { bl:r.bl||'', port:r.port||'', customer:r.customer||'', containers:Number(r.containers)||0,
+               src:src, source:r.source||'', style:r.style||'' };
+    });
+    // การ์ดที่โหลดมาจากใบเดิม (ยังไม่รู้ที่มา) — เทียบด้วยเลข BL แล้วเติมที่มาให้ เพื่อให้กรอบสีถูกต้อง
+    f.rows.forEach(function(row){
+      if(row.source) return;
+      var hit=f.available.filter(function(a){ return blKey(a.bl)===blKey(row.bl); })[0];
+      if(hit){ row.source=hit.source; if(!row.src) row.src=hit.src; }
+    });
+    renderSettleRows();
+    if(!f.available.length){
+      st.className='status wait';
+      st.textContent='ไม่พบงานของคุณในวันที่นี้ในชีตงานขนส่ง — เพิ่มรายการเองได้ด้านล่าง';
+    } else {
+      st.className='status ok';
+      var orderTxt=(res.sourceOrder&&res.sourceOrder.length)?(' • เรียง '+res.sourceOrder.join(' → ')):'';
+      st.textContent='พบ '+f.available.length+' BL • รวม '+res.totalContainers+' ตู้'+orderTxt+
+        (res.cached?' (ข้อมูลที่จำไว้ กด ↻ เพื่อดึงใหม่)':'');
+    }
+    $('st-add').classList.remove('hidden');
+    renderBlPicker();
+    updateSettleSummary();
+  }).catch(function(){
+    st.className='status err';
+    st.textContent='ดึงข้อมูลไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต • กรอกรายการเองได้ด้านล่าง';
+    $('st-add').classList.remove('hidden');
+  });
+}
+
+// ---- รายการ BL ให้ติ๊กเลือก ----
+function blKey(bl){ return String(bl||'').trim().toUpperCase(); }
+function rowIndexOfBl(bl){
+  var k=blKey(bl); if(!k) return -1;
+  var rows=settle.form.rows;
+  for(var i=0;i<rows.length;i++){ if(blKey(rows[i].bl)===k) return i; }
+  return -1;
+}
+
+function renderBlPicker(){
+  var f=settle.form; if(!f) return;
+  var box=$('st-pick'), list=f.available||[];
+  if(!list.length){
+    box.innerHTML='';
+    $('st-picksum').classList.add('hidden');
+    $('st-pickall').classList.add('hidden');
+    return;
+  }
+  box.innerHTML=list.map(function(r,i){
+    var on=rowIndexOfBl(r.bl)>=0;
+    var cls=sourceClass(r.source);
+    return '<label class="st-pi'+(on?' on':'')+cls+'" data-i="'+i+'">'+
+      '<input type="checkbox" class="st-pchk"'+(on?' checked':'')+'>'+
+      '<span class="i"><span class="b">'+(r.bl?esc(r.bl):'(ไม่มีเลข BL)')+
+        (r.source?(' <span class="st-tag">'+esc(r.source)+'</span>'):'')+'</span>'+
+        '<span class="m">'+esc(r.customer||'—')+(r.port?(' • ท่า '+esc(r.port)):'')+(r.src?(' • '+esc(r.src)):'')+'</span></span>'+
+      '<span class="n">'+r.containers+' ตู้</span></label>';
+  }).join('');
+  updatePickSummary();
+  $('st-pickall').classList.remove('hidden');
+}
+
+function updatePickSummary(){
+  var f=settle.form, list=(f&&f.available)||[];
+  if(!list.length){ $('st-picksum').classList.add('hidden'); return; }
+  var picked=0, cntr=0;
+  list.forEach(function(r){ if(rowIndexOfBl(r.bl)>=0){ picked++; cntr+=Number(r.containers)||0; } });
+  $('st-picksum').textContent='เลือกแล้ว '+picked+' จาก '+list.length+' BL'+(picked?(' • รวม '+cntr+' ตู้'):'');
+  $('st-picksum').classList.remove('hidden');
+  var allOn = list.length>0 && picked===list.length;
+  $('st-pickall').textContent = allOn ? '⬜ ล้างการเลือกทั้งหมด' : '☑️ เลือกทั้งหมด';
+}
+
+// ติ๊ก = เพิ่มเข้าไปในส่วนกรอกค่าใช้จ่าย / เอาติ๊กออก = ถอดออก (จำค่าที่กรอกไว้ เผื่อติ๊กกลับ)
+function toggleBl(i, on){
+  var f=settle.form, cand=f.available[i]; if(!cand) return;
+  var k=blKey(cand.bl), at=rowIndexOfBl(cand.bl);
+  if(on){
+    if(at>=0) return;
+    var restored=k?f.cache[k]:null;
+    if(restored){ f.rows.push(restored); }
+    else {
+      var nr={ bl:cand.bl, port:cand.port, customer:cand.customer, containers:cand.containers,
+               otherDetail:'', costs:cloneCosts({}), specials:mergeSpecials([]), auto:{}, other:{},
+               src:cand.src, source:cand.source||'' };
+      applyAutoRates(nr);                 // เติมค่าที่คิดจากจำนวนตู้ให้เลย
+      f.rows.push(nr);
+    }
+  } else {
+    if(at<0) return;
+    if(k) f.cache[k]=f.rows[at];
+    f.rows.splice(at,1);
+  }
+  renderSettleRows(); updateSettleSummary(); updatePickSummary();
+}
+
+$('st-pick').addEventListener('change', function(e){
+  var t=e.target; if(!t.classList.contains('st-pchk')) return;
+  var el=t.closest('.st-pi'); if(!el) return;
+  el.classList.toggle('on', t.checked);
+  toggleBl(Number(el.getAttribute('data-i'))||0, t.checked);
+});
+
+$('st-pickall').addEventListener('click', function(){
+  var f=settle.form; if(!f || !f.available.length) return;
+  var picked=f.available.filter(function(r){ return rowIndexOfBl(r.bl)>=0; }).length;
+  var turnOn = picked < f.available.length;
+  f.available.forEach(function(r,i){ toggleBl(i, turnOn); });
+  renderBlPicker();
+});
+
+// ---- ตารางรายการ ----
+// ท่า = dropdown (เพิ่มค่าได้ที่หน้า admin) — ค่าที่ดึงมาจากชีตงานขนส่งแต่ไม่มีในรายการ จะถูกเติมเป็นตัวเลือกให้ ไม่ให้ค่าหาย
+function portSelectHTML(r){
+  var list=(settle.options.ports||[]).slice(), cur=String(r.port||'').trim();
+  if(cur && list.indexOf(cur)<0) list.push(cur);
+  var h='<select class="st-portsel" data-f="port"><option value=""'+(cur?'':' selected')+'>— เลือกท่า —</option>';
+  list.forEach(function(p){ h+='<option value="'+esc(p)+'"'+(p===cur?' selected':'')+'>'+esc(p)+'</option>'; });
+  return h+'</select>';
+}
+
+// สภาพของช่องที่คิดให้เฉพาะบางท่า — ใช้เทียบว่าเปลี่ยนท่าแล้วต้องวาดตารางใหม่ไหม
+function portSignature(r){
+  var s='';
+  settle.cols.forEach(function(c){
+    if(!stPortLimited(c.key)) return;
+    s+=c.key+':'+(Number(r.costs[c.key])||0)+':'+autoOffTag(c.key, r)+'|';
+  });
+  return s;
+}
+
+// ป้ายบอกเหตุผลที่ช่องนี้ไม่ถูกคิดให้อัตโนมัติ (ช่องที่ไม่ได้ถูกจำกัดอะไร = คืนค่าว่าง)
+function autoOffTag(key, r){
+  if(stBelowMin(key, r.containers)) return ' <span class="st-min">ไม่คิดให้ (เริ่มที่ '+stMinCont(key)+' ตู้)</span>';
+  if(!stPortOk(key, r.port)){
+    var list=(stPortList(key)||[]).join(', ');
+    var msg = r.port ? ('ท่านี้ไม่คิดให้') : 'เลือกท่าก่อน';
+    return ' <span class="st-min" title="คิดให้เฉพาะท่า: '+esc(list||'— ไม่มีท่าที่คิดให้ —')+'">'+msg+'</span>';
+  }
+  return '';
+}
+
+// ช่องค่าใช้จ่าย 1 ช่อง — มี 3 แบบ: ติ๊กเลือก (ค่าล่วงเวลา), dropdown (ค่าตะกั่ว), พิมพ์ตัวเลข (ที่เหลือ)
+function costFieldHTML(c, r){
+  var v=Number(r.costs[c.key])||0;
+  // ช่องที่ไม่เข้าเงื่อนไขคิดอัตโนมัติ (ตู้ไม่ถึงขั้นต่ำ / ท่าไม่อยู่ในรายการ) — บอกให้รู้ว่าทำไมไม่มียอดขึ้นให้
+  // (ถ้ามียอดอยู่แล้ว = กรอกเอง/ใบเดิม ไม่ต้องขึ้นข้อความนี้ทับ)
+  var off = v ? '' : autoOffTag(c.key, r);
+  var lbl='<label>'+esc(c.label)+(off || (r.auto[c.key]?' <span class="st-auto">อัตโนมัติ</span>':''))+'</label>';
+
+  if(c.input==='check'){
+    var per=settleOtRate();
+    var extra=(v && v!==per) ? (' • ปัจจุบัน '+fmtM(v)) : '';
+    return '<div class="st-f full">'+lbl+
+      '<label class="st-chk"><input type="checkbox" class="st-otchk" data-k="'+esc(c.key)+'"'+(v>0?' checked':'')+'>'+
+      '<span>ติ๊ก = คิด '+fmtM(per)+' บาท ต่อ 1 รายการ BL'+extra+'</span></label></div>';
+  }
+
+  if(c.input==='select'){
+    var vals=optValuesOf(c.optionKey);
+    var typing = r.other[c.key] || isOffList(vals, v);
+    return '<div class="st-f">'+lbl+
+      settleSelectHTML(vals, v, 'st-selin', 'data-k="'+esc(c.key)+'"')+
+      '<input type="number" class="st-cost'+(typing?'':' hidden')+'" data-k="'+esc(c.key)+'" inputmode="decimal" min="0" step="1" placeholder="พิมพ์จำนวนเงิน" value="'+(v?v:'')+'"></div>';
+  }
+
+  return '<div class="st-f">'+lbl+
+    '<input type="number" class="st-cost" data-k="'+esc(c.key)+'" inputmode="decimal" min="0" step="1" placeholder="0" value="'+(v?v:'')+'"></div>';
+}
+
+// คลาสเน้นสีตามที่มาของงาน (เช่น TRANSIT = กรอบสีแดงอ่อน) — แผนที่ที่มา→สไตล์มาจากเซิร์ฟเวอร์
+function sourceClass(source){
+  var st=(settle.sourceStyles||{})[String(source||'')];
+  return st ? (' src-'+st) : '';
+}
+
+// คัดลอก "ท่า" ของรายการที่ i ไปให้ทุกรายการ BL ในใบนี้
+function copyPortToAll(i){
+  var f=settle.form; if(!f || !f.rows[i]) return;
+  var port=String(f.rows[i].port||'').trim();
+  if(!port){ toast('เลือกท่าของรายการนี้ก่อน'); return; }
+  var changed=0;
+  f.rows.forEach(function(x, idx){
+    if(idx===i || x.port===port) return;
+    x.port=port; changed++;
+    applyAutoRates(x);        // ท่าเปลี่ยน = ช่องที่คิดให้เฉพาะบางท่า (EXTRA MOVEMENT) ต้องคิดใหม่
+  });
+  renderSettleRows(); updateSettleSummary();
+  toast(changed ? ('เปลี่ยนท่าเป็น '+port+' ครบทุก BL แล้ว ('+changed+' รายการ)')
+                : ('ทุกรายการเป็นท่า '+port+' อยู่แล้ว'));
+}
+
+function renderSettleRows(){
+  var f=settle.form; if(!f) return;
+  $('st-empty').classList.toggle('hidden', f.rows.length>0);
+  if(!f.rows.length){ $('st-rows').innerHTML=''; return; }
+  $('st-rows').innerHTML=f.rows.map(function(r,i){
+    return '<div class="st-card'+sourceClass(r.source)+'" data-i="'+i+'">'+
+      '<div class="st-top"><div class="st-no">'+(i+1)+'</div>'+
+        '<div class="st-bl">'+(r.bl?esc(r.bl):'<span class="muted">ไม่มีเลข BL</span>')+
+          (r.source?(' <span class="st-tag">'+esc(r.source)+'</span>'):'')+
+          (r.src?('<div class="st-src">จาก: '+esc(r.src)+'</div>'):'')+'</div>'+
+        '<button type="button" class="st-del">✕</button></div>'+
+      '<div class="st-grid">'+
+        // เลือกท่าของ BL ใบใดใบหนึ่งแล้ว กด "Copy all BL" เพื่อเปลี่ยนท่าของทุกรายการให้เหมือนกัน
+        '<div class="st-f"><label>ท่า</label>'+portSelectHTML(r)+
+          (f.rows.length>1 ? '<button type="button" class="st-portall'+(r.port?'':' hidden')+'">📋 Copy all BL</button>' : '')+
+        '</div>'+
+        '<div class="st-f"><label>จำนวนตู้</label><input type="number" class="st-in" data-f="containers" min="0" step="1" value="'+(r.containers||'')+'"></div>'+
+        // เอาช่อง "ชื่อลูกค้า" ออกจากฟอร์มตามที่สั่ง — ค่าที่ดึงมาจากชีตงานขนส่งยังเก็บไว้และขึ้นในรูปใบปิดบัญชีตามเดิม
+        (r.bl?'':'<div class="st-f full"><label>เลข BL.</label><input type="text" class="st-in" data-f="bl" value=""></div>')+
+        settle.cols.filter(function(c){ return colVisible(c.key, r); }).map(function(c){
+          return costFieldHTML(c, r);
+        }).join('')+
+        (colVisible('__special', r) ? '<div class="st-f full"><label>'+esc(settle.specialLabel)+'</label>'+
+          '<div class="st-sp">'+r.specials.map(function(sp,si){
+            // ค่าน็อคตู้ = เลือกจำนวนเงินแบบ dropdown (เพิ่มค่า/แก้ขั้นได้ที่หน้า admin)
+            var isKnock = sp.preset && sp.label===settleKnockLabel();
+            var kvals = settle.options.knockValues||[];
+            var typing = isKnock && (sp.other || isOffList(kvals, sp.amount));
+            var money = isKnock
+              ? settleSelectHTML(kvals, sp.amount, 'st-spsel', '', '— เลือก —')+
+                '<input type="number" class="st-spamt'+(typing?'':' hidden')+'" inputmode="decimal" min="0" step="1" placeholder="พิมพ์เอง" value="'+(sp.amount?sp.amount:'')+'">'
+              : '<input type="number" class="st-spamt" inputmode="decimal" min="0" step="1" placeholder="0" value="'+(sp.amount?sp.amount:'')+'">';
+            return '<div class="st-sprow" data-si="'+si+'">'+
+              (sp.preset ? '<span class="spn">'+esc(sp.label)+'</span>'
+                         : '<input type="text" class="st-splabel" placeholder="ระบุหัวข้อ" value="'+esc(sp.label)+'">')+
+              money+
+              (sp.preset ? '' : '<button type="button" class="spdel">✕</button>')+
+            '</div>';
+          }).join('')+'</div>'+
+          '<button type="button" class="cl-add st-spadd" style="margin-top:2px">＋ เพิ่มหัวข้อย่อยอื่น</button>'+
+        '</div>' : '')+
+        '<div class="st-f full"><label>รายละเอียดค่าใช้จ่ายอื่นๆ</label><input type="text" class="st-in" data-f="otherDetail" value="'+esc(r.otherDetail)+'"></div>'+
+      '</div>'+
+      '<div class="st-rowtotal"><span>รวม</span><span class="v" id="st-rt-'+i+'">'+fmtM(rowTotal(r))+'</span></div>'+
+    '</div>';
+  }).join('');
+}
+
+function rowSpecialTotal(r){
+  return r2((r.specials||[]).reduce(function(t,s){
+    return t + (String(s.label||'').trim() ? (Number(s.amount)||0) : 0);
+  }, 0));
+}
+function rowTotal(r){
+  var t=0;
+  settle.cols.forEach(function(c){ t+=Number(r.costs[c.key])||0; });
+  return r2(t + rowSpecialTotal(r));
+}
+function settleExpense(){
+  var f=settle.form; if(!f) return 0;
+  return r2(f.rows.reduce(function(t,r){ return t+rowTotal(r); },0));
+}
+
+function settleBalance(){
+  var f=settle.form; if(!f) return 0;
+  return r2(f.claimTotal-settleExpense());
+}
+
+function updateSettleSummary(){
+  var f=settle.form; if(!f) return;
+  var exp=settleExpense(), bal=r2(f.claimTotal-exp);
+  $('st-expense').textContent=fmtM(exp);
+  $('st-claim').textContent=fmtM(f.claimTotal)+' บาท';
+  $('st-claim2').textContent=fmtM(f.claimTotal)+' บาท';
+  $('st-balance').textContent=fmtM(Math.abs(bal))+' บาท';
+  $('st-balance-lbl').textContent = bal>=0 ? 'คงเหลือ (โอนคืนบริษัท)' : 'จ่ายเกินยอดเบิก (บริษัทโอนคืน)';
+  $('st-balance').style.color = bal>=0 ? 'var(--blue)' : '#dc2626';
+
+  // คงเหลือเป็นบวก = พนักงานต้องโอนคืนบริษัท → บังคับวันที่โอนคืน + สลิป
+  // ไม่เป็นบวก (บริษัทโอนคืน / พอดี) = ไม่ต้องเลือกวันที่โอนคืนและไม่ต้องแนบสลิปเลย
+  var needTransfer = bal>0;
+  $('st-return-wrap').classList.toggle('hidden', !needTransfer);
+  if(!needTransfer && (f.returnedDate || settle.slip)){
+    f.returnedDate=''; $('st-returned').value='';
+    resetSlip();
+  }
+
+  var ready = !!f.inspectDate && f.rows.length>0;
+  var miss=[];
+  if(ready && needTransfer){
+    if(!f.returnedDate) miss.push('เลือกวันที่โอนคืนบริษัท');
+    else {
+      var sp=slipState(bal, f.returnedDate);
+      if(!sp.ok) miss.push(sp.why);
+    }
+  }
+  $('st-need').classList.toggle('hidden', !(ready && miss.length));
+  if(miss.length) $('st-need').textContent='ต้องทำก่อนบันทึก: '+miss.join(' • ');
+
+  var can = ready && !miss.length;
+  $('st-save').classList.toggle('hidden', !ready);
+  $('st-save').disabled=!can;
+}
+
+// ---------- สลิปโอนเงินคืนบริษัท ----------
+// เลือกไฟล์ → ย่อรูป → อัปขึ้นเซิร์ฟเวอร์ให้ OCR อ่าน "ยอดเงิน / วันที่ / เลขที่รายการ / ธนาคาร"
+// แล้วเทียบกับยอดที่ต้องโอนและวันที่โอนคืนที่เลือก • ยอดหรือวันที่เปลี่ยนทีหลัง = ตรวจซ้ำให้เอง
+function setSlipStatus(kind, html){
+  var el=$('st-slip-status');
+  el.className='status '+(kind||'wait');
+  el.innerHTML=html;
+}
+
+function resetSlip(){
+  settle.slip=null;
+  settle.slipRaw=''; settle.slipMaxW=SLIP_W_START; settle.slipSize='';
+  clearTimeout(slipTimer);
+  $('st-slip-hires-wrap').classList.add('hidden');
+  $('st-slip-file').value='';
+  $('st-slip-prev').classList.add('hidden');
+  $('st-slip-img').removeAttribute('src');
+  $('st-slip-info').classList.add('hidden');
+  $('st-slip-info').innerHTML='';
+  $('st-slip-manual').classList.add('hidden');
+  $('st-slip-amt').value=''; $('st-slip-date').value=''; $('st-slip-txn').value='';
+  setSlipStatus('wait','แนบสลิปโอนเงินของยอดที่ต้องโอนคืน');
+}
+
+// ลองอ่านสลิปใบเดิมอีกครั้ง (ไม่ต้องอัปรูปใหม่) — ใช้เมื่อบริการ OCR ติดขัดชั่วคราว
+$('st-slip-retry').addEventListener('click', function(){
+  var f=settle.form, sp=settle.slip;
+  if(!f || !sp || !sp.fileId){ toast('แนบสลิปก่อน'); return; }
+  var bal=settleBalance(), date=f.returnedDate;
+  setSlipStatus('wait','<span class="spinner"></span> กำลังลองอ่านสลิปอีกครั้ง…');
+  api({action:'verifySlip', token:state.token, fileId:sp.fileId, retryOcr:true, expectDate:date, expectAmount:bal})
+    .then(function(res){ applySlipResult(res, bal, date); })
+    .catch(function(){ setSlipStatus('err','ลองอ่านไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต'); });
+});
+
+// อ่านสลิปไม่ออก → กรอกค่าจากสลิปเอง แล้วส่งไปให้เซิร์ฟเวอร์ตรวจกับยอด/วันที่ที่ต้องโอน
+$('st-slip-confirm').addEventListener('click', function(){
+  var f=settle.form, sp=settle.slip;
+  if(!f || !sp || !sp.fileId){ toast('แนบสลิปก่อน'); return; }
+  var bal=settleBalance(), date=f.returnedDate;
+  var manual={ amount:Number($('st-slip-amt').value)||0, date:$('st-slip-date').value, txn:$('st-slip-txn').value.trim() };
+  if(!manual.txn){ toast('กรอกเลขที่รายการในสลิปด้วย'); return; }
+  if(!manual.date){ toast('เลือกวันที่โอนในสลิป'); return; }
+  setSlipStatus('wait','<span class="spinner"></span> กำลังตรวจค่าที่กรอก…');
+  api({action:'verifySlip', token:state.token, fileId:sp.fileId, manual:manual, expectDate:date, expectAmount:bal})
+    .then(function(res){ applySlipResult(res, bal, date); })
+    .catch(function(){ setSlipStatus('err','ส่งค่าไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต'); });
+});
+
+// สถานะสลิปเทียบกับยอด/วันที่ล่าสุด — ถ้าเปลี่ยนไปแล้วต้องตรวจซ้ำ (หรือแนบใหม่ถ้าเป็นสลิปที่บันทึกไว้เดิม)
+function slipState(bal, date){
+  var sp=settle.slip;
+  if(!sp) return { ok:false, why:'แนบสลิปโอนเงิน' };
+  var stale = (sp.expectAmount!==bal) || (sp.expectDate!==date);
+  if(!stale) return { ok:!!sp.canSave, why: sp.canSave ? '' : ('สลิปยังไม่ผ่านการตรวจ — '+(sp.label||'')) };
+  if(sp.fileId){ scheduleSlipRecheck(); return { ok:false, why:'กำลังตรวจสลิปกับยอด/วันที่ใหม่' }; }
+  return { ok:false, why:'ยอดหรือวันที่เปลี่ยน — ต้องแนบสลิปใหม่' };
+}
+
+var slipTimer=null;
+function scheduleSlipRecheck(){
+  clearTimeout(slipTimer);
+  slipTimer=setTimeout(recheckSlip, 700);      // หน่วงไว้ กันยิงทุกครั้งที่พิมพ์ตัวเลข
+}
+function recheckSlip(){
+  var f=settle.form, sp=settle.slip;
+  if(!f || !sp || !sp.fileId) return;
+  var bal=settleBalance();
+  if(!(bal>0) || !f.returnedDate) return;
+  if(sp.expectAmount===bal && sp.expectDate===f.returnedDate) return;
+  setSlipStatus('wait','<span class="spinner"></span> ตรวจสลิปกับยอด/วันที่ใหม่…');
+  var date=f.returnedDate;
+  api({action:'verifySlip', token:state.token, fileId:sp.fileId, expectDate:date, expectAmount:bal})
+    .then(function(res){ applySlipResult(res, bal, date); })
+    .catch(function(){ setSlipStatus('err','ตรวจสลิปไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต'); });
+}
+
+// ปรับขนาดรูปสลิปก่อนอัป — allowUpscale = ขยายให้ใหญ่กว่าต้นฉบับได้ (ใช้ตอนกดเพิ่มความละเอียดให้ OCR อ่านง่ายขึ้น)
+function resizeImage(dataUrl, maxW, quality, allowUpscale){
+  return new Promise(function(resolve){
+    var img=new Image();
+    img.onload=function(){
+      var w=img.width||0, h=img.height||0;
+      if(!w){ resolve({ dataUrl:dataUrl, w:0, h:0 }); return; }
+      var sc=maxW/w;
+      if(sc>1 && !allowUpscale) sc=1;
+      var nw=Math.max(1, Math.round(w*sc)), nh=Math.max(1, Math.round(h*sc));
+      try {
+        var cv=document.createElement('canvas');
+        cv.width=nw; cv.height=nh;
+        var ctx=cv.getContext('2d');
+        if('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality='high';
+        ctx.drawImage(img, 0, 0, nw, nh);
+        resolve({ dataUrl:cv.toDataURL('image/jpeg', quality||0.92), w:nw, h:nh });
+      } catch(e){ resolve({ dataUrl:dataUrl, w:w, h:h }); }
+    };
+    img.onerror=function(){ resolve({ dataUrl:dataUrl, w:0, h:0 }); };
+    img.src=dataUrl;
+  });
+}
+
+// ความกว้างที่ใช้อัปสลิป — กดปุ่มเพิ่มความละเอียดจะคูณ 2 ทีละครั้ง (มีเพดานกันมือถือแรงไม่พอ)
+var SLIP_W_START=1600, SLIP_W_CAP=4800;
+
+// รูปต้นฉบับที่จะใช้ขยาย — ถ้าตัวแปรหลุด ยังดึงจากรูปตัวอย่างที่โชว์อยู่ได้ (เป็น data URL เหมือนกัน)
+function slipSourceImage(){
+  if(settle.slipRaw) return settle.slipRaw;
+  var s=String($('st-slip-img').getAttribute('src')||'');
+  return /^data:image/.test(s) ? s : '';
+}
+
+function resizeSlipAndSend(maxW, quality){
+  var f=settle.form, src=slipSourceImage();
+  if(!f || !src){ toast('แนบสลิปก่อน'); return; }
+  var bal=settleBalance(), date=f.returnedDate;
+  if(!(bal>0) || !date){ toast('ต้องมียอดที่ต้องโอนคืนและวันที่โอนคืนก่อน'); return; }
+  settle.slipMaxW=maxW;
+  setSlipStatus('wait','<span class="spinner"></span> กำลังเตรียมรูป (กว้าง '+maxW+' px)…');
+  resizeImage(src, maxW, quality, true).then(function(out){
+    settle.slipSize = out.w ? (out.w+' × '+out.h+' px') : '';
+    sendSlip(out.dataUrl, bal, date);
+  });
+}
+
+// โชว์/ซ่อนปุ่มเพิ่มความละเอียด — เรียกได้ทุกจังหวะที่สถานะสลิปเปลี่ยน
+function updateHiResButton(passed){
+  var src=slipSourceImage();
+  var cur=settle.slipMaxW||SLIP_W_START;
+  var show = !passed && !!src && cur<SLIP_W_CAP;
+  $('st-slip-hires-wrap').classList.toggle('hidden', !show);
+  if(!show) return;
+  var nextW=Math.min(SLIP_W_CAP, cur*2);
+  $('st-slip-hires').textContent='🔍 เพิ่มความละเอียดรูป 2 เท่า (กว้าง '+nextW+' px)';
+  $('st-slip-size').textContent='ความละเอียดที่ส่งไปตอนนี้: '+(settle.slipSize||('กว้าง '+cur+' px'))+
+    ' — เพิ่มแล้ว OCR มักอ่านตัวเลขได้ดีขึ้น';
+}
+
+// อ่านค่าในสลิปไม่ผ่าน → เพิ่มความละเอียดรูปเป็น 2 เท่า แล้วอัป+อ่านใหม่ (ไม่ต้องเลือกไฟล์ซ้ำ)
+$('st-slip-hires').addEventListener('click', function(){
+  var cur=settle.slipMaxW||SLIP_W_START;
+  if(cur>=SLIP_W_CAP){ toast('เพิ่มความละเอียดได้สูงสุดแล้ว (กว้าง '+cur+' px)'); return; }
+  resizeSlipAndSend(Math.min(SLIP_W_CAP, cur*2), 0.97);
+});
+
+$('st-slip-file').addEventListener('change', function(){
+  var file=this.files && this.files[0];
+  if(!file) return;
+  var f=settle.form; if(!f){ this.value=''; return; }
+  var bal=settleBalance();
+  if(!(bal>0)){ toast('ใบนี้ไม่ต้องโอนคืนบริษัท จึงไม่ต้องแนบสลิป'); this.value=''; return; }
+  if(!f.returnedDate){ toast('เลือกวันที่โอนคืนบริษัทก่อนแนบสลิป'); this.value=''; return; }
+  if(file.size>10*1024*1024){ toast('ไฟล์ใหญ่เกิน 10MB — ถ่าย/แคปใหม่ให้เล็กลงก่อน'); this.value=''; return; }
+
+  var reader=new FileReader();
+  reader.onload=function(){
+    var raw=String(reader.result||'');
+    $('st-slip-img').src=raw;
+    $('st-slip-prev').classList.remove('hidden');
+    settle.slipRaw=raw;                       // เก็บรูปต้นฉบับไว้ เผื่อกดเพิ่มความละเอียดภายหลัง
+    resizeSlipAndSend(SLIP_W_START, 0.92);
+  };
+  reader.onerror=function(){ toast('อ่านไฟล์รูปไม่สำเร็จ'); };
+  reader.readAsDataURL(file);
+});
+
+function sendSlip(dataUrl, bal, date){
+  setSlipStatus('wait','<span class="spinner"></span> กำลังอัปโหลดและอ่านสลิป… (อาจใช้เวลาสักครู่)');
+  $('st-slip-info').classList.add('hidden');
+  var prevId=(settle.slip && settle.slip.fileId)||'';
+  // กดเพิ่มความละเอียดได้ถึง 4,800px ซึ่งใหญ่เกินกว่าจะส่งผ่าน API
+  // จึงอัปตรงขึ้นพื้นที่เก็บไฟล์ก่อน แล้วค่อยบอกเซิร์ฟเวอร์ให้ไปอ่าน
+  uploadLarge(dataUrlToBlob(dataUrl), { purpose:'slip', expectDate:date }).then(function(up){
+    return api({ action:'verifySlip', token:state.token, key:up.key,
+                 replaceId:prevId, expectDate:date, expectAmount:bal });
+  })
+    .then(function(res){ applySlipResult(res, bal, date); })
+    .catch(function(err){
+      setSlipStatus('err','อัปโหลดสลิปไม่สำเร็จ'+((err&&err.error)?(': '+errTH(err.error)):' ตรวจสอบอินเทอร์เน็ต')+
+        ' แล้วลองแนบอีกครั้ง');
+      settle.slip=null;
+      updateHiResButton(false);
+      updateSettleSummary();
+    });
+}
+
+function slipInfoRow(label, value, ok){
+  return '<div class="slip-row"><span>'+esc(label)+'</span><b style="color:'+(ok?'#166534':'#b91c1c')+'">'+esc(value)+'</b></div>';
+}
+
+function applySlipResult(res, bal, date){
+  if(!res || !res.ok){
+    if(res && (res.error==='session_expired'||res.error==='invalid_token')){ toast(errTH(res.error)); return logout(); }
+    setSlipStatus('err','ตรวจสลิปไม่สำเร็จ: '+errTH((res&&res.error)||'bad_request')+((res&&res.detail)?(' — '+res.detail):''));
+    settle.slip=null;
+    updateHiResButton(false);      // ล้มเหลวก็ยังให้ลองเพิ่มความละเอียดแล้วส่งใหม่ได้
+    updateSettleSummary();
+    return;
+  }
+  settle.slip={ fileId:res.fileId, url:res.url, txn:res.txn||'', amount:Number(res.amount)||0,
+                date:res.date||'', status:res.status, label:res.label||'', canSave:!!res.canSave,
+                expectAmount:bal, expectDate:date };
+  var icon = (res.status==='verified') ? '✅ ' : (res.status==='mismatch' ? '❌ ' : (res.status==='manual' ? '📝 ' : '⚠️ '));
+  var kind = (res.status==='verified'||res.status==='manual') ? 'ok' : (res.status==='mismatch' ? 'err' : 'wait');
+  setSlipStatus(kind, icon+esc(res.label||''));
+
+  var read=(res.status==='manual')?'ที่กรอก':'ในสลิป';
+  var L=[];
+  L.push(slipInfoRow('ยอด'+read, res.amount?(fmtM(res.amount)+' บาท'):'อ่านไม่ออก', !!res.amountOk));
+  L.push(slipInfoRow('วันที่'+read, res.date?fmtD(res.date):'อ่านไม่ออก', !!res.dateOk));
+  L.push(slipInfoRow('เลขที่รายการ', res.txn||'อ่านไม่ออก', !!res.txn));
+  if(res.bank) L.push(slipInfoRow('ธนาคาร', res.bank, true));
+  L.push('<div class="slip-row"><span>ต้องโอนคืน</span><b>'+fmtM(bal)+' บาท • '+esc(fmtD(date))+'</b></div>');
+  if(res.status==='mismatch'){
+    L.push('<div style="margin-top:6px">ตรวจสอบว่าแนบสลิปใบที่ถูกต้อง (ยอดและวันที่ต้องตรงกับที่โอนจริง)</div>');
+  } else if(res.status!=='verified'){
+    L.push('<div style="margin-top:6px">ผู้ดูแล/ผู้จัดการจะเห็นสลิปใบนี้เพื่อตรวจย้อนหลังให้'+
+      (res.ocrDetail?('<br><span style="font-size:11px">สาเหตุ: '+esc(res.ocrDetail)+'</span>'):'')+'</div>');
+  }
+  $('st-slip-info').innerHTML=L.join('');
+  $('st-slip-info').classList.remove('hidden');
+
+  // อ่านค่าไม่ผ่าน (อ่านไม่ออก หรือยอด/วันที่ไม่ตรง) = เปิดปุ่มเพิ่มความละเอียดรูปให้ลองอ่านใหม่
+  updateHiResButton(res.status==='verified' || res.status==='manual');
+
+  // อ่านไม่ออก = เปิดช่องให้กรอกค่าจากสลิปเอง (เติมค่าที่ควรจะเป็นไว้ให้ ลดการพิมพ์ผิด)
+  var showManual = !!res.canManual;
+  $('st-slip-manual').classList.toggle('hidden', !showManual);
+  if(showManual){
+    if(!$('st-slip-amt').value) $('st-slip-amt').value=bal;
+    if(!$('st-slip-date').value) $('st-slip-date').value=date;
+    if(res.txn && !$('st-slip-txn').value) $('st-slip-txn').value=res.txn;
+  }
+  updateSettleSummary();
+}
+
+// ---- แก้ค่าในแถว ----
+function settleIdx(t){ var el=t.closest && t.closest('.st-card'); return el?(Number(el.getAttribute('data-i'))||0):-1; }
+
+$('st-rows').addEventListener('input', function(e){
+  var t=e.target, i=settleIdx(t); if(i<0 || !settle.form) return;
+  var r=settle.form.rows[i]; if(!r) return;
+  var refreshTotal=function(){
+    var cell=$('st-rt-'+i); if(cell) cell.textContent=fmtM(rowTotal(r));
+    updateSettleSummary();
+  };
+
+  if(t.classList.contains('st-cost')){
+    var key=t.getAttribute('data-k');
+    r.costs[key]=Math.max(0, Number(t.value)||0);
+    r.auto[key]=false;                       // พิมพ์เองแล้ว = เลิกคิดให้อัตโนมัติช่องนี้
+    refreshTotal();
+    return;
+  }
+  var sprow=t.closest && t.closest('.st-sprow');
+  if(sprow){
+    var si=Number(sprow.getAttribute('data-si'))||0, sp=r.specials[si];
+    if(sp){
+      if(t.classList.contains('st-spamt')) sp.amount=Math.max(0, Number(t.value)||0);
+      else if(t.classList.contains('st-splabel')) sp.label=t.value;
+      refreshTotal();
+    }
+    return;
+  }
+  if(t.classList.contains('st-in')){
+    var fld=t.getAttribute('data-f');
+    if(fld==='containers'){
+      r.containers=Math.max(0, parseInt(t.value,10)||0);
+      applyAutoRates(r);                     // จำนวนตู้เปลี่ยน = คิดช่องอัตโนมัติใหม่
+      renderSettleRows(); updateSettleSummary();
+      var again=$('st-rows').querySelectorAll('.st-card')[i];
+      if(again){ var inp=again.querySelector('[data-f="containers"]'); if(inp){ inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); } }
+      return;
+    }
+    r[fld]=t.value;
+  }
+});
+// ช่องแบบเลือก (ท่า / ติ๊กค่าล่วงเวลา / dropdown ค่าตะกั่ว / dropdown ค่าน็อคตู้)
+$('st-rows').addEventListener('change', function(e){
+  var t=e.target, i=settleIdx(t); if(i<0 || !settle.form) return;
+  var r=settle.form.rows[i]; if(!r) return;
+  var refresh=function(){
+    var cell=$('st-rt-'+i); if(cell) cell.textContent=fmtM(rowTotal(r));
+    updateSettleSummary();
+  };
+
+  if(t.classList.contains('st-portsel')){
+    var before=portSignature(r);
+    r.port=t.value;
+    applyAutoRates(r);                     // ท่าเปลี่ยน = ช่องที่คิดให้เฉพาะบางท่า (EXTRA MOVEMENT) ต้องคิดใหม่
+    // วาดใหม่เฉพาะตอนที่ยอด/ป้ายกำกับของช่องพวกนั้นเปลี่ยนจริง ๆ (ไม่งั้นไม่ re-render กันหน้ากระโดด)
+    if(portSignature(r)!==before){ renderSettleRows(); updateSettleSummary(); return; }
+    // มีท่าแล้วจึงโชว์ปุ่ม Copy all BL
+    var pall=t.closest('.st-f').querySelector('.st-portall');
+    if(pall) pall.classList.toggle('hidden', !r.port);
+    return;
+  }
+
+  // ค่าล่วงเวลา: ติ๊กแล้วคิดยอดต่อ 1 รายการ BL ให้เลย (อัตราตั้งที่หน้า admin)
+  if(t.classList.contains('st-otchk')){
+    var ok=t.getAttribute('data-k');
+    r.costs[ok]= t.checked ? settleOtRate() : 0;
+    r.auto[ok]=false;
+    refresh();
+    return;
+  }
+
+  // ค่าตะกั่ว: เลือกจากรายการ หรือเลือก "อื่นๆ" เพื่อพิมพ์จำนวนเงินจริง
+  if(t.classList.contains('st-selin')){
+    var ck=t.getAttribute('data-k');
+    var box=t.closest('.st-f').querySelector('.st-cost');
+    if(t.value==='__other'){
+      r.other[ck]=true;
+      if(box){ box.classList.remove('hidden'); box.focus(); }
+    } else {
+      r.other[ck]=false;
+      r.costs[ck]=Math.max(0, Number(t.value)||0);
+      r.auto[ck]=false;
+      if(box){ box.classList.add('hidden'); box.value=r.costs[ck]||''; }
+    }
+    refresh();
+    return;
+  }
+
+  // ค่าน็อคตู้ (หัวข้อย่อยของค่าบริการเพิ่มเติมพิเศษ)
+  if(t.classList.contains('st-spsel')){
+    var spr=t.closest('.st-sprow'); if(!spr) return;
+    var sp=r.specials[Number(spr.getAttribute('data-si'))||0]; if(!sp) return;
+    var amtBox=spr.querySelector('.st-spamt');
+    if(t.value==='__other'){
+      sp.other=true;
+      if(amtBox){ amtBox.classList.remove('hidden'); amtBox.focus(); }
+    } else {
+      sp.other=false;
+      sp.amount=Math.max(0, Number(t.value)||0);
+      if(amtBox){ amtBox.classList.add('hidden'); amtBox.value=sp.amount||''; }
+    }
+    refresh();
+  }
+});
+
+$('st-rows').addEventListener('click', function(e){
+  if(!e.target.closest) return;
+  var ri=settleIdx(e.target);
+
+  // Copy all BL — เปลี่ยนท่าของทุกรายการให้เหมือนรายการนี้
+  if(e.target.closest('.st-portall')){
+    if(ri>=0) copyPortToAll(ri);
+    return;
+  }
+
+  // เพิ่ม/ลบหัวข้อย่อยของค่าบริการเพิ่มเติมพิเศษ
+  if(e.target.closest('.st-spadd')){
+    if(ri<0) return;
+    settle.form.rows[ri].specials.push({ label:'', amount:0, preset:false });
+    renderSettleRows(); updateSettleSummary();
+    var cards=$('st-rows').querySelectorAll('.st-card');
+    if(cards[ri]){ var labs=cards[ri].querySelectorAll('.st-splabel'); if(labs.length) labs[labs.length-1].focus(); }
+    return;
+  }
+  var del=e.target.closest('.spdel');
+  if(del){
+    if(ri<0) return;
+    var sr=del.closest('.st-sprow');
+    settle.form.rows[ri].specials.splice(Number(sr.getAttribute('data-si'))||0, 1);
+    renderSettleRows(); updateSettleSummary();
+    return;
+  }
+
+  if(!e.target.closest('.st-del')) return;
+  var i=ri; if(i<0) return;
+  var gone=settle.form.rows[i];
+  if(gone && blKey(gone.bl)) settle.form.cache[blKey(gone.bl)]=gone;
+  settle.form.rows.splice(i,1);
+  renderSettleRows(); updateSettleSummary();
+  renderBlPicker();          // ถอดออกจากตรงนี้ = ติ๊กในรายการ BL ด้านบนต้องหลุดตามด้วย
+});
+$('st-add').addEventListener('click', function(){
+  if(!settle.form) return;
+  settle.form.rows.push(emptyRow());
+  renderSettleRows(); updateSettleSummary(); updatePickSummary();
+  var cards=$('st-rows').querySelectorAll('.st-card');
+  if(cards.length){ cards[cards.length-1].scrollIntoView({block:'center'}); }
+});
+$('st-returned').addEventListener('change', function(){
+  if(settle.form) settle.form.returnedDate=this.value;
+  recheckSlip();               // เปลี่ยนวันที่โอนคืน = ต้องตรวจสลิปกับวันที่ใหม่
+  updateSettleSummary();
+});
+$('st-company').addEventListener('change', function(){ if(settle.form) settle.form.companyReturnedDate=this.value; });
+
+// ---- ข้อความสรุป ----
+// ข้อความสรุปที่คัดลอก
+// กรณี "บริษัทโอนคืนพนักงาน" (คงเหลือติดลบ) = เอาเฉพาะ **หัว + ท้าย** ไม่ต้องมีรายละเอียดแต่ละ BL
+// (รูปใบปิดบัญชีที่กด "🧾 สร้างใบปิดบัญชี" ยังมีรายละเอียดครบเหมือนเดิม)
+function settleText(editCountOverride){
+  var f=settle.form, L=[];
+  var exp=settleExpense(), bal=r2(f.claimTotal-exp);
+  var companyPays = bal<0;
+  L.push('📕 รายการปิดบัญชี (รายละเอียดการตรวจปล่อย)');
+  L.push('วันที่ตรวจปล่อย: '+fmtD(f.inspectDate));
+  L.push('ชื่อ SHIPPING: '+(state.user.name||state.user.username));
+  L.push('ยอดเบิกเงิน: '+fmtM(f.claimTotal)+' บาท');
+  if(companyPays) L.push('จำนวน '+f.rows.length+' รายการ BL');
+  L.push('--------------------------------');
+  if(!companyPays){
+    f.rows.forEach(function(r,i){
+      var head=(i+1)+') BL '+(r.bl||'-');
+      if(r.port) head+=' • ท่า '+r.port;
+      if(r.customer) head+=' • '+r.customer;
+      head+=' • '+r.containers+' ตู้';
+      L.push(head);
+      settle.cols.forEach(function(c){
+        var v=Number(r.costs[c.key])||0;
+        if(v>0) L.push('   '+c.label+' = '+fmtM(v));
+      });
+      var sps=(r.specials||[]).filter(function(s){ return String(s.label||'').trim() && (Number(s.amount)||0)>0; });
+      if(sps.length){
+        L.push('   '+settle.specialLabel+' = '+fmtM(rowSpecialTotal(r)));
+        sps.forEach(function(s){ L.push('      - '+String(s.label).trim()+' = '+fmtM(s.amount)); });
+      }
+      if(r.otherDetail) L.push('   รายละเอียดค่าใช้จ่ายอื่นๆ: '+r.otherDetail);
+      L.push('   รวม = '+fmtM(rowTotal(r)));
+    });
+    L.push('--------------------------------');
+  }
+  L.push('รวมค่าใช้จ่าย '+fmtM(exp)+' บาท');
+  L.push('หัก ยอดเบิก '+fmtM(f.claimTotal)+' บาท');
+  L.push(bal>=0 ? ('คงเหลือ '+fmtM(bal)+' บาท (โอนคืนบริษัท)')
+                : ('คงเหลือ '+fmtM(-bal)+' บาท (บริษัทโอนคืนพนักงาน)'));
+  if(f.returnedDate) L.push('วันที่โอนคืนบริษัท: '+fmtD(f.returnedDate));
+  if(settle.slip && settle.slip.txn) L.push('เลขที่รายการสลิป: '+settle.slip.txn);
+  if(f.companyReturnedDate) L.push('วันที่บริษัทโอนคืน: '+fmtD(f.companyReturnedDate));
+  var ec=(editCountOverride==null)?f.editCount:editCountOverride;
+  if(ec>0) L.push('(แก้ไขครั้งที่ '+ec+')');
+  return L.join('\n');
+}
+
+$('st-copy').addEventListener('click', function(){
+  if(!settle.lastText){ toast('ยังไม่มีข้อความให้คัดลอก'); return; }
+  copyText(settle.lastText);
+});
+
+$('st-sheet').addEventListener('click', function(){
+  if(!settle.lastSaved){ toast('ยังไม่มีใบปิดบัญชี'); return; }
+  openSettleSheet(settle.lastSaved);
+});
+
+// ---- บันทึก (ปุ่มเดียว: บันทึก + คัดลอก แล้วล้างค่าใหม่) ----
+$('st-save').addEventListener('click', function(){
+  var f=settle.form; if(!f) return;
+  if(!f.inspectDate){ toast('กรุณาเลือกวันที่ตรวจปล่อยก่อน'); return; }
+  if(!f.rows.length){ toast('ยังไม่มีรายการ BL'); return; }
+
+  var text=settleText(f.id ? f.editCount+1 : 0);
+  copyText(text, true);      // คัดลอกในจังหวะกดปุ่ม เหตุผลเดียวกับหน้าเบิก
+
+  var b=$('st-save'), old=b.textContent;
+  b.disabled=true; b.textContent='กำลังบันทึก…';
+  api({ action:'saveSettlement', token:state.token, settlement:{
+    id:f.id, inspectDate:f.inspectDate, rows:f.rows,
+    returnedDate:f.returnedDate, companyReturnedDate:f.companyReturnedDate,
+    // ส่งแค่ id ของไฟล์สลิป — เซิร์ฟเวอร์ไปอ่านผลตรวจของไฟล์นั้นเอง ไม่เชื่อค่าที่หน้าเว็บส่งมา
+    slip: (settle.slip && settle.slip.fileId) ? { fileId:settle.slip.fileId } : null
+  }}).then(function(res){
+    b.disabled=false; b.textContent=old;
+    if(!res.ok){
+      if(res.error==='session_expired'||res.error==='invalid_token'){ toast(errTH(res.error)); return logout(); }
+      toast('คัดลอกข้อความแล้ว แต่บันทึกไม่สำเร็จ: '+errTH(res.error), 4000);
+      return;
+    }
+    var rec=res.record;
+    settle.lastText=text;
+    settle.lastSaved=rec;
+    var d=fmtD(rec.inspectDate), bal=Number(rec.balance)||0;
+    var msg=(res.mode==='updated'
+        ? ('บันทึกการแก้ไขครั้งที่ '+rec.editCount+' ของใบวันที่ '+d+' แล้ว')
+        : ('บันทึกปิดบัญชีวันที่ '+d+' แล้ว'))
+      +' • รวมค่าใช้จ่าย '+fmtM(rec.totalExpense)+' บาท • '
+      +(bal>=0 ? ('คงเหลือโอนคืนบริษัท '+fmtM(bal)) : ('บริษัทต้องโอนคืน '+fmtM(-bal)))
+      +' บาท • คัดลอกข้อความให้แล้ว ✓';
+    newSettleForm(null);
+    showSettleSaved(msg);
+    toast('บันทึกและคัดลอกแล้ว ✓');
+    // โหลดตัวเลือกวันที่ใหม่ — วันที่เพิ่งปิดบัญชีต้องหายจากรายการทันที
+    // (loadSettleConfig ล้างฟอร์มให้อีกรอบ จึงต้องตั้งข้อความยืนยันซ้ำหลังโหลดเสร็จ)
+    loadSettleConfig().then(function(){ showSettleSaved(msg); }).catch(function(){});
+    loadMySettlements();
+  }).catch(function(){
+    b.disabled=false; b.textContent=old;
+    toast('คัดลอกข้อความแล้ว แต่บันทึกไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต', 4000);
+  });
+});
+
+$('st-new').addEventListener('click', function(){ newSettleForm(null); window.scrollTo(0,0); });
+
+// ---- ประวัติการปิดบัญชี ----
+function loadMySettlements(){
+  $('st-list').innerHTML='<div class="center-load"><span class="spinner"></span> กำลังโหลดประวัติการปิดบัญชี…</div>';
+  return api({action:'mySettlements', token:state.token}).then(function(res){
+    if(!res.ok){
+      if(res.error==='session_expired'||res.error==='invalid_token'){ toast(errTH(res.error)); return logout(); }
+      $('st-list').innerHTML='<div class="muted" style="padding:10px">โหลดประวัติไม่สำเร็จ: '+esc(errTH(res.error))+'</div>';
+      return;
+    }
+    settle.list=res.rows||[];
+    renderSettleList();
+  }).catch(function(){
+    $('st-list').innerHTML='<div class="muted" style="padding:10px">โหลดประวัติไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต</div>';
+  });
+}
+
+function renderSettleList(){
+  if(!settle.list.length){ $('st-list').innerHTML='<div class="muted" style="padding:10px">ยังไม่มีรายการปิดบัญชี</div>'; return; }
+  $('st-list').innerHTML=settle.list.map(function(r,i){
+    var upd=r.updated?fmtDT(r.updated):'';
+    var bal=Number(r.balance)||0;
+    return '<div class="cl-row">'+
+      '<div class="r-top"><span>ตรวจปล่อย '+esc(fmtD(r.inspectDate))+'</span>'+
+        '<span class="cl-amt" style="color:'+(bal>=0?'var(--blue)':'#dc2626')+'">'+fmtM(Math.abs(bal))+' ฿</span></div>'+
+      '<div class="r-meta">'+r.rows.length+' BL • ใช้จ่าย '+fmtM(r.totalExpense)+' • เบิก '+fmtM(r.claimTotal)+
+        ' • '+(bal>=0?'คงเหลือโอนคืนบริษัท':'บริษัทโอนคืน')+
+        (r.editCount>0?(' • <b>แก้ไขครั้งที่ '+r.editCount+'</b>'):'')+
+        '<br>บันทึกล่าสุด '+esc(upd)+
+        (r.returnedDate?(' • โอนคืนบริษัท '+esc(fmtD(r.returnedDate))):'')+
+        (r.companyReturnedDate?(' • บริษัทโอนคืน '+esc(fmtD(r.companyReturnedDate))):'')+'</div>'+
+      '<div class="r-act">'+
+        '<button class="btn btn-ghost" onclick="settleEdit('+i+')">✏️ แก้ไข</button>'+
+        '<button class="btn btn-ghost" onclick="settleCopy('+i+')">📋 คัดลอก</button>'+
+        '<button class="btn btn-primary" onclick="settleSheet('+i+')">🧾 สร้างใบปิดบัญชี</button>'+
+      '</div></div>';
+  }).join('');
+}
+
+window.settleEdit=function(i){
+  var rec=settle.list[i]; if(!rec) return;
+  if(!settle.loaded){ toast('กำลังโหลดข้อมูล กรุณารอสักครู่'); return; }
+  newSettleForm(rec);
+  $('st-saved').textContent='กำลังแก้ไขใบปิดบัญชีวันที่ '+fmtD(rec.inspectDate)+' (แก้ไขมาแล้ว '+rec.editCount+' ครั้ง)';
+  $('st-saved').classList.remove('hidden');
+  window.scrollTo(0,0);
+};
+window.settleCopy=function(i){
+  var rec=settle.list[i]; if(!rec) return;
+  copyText(rec.detail||'');
+};
+
+// ---------- ใบปิดบัญชี: วาดเป็นรูปตามฟอร์มกระดาษ แล้วบันทึกลงมือถือ ----------
+// วาดด้วย canvas ตรง ๆ ไม่พึ่งไลบรารีภายนอก (แอปเป็นไฟล์เดียว ต้องทำงานได้แม้เน็ตช้า)
+// ลำดับคอลัมน์ตามฟอร์มกระดาษ
+// ไม่มีคอลัมน์ "ชื่อลูกค้า" แล้ว (ตัดออกตามที่สั่ง) — ความกว้างช่องตัวเลขเพิ่มขึ้นให้พอกับตัวอักษรที่ใหญ่ขึ้น
+// จะได้ไม่ตัดบรรทัดกลางจำนวนเงิน
+// ความกว้าง (w) เป็นค่าฐาน — ทุกช่องยกเว้น ลำดับ / ท่า / เลข BL. ถูกย่อลงอีก 20% รอบล่าสุด
+// (ก่อนหน้านี้: ช่องตัวเลขย่อ 20%, ค่าบริการเพิ่มเติมพิเศษ + รวม ย่อ 40%)
+// หัวคอลัมน์ฟรีโซน/ผ่านแดน เว้นวรรค 2 ช่องก่อนวงเล็บ ให้ตัดขึ้นบรรทัดใหม่ตรงวงเล็บพอดี
+var SHEET_COLS = [
+  { k:'no',             t:'ลำดับ',                         w:52  },
+  { k:'port',           t:'ท่า',                           w:76  },
+  { k:'bl',             t:'เลข BL.',                       w:150 },
+  { k:'containers',     t:'จำนวนตู้',                       w:49  },
+  { k:'lift_on',        t:'ค่า LIFT ON',                    w:77  },
+  { k:'lift_off',       t:'ค่า LIFT OFF',                   w:77  },
+  { k:'storage',        t:'ค่า STORAGE',                    w:77  },
+  { k:'extra_movement', t:'ค่า EXTRA MOVEMENT',            w:77  },
+  { k:'extra_service',  t:'ค่าบริการเพิ่มเติม  (ฟรีโซน)',     w:96  },
+  { k:'extra_service_transit', t:'ค่าบริการเพิ่มเติม  (ผ่านแดน)', w:96 },
+  { k:'overtime',       t:'ค่าล่วงเวลา (มีใบเสร็จ)',         w:77  },
+  { k:'order_form',     t:'ค่า ORDER FORM (ค่าธรรมเนียม)',  w:96  },
+  { k:'seal',           t:'ค่าตะกั่ว',                      w:77  },
+  // คอลัมน์เดียว แต่ในช่องแสดงหัวข้อย่อยพร้อมจำนวนเงิน 1 หัวข้อต่อ 1 บรรทัด
+  { k:'__special',      t:'ค่าบริการเพิ่มเติมพิเศษ',          w:96,  align:'left' },
+  { k:'otherDetail',    t:'รายละเอียดค่าใช้จ่ายอื่นๆ',        w:144, align:'left' },
+  { k:'total',          t:'รวม',                           w:77  }
+];
+// ขยายความกว้าง "ทุกช่อง" จากค่าฐานด้านบน — 30% แล้วขยายอีก 20% = 1.56 เท่า
+// (คูณครั้งเดียวตอนโหลด ตัวเลขในตารางจึงยังเป็นค่าฐานที่อ่านง่าย)
+var SHEET_COL_SCALE = 1.56;
+SHEET_COLS.forEach(function(c){ c.w = Math.round(c.w * SHEET_COL_SCALE); });
+
+var SHEET_MIN_ROWS = 13;                      // ฟอร์มกระดาษมี 13 บรรทัด
+var SHEET_FONT = '"Noto Sans Thai","Segoe UI",Roboto,-apple-system,sans-serif';
+
+// ---- หน้าตาใบปิดบัญชีที่ admin ตั้งไว้ (มาจากเซิร์ฟเวอร์: options.sheet) ----
+// ไม่ได้ตั้งไว้ = ใช้ค่าตามตาราง SHEET_COLS ด้านบนและขนาดตัวอักษรตั้งต้นนี้
+// ★ ส่วนนี้ต้องเหมือนกับใน admin.html (หน้า preview) ทุกตัวอักษร ★
+var SHEET_FONTS_DEFAULT = { title:31.5, info:25.2, head:21, cell:21, foot:23.1 };
+var sheetLayout = null;
+
+function sheetFont(k){
+  var f = (sheetLayout && sheetLayout.fonts) || {};
+  return Number(f[k]) > 0 ? Number(f[k]) : SHEET_FONTS_DEFAULT[k];
+}
+
+// ความกว้าง / ขนาดตัวอักษร / ตำแหน่งข้อความ ของคอลัมน์นี้ (ค่าที่ admin ตั้ง ถ้าไม่มีก็ค่าตั้งต้น)
+function sheetCol(c){
+  var o = (sheetLayout && sheetLayout.cols && sheetLayout.cols[c.k]) || {};
+  var al = (o.align === 'left' || o.align === 'center' || o.align === 'right') ? o.align : null;
+  return {
+    w: Number(o.w) > 0 ? Number(o.w) : c.w,
+    size: Number(o.size) > 0 ? Number(o.size) : sheetFont('cell'),
+    align: al || c.align || (c.k==='no'||c.k==='containers'||c.k==='bl'||c.k==='port' ? 'center' : 'right')
+  };
+}
+
+// ตัดบรรทัดให้พอดีความกว้าง — ภาษาไทยไม่มีเว้นวรรค จึงต้องตัดทีละตัวอักษรด้วย
+function wrapText(ctx, text, maxW){
+  text = String(text == null ? '' : text);
+  if(!text) return [''];
+  var words = text.split(' '), lines = [], cur = '';
+  function pushChunk(word){
+    if(ctx.measureText(word).width <= maxW){
+      var join = cur ? cur+' '+word : word;
+      if(ctx.measureText(join).width <= maxW){ cur = join; }
+      else { if(cur) lines.push(cur); cur = word; }
+      return;
+    }
+    if(cur){ lines.push(cur); cur=''; }
+    var piece = '';
+    for(var i=0;i<word.length;i++){
+      if(ctx.measureText(piece+word[i]).width > maxW && piece){ lines.push(piece); piece=''; }
+      piece += word[i];
+    }
+    cur = piece;
+  }
+  for(var w=0; w<words.length; w++){ if(words[w]!=='') pushChunk(words[w]); }
+  if(cur) lines.push(cur);
+  return lines.length ? lines : [''];
+}
+
+// ขึ้นบรรทัดใหม่ตาม \n ก่อน แล้วค่อยตัดบรรทัดตามความกว้างของช่อง
+// (ใช้กับคอลัมน์ค่าบริการเพิ่มเติมพิเศษ ที่ต้องแสดงหัวข้อย่อย 1 หัวข้อต่อ 1 บรรทัด)
+function layoutLines(ctx, text, maxW){
+  var out = [];
+  String(text == null ? '' : text).split('\n').forEach(function(seg){
+    wrapText(ctx, seg, maxW).forEach(function(l){ out.push(l); });
+  });
+  return out.length ? out : [''];
+}
+
+function drawCell(ctx, text, x, y, w, h, opt){
+  opt = opt || {};
+  ctx.save();
+  if(opt.fill){ ctx.fillStyle = opt.fill; ctx.fillRect(x, y, w, h); }
+  ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
+  ctx.strokeRect(x + .5, y + .5, w, h);
+  var size = opt.size || 11, pad = 4;
+  ctx.font = (opt.bold ? 'bold ' : '') + size + 'px ' + SHEET_FONT;
+  ctx.fillStyle = opt.color || '#000';
+  // ช่องจำนวนเงินห้ามตัดกลางตัวเลข — ช่องแคบไปก็ย่อขนาดตัวอักษรลงเท่าที่จำเป็น (ไม่เกิน 25%)
+  if(opt.fit && text !== '' && text != null){
+    var floor = size*0.75;
+    while(size > floor && ctx.measureText(String(text)).width > w - pad*2){
+      size = Math.max(floor, size - 0.5);
+      ctx.font = (opt.bold ? 'bold ' : '') + size + 'px ' + SHEET_FONT;
+    }
+  }
+  var lines = layoutLines(ctx, text, w - pad*2);
+  var lh = opt.lh || (size + 3);
+  var startY = y + (h - lines.length*lh)/2 + lh/2 + 1;
+  for(var i=0;i<lines.length;i++){
+    var ty = startY + i*lh;
+    if(opt.align === 'left'){ ctx.textAlign='left'; ctx.fillText(lines[i], x+pad, ty); }
+    else if(opt.align === 'right'){ ctx.textAlign='right'; ctx.fillText(lines[i], x+w-pad, ty); }
+    else { ctx.textAlign='center'; ctx.fillText(lines[i], x+w/2, ty); }
+  }
+  ctx.restore();
+}
+
+function buildSettleSheet(rec){
+  // ขนาดตัวอักษร/ความกว้าง/ตำแหน่งข้อความของแต่ละช่อง = ค่าที่ admin ตั้งไว้ (sheetCol / sheetFont)
+  // ความสูงของแถว/หัวตาราง/ท้ายตาราง คำนวณจากขนาดตัวอักษรจริงทุกครั้ง ข้อความจึงไม่ล้นกรอบ
+  var F_CELL = sheetFont('cell'), F_HEAD = sheetFont('title'),
+      F_INFO = sheetFont('info'), F_VALUE = sheetFont('foot'), F_COLH = sheetFont('head');
+  var lhOf = function(size){ return Math.round(size*1.3); };
+  var LH = lhOf(F_CELL);                        // ระยะบรรทัดของช่องที่ใช้ขนาดตั้งต้น
+  var M = 16, HEAD_H = Math.round(F_HEAD*2.27), INFO_H = Math.round(F_INFO*3.17),
+      ROW_H = Math.round(F_CELL*2.6), FOOT_H = Math.round(F_VALUE*2.18);
+  var LAY = SHEET_COLS.map(sheetCol);           // ค่าที่ใช้จริงของแต่ละคอลัมน์ (เรียงเหมือน SHEET_COLS)
+  var tableW = LAY.reduce(function(t,c){ return t+c.w; }, 0);
+  var rows = rec.rows || [];
+  var nRows = Math.max(SHEET_MIN_ROWS, rows.length);
+  var W = tableW + M*2;
+
+  // ช่อง "ค่าบริการเพิ่มเติมพิเศษ" มีหลายหัวข้อย่อยได้ จึงต้องวัดก่อนว่าแถวไหนต้องสูงกว่าปกติ
+  var meas = document.createElement('canvas').getContext('2d');
+  var rowH = [], sumRowH = 0;
+  for(var m=0; m<nRows; m++){
+    var rr = rows[m], need = ROW_H;
+    if(rr){
+      SHEET_COLS.forEach(function(c, ci){
+        var txt = '';
+        if(c.k === '__special'){
+          txt = (rr.specials||[]).filter(function(s){ return s.label && Number(s.amount); })
+                 .map(function(s){ return s.label + ' ' + fmtM(s.amount); }).join('\n');
+        } else if(c.k === 'customer' || c.k === 'otherDetail' || c.k === 'bl') txt = rr[c.k] || '';
+        if(!txt) return;
+        meas.font = LAY[ci].size + 'px ' + SHEET_FONT;
+        need = Math.max(need, layoutLines(meas, txt, LAY[ci].w - 8).length*lhOf(LAY[ci].size) + 9);
+      });
+    }
+    rowH.push(need); sumRowH += need;
+  }
+
+  // หัวคอลัมน์: ชื่อคอลัมน์ยาว ๆ ตัดหลายบรรทัด — วัดความสูงจริงแทนค่าคงที่
+  var headLines = 1;
+  meas.font = 'bold ' + F_COLH + 'px ' + SHEET_FONT;
+  SHEET_COLS.forEach(function(c, ci){
+    headLines = Math.max(headLines, layoutLines(meas, c.t, LAY[ci].w - 8).length);
+  });
+  var COLH_H = Math.max(Math.round(F_COLH*3.05), headLines*lhOf(F_COLH) + 10);
+  meas.font = F_CELL + 'px ' + SHEET_FONT;
+
+  // ท้ายตาราง: ป้ายบางอันยาวจนตัด 2 บรรทัด ต้องวัดความสูงเหมือนกัน ไม่งั้นข้อความล้นกรอบ
+  // (ทิศทางการโอนใส่ไว้ที่ป้าย ไม่ใช่ช่องตัวเลข เพราะช่อง "รวม" แคบ)
+  var labelW = LAY[LAY.length-2].w;
+  var valueW = LAY[LAY.length-1].w;
+  var bal = Number(rec.balance)||0;
+  var footLabels = [
+    'รวมค่าใช้จ่าย',
+    'หัก ยอดเบิก',
+    'คงเหลือ ' + (bal < 0 ? '(บริษัทโอนคืนพนักงาน)' : '(โอนคืนบริษัท)'),
+    'วันที่โอนคืนบริษัท',
+    'วันที่บริษัทโอนคืน (เฉพาะพนักงานบัญชี)'
+  ];
+  var footH = [], sumFootH = 0;
+  meas.font = F_COLH + 'px ' + SHEET_FONT;
+  for(var g=0; g<footLabels.length; g++){
+    var fh0 = Math.max(FOOT_H, layoutLines(meas, footLabels[g], labelW-8).length*lhOf(F_COLH) + 9);
+    footH.push(fh0); sumFootH += fh0;
+  }
+
+  var H = M*2 + HEAD_H + INFO_H + COLH_H + sumRowH + sumFootH;
+
+  // วาดใหญ่กว่าจริงให้ภาพคม แต่ต้องไม่เกินขีดจำกัด canvas ของมือถือ
+  // (iOS Safari วาดภาพที่กว้างเกิน ~4096 px หรือพื้นที่เกิน ~16 ล้านพิกเซล ออกมาเป็นภาพว่าง)
+  // ตารางยิ่งกว้าง ตัวคูณยิ่งลดให้เองอัตโนมัติ — ตัวอักษรใหญ่อยู่แล้ว ภาพจึงยังอ่านชัด
+  var SC = Math.min(2, 4000/W, Math.sqrt(14000000/(W*H)));
+  if(!(SC > 1)) SC = 1;
+
+  var cv = document.createElement('canvas');
+  cv.width = W*SC; cv.height = H*SC;
+  var ctx = cv.getContext('2d');
+  ctx.scale(SC, SC);
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+
+  var BLUE = '#dce6f1';
+  var y = M;
+
+  // แถบหัวเรื่อง
+  drawCell(ctx, 'รายการปิดบัญชี (รายละเอียดการตรวจปล่อย)', M, y, tableW, HEAD_H, { fill:BLUE, bold:true, size:F_HEAD, lh:LH });
+  y += HEAD_H;
+
+  // วันที่ตรวจปล่อย / ชื่อ SHIPPING / ยอดเบิกเงิน
+  var w1 = Math.round(tableW*0.30), w2 = Math.round(tableW*0.42), w3 = tableW - w1 - w2;
+  drawCell(ctx, 'วันที่ตรวจปล่อย : ' + fmtD(rec.inspectDate), M, y, w1, INFO_H, { fill:BLUE, bold:true, size:F_INFO, lh:LH });
+  drawCell(ctx, 'ชื่อ SHIPPING : ' + (rec.name||''), M+w1, y, w2, INFO_H, { fill:BLUE, bold:true, size:F_INFO, lh:LH });
+  drawCell(ctx, 'ยอดเบิกเงิน : ' + fmtM(rec.claimTotal) + ' บาท', M+w1+w2, y, w3, INFO_H, { fill:BLUE, bold:true, size:F_INFO, lh:LH });
+  y += INFO_H;
+
+  // หัวคอลัมน์ — ชิดซ้ายของช่อง (กึ่งกลางแนวตั้ง)
+  var x = M;
+  SHEET_COLS.forEach(function(c, ci){
+    drawCell(ctx, c.t, x, y, LAY[ci].w, COLH_H, { fill:BLUE, bold:true, size:F_COLH, lh:lhOf(F_COLH), align:'left' });
+    x += LAY[ci].w;
+  });
+  y += COLH_H;
+
+  // แถวข้อมูล (เติมบรรทัดว่างให้ครบเหมือนฟอร์มกระดาษ)
+  for(var i=0; i<nRows; i++){
+    var r = rows[i];
+    x = M;
+    SHEET_COLS.forEach(function(c, ci){
+      var v = '';
+      if(r){
+        if(c.k === 'no') v = String(i+1);
+        else if(c.k === 'total') v = fmtM(r.total);
+        else if(c.k === 'containers') v = r.containers ? String(r.containers) : '';
+        else if(c.k === '__special'){
+          // หัวข้อย่อย 1 หัวข้อต่อ 1 บรรทัด ในช่องเดียว
+          v = (r.specials||[]).filter(function(s){ return s.label && Number(s.amount); })
+                .map(function(s){ return s.label + ' ' + fmtM(s.amount); }).join('\n');
+        }
+        else if(c.k === 'port' || c.k === 'customer' || c.k === 'bl' || c.k === 'otherDetail') v = r[c.k] || '';
+        else { var n = (r.costs && Number(r.costs[c.k])) || 0; v = n ? fmtM(n) : ''; }
+      } else if(c.k === 'no') v = String(i+1);
+      // ช่องที่เป็นจำนวนเงิน/ตัวเลข ห้ามตัดกลางตัวเลข (ช่องแคบลงแล้ว) — ย่อตัวอักษรแทน
+      var fit = !(c.k==='__special' || c.k==='otherDetail' || c.k==='bl' || c.k==='port');
+      drawCell(ctx, v, x, y, LAY[ci].w, rowH[i],
+               { size:LAY[ci].size, lh:lhOf(LAY[ci].size), align:LAY[ci].align, fit:fit });
+      x += LAY[ci].w;
+    });
+    y += rowH[i];
+  }
+
+  // ท้ายตาราง: รวมค่าใช้จ่าย / หัก ยอดเบิก / คงเหลือ / วันที่โอนคืน
+  var blankW = tableW - labelW - valueW;
+  var footValues = [
+    fmtM(rec.totalExpense),
+    fmtM(rec.claimTotal),
+    fmtM(Math.abs(bal)),
+    rec.returnedDate ? fmtD(rec.returnedDate) : '',
+    rec.companyReturnedDate ? fmtD(rec.companyReturnedDate) : ''
+  ];
+  for(var f=0; f<footLabels.length; f++){
+    var fh = footH[f];
+    drawCell(ctx, '', M, y, blankW, fh, {});
+    drawCell(ctx, footLabels[f], M+blankW, y, labelW, fh, { fill:BLUE, bold:true, size:F_COLH, lh:lhOf(F_COLH), align:'left' });
+    drawCell(ctx, footValues[f], M+blankW+labelW, y, valueW, fh, { size:F_VALUE, lh:LH, bold:true, align:'right', fit:true });
+    y += fh;
+  }
+  return cv;
+}
+
+// ---- แสดง + บันทึกรูป ----
+var sheetBlob = null, sheetName = 'ใบปิดบัญชี.png';
+
+function openSettleSheet(rec){
+  var cv;
+  try { cv = buildSettleSheet(rec); }
+  catch(e){ toast('สร้างรูปไม่สำเร็จ'); return; }
+  sheetName = String(rec.inspectDate||'') + '_' + (rec.username||state.user.username) + '.png';
+  var dataUrl = cv.toDataURL('image/png');
+  $('sheet-img').src = dataUrl;
+  $('sheet-modal').classList.remove('hidden');
+  sheetBlob = null;
+  if(cv.toBlob) cv.toBlob(function(b){ sheetBlob = b; }, 'image/png');
+  uploadSheetImage(rec, dataUrl);
+}
+
+// เก็บรูปบนพื้นที่ถาวรของเซิร์ฟเวอร์ให้อัตโนมัติ
+function uploadSheetImage(rec, dataUrl){
+  if(!rec || !rec.id){ $('sheet-drive').classList.add('hidden'); return; }
+  var box=$('sheet-drive');
+  box.classList.remove('hidden');
+  box.className='status wait';
+  box.innerHTML='<span class="spinner"></span> กำลังบันทึกรูปบนเซิร์ฟเวอร์…';
+  // รูปใบปิดบัญชีเป็น PNG ความละเอียดสูง ใหญ่เกินกว่าจะส่งผ่าน API ได้ จึงอัปตรงขึ้นพื้นที่เก็บไฟล์
+  uploadLarge(dataUrlToBlob(dataUrl), { purpose:'settlement', id:rec.id }).then(function(up){
+    return api({ action:'saveSettleImage', token:state.token, id:rec.id, key:up.key });
+  }).then(function(res){
+    if(!res.ok){
+      box.className='status err';
+      box.textContent='บันทึกบนเซิร์ฟเวอร์ไม่สำเร็จ: '+errTH(res.error)+(res.detail?(' — '+res.detail):'')+' (รูปยังบันทึกลงมือถือได้ตามปกติ)';
+      return;
+    }
+    rec.imageUrl=res.url;
+    box.className='status ok';
+    box.innerHTML='บันทึกบนเซิร์ฟเวอร์แล้ว ✓ โฟลเดอร์ '+esc(res.folder)+' • ไฟล์ '+esc(res.name)+
+      ' — <a href="'+esc(res.url)+'" target="_blank">เปิดไฟล์</a>';
+  }).catch(function(err){
+    box.className='status err';
+    box.textContent='บันทึกบนเซิร์ฟเวอร์ไม่สำเร็จ'+((err&&err.error)?(': '+errTH(err.error)):' ตรวจสอบอินเทอร์เน็ต')+
+      ' (รูปยังบันทึกลงมือถือได้ตามปกติ)';
+  });
+}
+
+$('sheet-close').addEventListener('click', function(){ $('sheet-modal').classList.add('hidden'); });
+$('sheet-modal').addEventListener('click', function(e){ if(e.target === this) this.classList.add('hidden'); });
+
+$('sheet-save').addEventListener('click', function(){
+  var src = $('sheet-img').src;
+  if(!src){ toast('ยังไม่มีรูป'); return; }
+  // มือถือ: แชร์ไฟล์ตรง ๆ ได้ผลดีที่สุด (เลือก "บันทึกรูปภาพ" ได้เลย)
+  if(sheetBlob && navigator.canShare){
+    try {
+      var file = new File([sheetBlob], sheetName, { type:'image/png' });
+      if(navigator.canShare({ files:[file] })){
+        navigator.share({ files:[file], title:'ใบปิดบัญชี' })
+          .then(function(){ toast('บันทึก/แชร์รูปแล้ว ✓'); })
+          .catch(function(){});
+        return;
+      }
+    } catch(e){}
+  }
+  var a = document.createElement('a');
+  a.href = sheetBlob ? URL.createObjectURL(sheetBlob) : src;
+  a.download = sheetName;
+  document.body.appendChild(a); a.click(); a.remove();
+  if(sheetBlob) setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
+  toast('บันทึกรูปแล้ว — ถ้าไม่พบไฟล์ ให้กดค้างที่รูปเพื่อบันทึก');
+});
+
+window.settleSheet=function(i){
+  var rec=settle.list[i]; if(!rec) return;
+  openSettleSheet(rec);
+};
+
+// ---------- ส่งใบเสร็จ (ถ่ายรูปสด คล้ายเมนูเข้างาน) ----------
+// ขั้นตอน: เลือกวันที่ตรวจปล่อยก่อน → กล้องจึงเปิด → ถ่ายสดตอนกดส่ง
+// เงื่อนไข: **1 วันที่ตรวจปล่อย = 1 รูป** วันที่ที่ส่งแล้วจะโชว์รูปเดิม + ปุ่ม "ถ่ายใหม่แทนรูปเดิม"
+// ต่างจากเข้างาน: รูปละเอียดกว่า (ต้องอ่านตัวเลขในใบเสร็จออก) และไม่มีเพดานความแม่นยำ GPS
+var receipt = { list:[], sending:false, blocked:false, date:'', existing:null, replace:false };
+
+$('btn-goreceipt').addEventListener('click', openReceipt);
+$('btn-receipt-back').addEventListener('click', resumeCheckin);
+$('rc-camera').addEventListener('click', function(){ startCameraOn(CAM_RC).catch(function(){}); });
+
+function openReceipt(){
+  show('receipt');
+  window.scrollTo(0,0);
+  $('rc-saved').classList.add('hidden');
+  $('rc-date').value='';                       // เข้าหน้านี้ทีไร เริ่มจากเลือกวันที่ใหม่เสมอ
+  receipt.date=''; receipt.existing=null; receipt.replace=false;
+  stopCamera();
+  $('rc-cam-card').classList.add('hidden');
+  $('rc-exist').classList.add('hidden');
+
+  // ต้องถ่ายจากมือถือเหมือนการเข้างานของพนักงานจัดส่ง (เซิร์ฟเวอร์บล็อกไว้อีกชั้น)
+  receipt.blocked = isWindowsDevice();
+  if(receipt.blocked){
+    $('rc-loc').textContent='—';
+    $('rc-datemsg').className='status err';
+    $('rc-datemsg').textContent='ส่งใบเสร็จได้จากโทรศัพท์มือถือเท่านั้น — เปิดหน้านี้จากมือถือของคุณ';
+    $('rc-status').className='status err';
+    $('rc-status').textContent='ส่งใบเสร็จได้จากโทรศัพท์มือถือเท่านั้น';
+    $('rc-send').disabled=true;
+    loadMyReceipts();
+    return;
+  }
+
+  startLocation('rc-loc','rc-acc');            // เปิด GPS ไว้ก่อน (ใช้ state.loc ร่วมกับหน้าเข้างาน) กว่าจะเลือกวันที่เสร็จก็จับสัญญาณได้แล้ว
+  applyReceiptDate();
+  loadMyReceipts();
+}
+
+// ---- ขั้นที่ 1: เลือกวันที่ตรวจปล่อย ----
+$('rc-date').addEventListener('change', function(){ applyReceiptDate(); });
+$('rc-today').addEventListener('click', function(){
+  if(receipt.blocked) return;
+  $('rc-date').value=todayYMD();
+  applyReceiptDate();
+});
+
+// ตัดสินใจจากวันที่ที่เลือก: ยังไม่เลือก / เคยส่งแล้ว / พร้อมถ่าย
+function applyReceiptDate(){
+  if(receipt.blocked) return;
+  var d=$('rc-date').value;
+  receipt.date=d;
+  receipt.replace=false;
+  receipt.existing=null;
+  $('rc-exist').classList.add('hidden');
+
+  if(!d){
+    stopCamera();
+    $('rc-cam-card').classList.add('hidden');
+    $('rc-datemsg').className='status wait';
+    $('rc-datemsg').textContent='เลือกวันที่ตรวจปล่อยก่อน จึงจะเปิดกล้องถ่ายรูปได้';
+    rcRefresh();
+    return;
+  }
+
+  var ex=receipt.list.filter(function(r){ return r.inspectDate===d; })[0];
+  if(ex){
+    receipt.existing=ex;
+    stopCamera();
+    $('rc-cam-card').classList.add('hidden');
+    $('rc-datemsg').className='status wait';
+    $('rc-datemsg').textContent='วันที่ '+fmtD(d)+' ส่งใบเสร็จไปแล้ว — 1 วันที่ตรวจปล่อย ส่งได้ 1 รูป';
+    $('rc-exist-img').src=ex.photoUrl?photoThumb(ex.photoUrl):'';
+    $('rc-exist-meta').innerHTML='ส่งเมื่อ '+esc(fmtDT(ex.time))+
+      (ex.retakeCount>0?(' • ถ่ายใหม่มาแล้ว '+ex.retakeCount+' ครั้ง'):'')+
+      (ex.note?('<br>📝 '+esc(ex.note)):'');
+    $('rc-exist').classList.remove('hidden');
+    rcRefresh();
+    return;
+  }
+
+  $('rc-datemsg').className='status ok';
+  $('rc-datemsg').textContent='วันที่ตรวจปล่อย '+fmtD(d)+' — ถ่ายรูปใบเสร็จได้เลย';
+  $('rc-cam-card').classList.remove('hidden');
+  startCameraOn(CAM_RC).catch(function(){});
+  rcRefresh();
+}
+
+// ถ่ายใหม่แทนรูปเดิมของวันนั้น (ยังเหลือรูปเดียวต่อ 1 วันที่)
+$('rc-retake').addEventListener('click', retakeReceipt);
+function retakeReceipt(){
+  if(!receipt.existing || receipt.blocked) return;
+  receipt.replace=true;
+  $('rc-datemsg').className='status wait';
+  $('rc-datemsg').textContent='ถ่ายใหม่แทนรูปเดิมของวันที่ '+fmtD(receipt.date)+' — รูปเดิมจะถูกแทนที่';
+  $('rc-cam-card').classList.remove('hidden');
+  startCameraOn(CAM_RC).catch(function(){});
+  rcRefresh();
+  $('rc-cam-card').scrollIntoView({block:'center'});
+}
+
+// ปุ่มส่งพร้อมใช้เมื่อ: เลือกวันที่แล้ว (และไม่ติดว่าส่งไปแล้ว) + มีตำแหน่ง + กล้องมีภาพ
+function rcRefresh(){
+  var btn=$('rc-send'), st=$('rc-status');
+  if(!btn || !st) return;
+  if(receipt.sending || receipt.blocked) return;
+
+  if(!receipt.date){
+    btn.disabled=true;
+    st.className='status wait'; st.textContent='เลือกวันที่ตรวจปล่อยก่อน';
+    return;
+  }
+  if(receipt.existing && !receipt.replace){
+    btn.disabled=true;
+    st.className='status wait';
+    st.textContent='วันที่นี้ส่งใบเสร็จไปแล้ว — กด "ถ่ายใหม่แทนรูปเดิม" ถ้าต้องการเปลี่ยนรูป';
+    return;
+  }
+
+  var ready = !!state.loc && state.rcReady;
+  btn.disabled=!ready;
+  if(ready){
+    st.className='status ok';
+    st.textContent='พร้อม — ตรวจดูภาพใบเสร็จให้ชัด แล้วกดส่งใบเสร็จ ระบบจะถ่ายรูปทันที';
+  } else {
+    var wait=[];
+    if(!state.loc) wait.push('สัญญาณตำแหน่ง');
+    if(!state.rcReady) wait.push('กล้อง');
+    st.className='status wait';
+    st.textContent='รอ: '+wait.join(' และ ');
+  }
+}
+
+$('rc-send').addEventListener('click', function(){
+  if(receipt.sending) return;
+  if(!receipt.date){ toast('กรุณาเลือกวันที่ตรวจปล่อยก่อน'); return; }
+  if(receipt.existing && !receipt.replace){ toast('วันที่นี้ส่งใบเสร็จไปแล้ว — กดถ่ายใหม่แทนรูปเดิมถ้าต้องการเปลี่ยน'); return; }
+  if(!state.loc){ toast('ยังไม่พบตำแหน่ง กรุณารอสักครู่'); return; }
+  if(!state.rcReady){ toast('กล้องยังไม่พร้อม กรุณารอสักครู่'); return; }
+
+  // ใบเสร็จต้องอ่านตัวเลขออก จึงเก็บภาพใหญ่/คมกว่ารูปเข้างาน
+  var photo=captureFrame($('rc-video'), $('rc-canvas'), 1280, 0.82);
+  if(!photo){ toast('ถ่ายรูปไม่สำเร็จ กดเปิดกล้องอีกครั้งแล้วลองใหม่'); return; }
+
+  var b=$('rc-send'), old=b.textContent;
+  var sentDate=receipt.date, wasReplace=receipt.replace;
+  receipt.sending=true; b.disabled=true; b.textContent='กำลังส่ง…';
+  $('rc-status').className='status wait'; $('rc-status').textContent='กำลังส่งใบเสร็จ…';
+
+  api({ action:'saveReceipt', token:state.token,
+        inspectDate:sentDate, replace:wasReplace,
+        photo:photo, note:$('rc-note').value,
+        lat:state.loc.lat, lng:state.loc.lng, accuracy:state.loc.accuracy,
+        deviceTime:fmtDT(new Date()), userAgent:navigator.userAgent })
+  .then(function(res){
+    receipt.sending=false; b.textContent=old;
+    if(!res.ok){
+      if(res.error==='session_expired'||res.error==='invalid_token'){ toast(errTH(res.error)); return logout(); }
+      toast('ส่งไม่สำเร็จ: '+errTH(res.error), 4000);
+      // ส่งซ้ำวันเดิม (เช่น เพิ่งส่งจากอีกเครื่อง) — โหลดประวัติใหม่แล้วโชว์รูปเดิมให้เลือกถ่ายใหม่แทน
+      if(res.error==='receipt_date_exists'){ loadMyReceipts().then(function(){ applyReceiptDate(); }); return; }
+      rcRefresh();
+      return;
+    }
+    // ส่งเสร็จ = ปิดกล้องและล้างวันที่ ให้เลือกวันที่ของใบถัดไป (1 วันที่ = 1 รูป)
+    stopCamera();
+    $('rc-note').value='';
+    $('rc-date').value='';
+    receipt.date=''; receipt.existing=null; receipt.replace=false;
+    $('rc-cam-card').classList.add('hidden');
+    $('rc-exist').classList.add('hidden');
+    $('rc-saved').className='status ok';
+    $('rc-saved').textContent=(res.mode==='replaced'
+        ? ('เปลี่ยนรูปใบเสร็จของวันที่ '+fmtD(sentDate)+' แล้ว ✓')
+        : ('ส่งใบเสร็จของวันที่ '+fmtD(sentDate)+' แล้ว ✓'))
+      +' เวลา '+fmtDT(res.record.time)+' — เลือกวันที่ตรวจปล่อยใบถัดไปเพื่อส่งต่อ';
+    $('rc-saved').classList.remove('hidden');
+    toast(res.mode==='replaced' ? 'เปลี่ยนรูปแล้ว ✓' : 'ส่งใบเสร็จแล้ว ✓');
+    applyReceiptDate();
+    loadMyReceipts();
+  }).catch(function(){
+    receipt.sending=false; b.textContent=old;
+    rcRefresh();
+    toast('ส่งไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต', 4000);
+  });
+});
+
+function loadMyReceipts(){
+  return api({action:'myReceipts', token:state.token}).then(function(res){
+    if(!res.ok){
+      if(res.error==='session_expired'||res.error==='invalid_token'){ toast(errTH(res.error)); return logout(); }
+      $('rc-list').innerHTML='<div class="muted" style="padding:10px">โหลดประวัติไม่สำเร็จ: '+esc(errTH(res.error))+'</div>';
+      return;
+    }
+    receipt.list=res.rows||[];
+    renderReceiptList();
+  }).catch(function(){
+    $('rc-list').innerHTML='<div class="muted" style="padding:10px">โหลดประวัติไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต</div>';
+  });
+}
+
+function renderReceiptList(){
+  if(!receipt.list.length){ $('rc-list').innerHTML='<div class="muted" style="padding:10px">ยังไม่มีใบเสร็จที่ส่ง</div>'; return; }
+  $('rc-list').innerHTML=receipt.list.map(function(r){
+    var link=r.mapLink||'';
+    return '<div class="hist-item">'+
+      (r.photoUrl ? ('<a href="'+esc(r.photoUrl)+'" target="_blank"><img class="thumb" src="'+esc(photoThumb(r.photoUrl))+'" alt="ใบเสร็จ" onerror="this.style.display=\'none\'"></a>')
+                  : '<div class="thumb"></div>')+
+      '<div class="info">'+
+        '<div class="top"><b>ตรวจปล่อย '+esc(r.inspectDate?fmtD(r.inspectDate):'—')+'</b></div>'+
+        '<div class="meta">ส่งเมื่อ '+esc(fmtDT(r.time))+
+          (r.retakeCount>0?(' • ถ่ายใหม่ '+r.retakeCount+' ครั้ง'):'')+'<br>'+
+          (r.note?('📝 '+esc(r.note)+'<br>'):'')+
+          (r.address?(link?('<a href="'+esc(link)+'" target="_blank">'+esc(r.address)+'</a>'):esc(r.address)):'—')+'</div>'+
+      '</div></div>';
+  }).join('');
+}
+
+// ---------- AUTO LOGIN ----------
+(function init(){
+  if(loadSession()){
+    api({action:'me', token:state.token}).then(function(res){
+      if(!res.ok){ clearSession(); show('login'); return; }
+      state.user=res.user;
+      if(state.user.role==='admin' || state.user.role==='manager'){
+        try { localStorage.setItem('admin_sess', JSON.stringify({token:state.token, user:state.user})); } catch(e){}
+        window.location.href = 'admin.html';
+        return;
+      }
+      enterApp();
+    }).catch(function(){ show('login'); });
+  } else { show('login'); }
+})();
+</script>
+</body>
+</html>

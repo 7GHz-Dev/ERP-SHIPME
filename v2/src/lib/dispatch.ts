@@ -13,9 +13,10 @@ import {
 } from './people';
 import { listReceipts, myReceipts, saveReceipt } from './receipts';
 import {
-  listSettlements, saveSettleRates, saveSettlement, saveSettlementImage, settleConfig
+  listSettlements, saveSettleRates, saveSettlement, saveSettlementImage,
+  settleConfig, signSettlementImage
 } from './settlements';
-import { ocrDiagnostics, verifySlip } from './slip';
+import { ocrDiagnostics, signSlipUpload, verifySlip } from './slip';
 import { saveDataImage } from './storage';
 import { lookupTransport, transportDiagnostics } from './transport';
 import type { ApiBody, ApiResult, Handler } from './types';
@@ -306,8 +307,8 @@ const handlers: Record<string, Handler> = {
   saveSettleImage: async (body) => {
     const session = await guard(body);
     if (session.error) return session.error;
-    if (!body.id || !body.image) return { ok: false, error: 'bad_request' };
-    return saveSettlementImage(String(body.id), body.image, session.user);
+    if (!body.id || !(body.image || body.key)) return { ok: false, error: 'bad_request' };
+    return saveSettlementImage(String(body.id), body.image, session.user, body.key);
   },
   mySettlements: async (body) => {
     const session = await guard(body);
@@ -318,6 +319,20 @@ const handlers: Record<string, Handler> = {
     const session = await guard(body, ['admin', 'manager']);
     if (session.error) return session.error;
     return { ok: true, rows: await listSettlements(null, 500) };
+  },
+
+  /**
+   * ขอ URL ให้เบราว์เซอร์อัปรูปตรงไป Supabase — ใช้กับรูปที่เกินลิมิต body 4.5 MB ของ Vercel
+   * (รูปใบปิดบัญชี PNG ~4,000px และสลิปความละเอียดสูง)
+   * path คิดจากฝั่งเซิร์ฟเวอร์ทั้งหมด เบราว์เซอร์ส่งมาได้แค่ว่าจะอัปของอะไร
+   */
+  signUpload: async (body) => {
+    const session = await guard(body);
+    if (session.error) return session.error;
+    const purpose = String(body.purpose || '');
+    if (purpose === 'settlement') return signSettlementImage(body.id, session.user);
+    if (purpose === 'slip') return signSlipUpload(String(body.expectDate || ''), session.user);
+    return { ok: false, error: 'bad_request' };
   },
 
   // ---- สลิป ----

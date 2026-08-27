@@ -74,6 +74,9 @@ export async function replaceDataImage(dataUrl: unknown, category: string, baseN
  * ขอ URL สำหรับให้ "เบราว์เซอร์อัปโหลดตรงไป Supabase" — ใช้กับรูปใหญ่
  * (รูปใบปิดบัญชีเป็น PNG ~4,000px ซึ่งเกินลิมิต body 4.5 MB ของ Vercel Functions
  *  ถ้าส่งผ่าน API จะโดน FUNCTION_PAYLOAD_TOO_LARGE)
+ *
+ * path ถูกคำนวณจากฝั่งเซิร์ฟเวอร์เสมอ ไม่รับมาจากเบราว์เซอร์
+ * ไม่งั้นคนที่ล็อกอินแล้วจะเขียนทับไฟล์ของคนอื่นได้
  */
 export async function createSignedUpload(category: string, baseName: string, ext = 'png') {
   const folder = safeCategory(category);
@@ -82,6 +85,15 @@ export async function createSignedUpload(category: string, baseName: string, ext
     .createSignedUploadUrl(`${folder}/${fileName}`, { upsert: true });
   if (error || !data) throw new Error(`signed_upload_failed: ${error?.message || 'unknown'}`);
   return { ...stored(folder, fileName), uploadUrl: data.signedUrl, uploadToken: data.token };
+}
+
+/** ลบไฟล์เก่าของชื่อเดียวกันที่เป็นนามสกุลอื่น (ใช้ตอนอัปทับ) */
+export async function removeStale(category: string, baseName: string, keepExt: string) {
+  const folder = safeCategory(category);
+  const base = safeBase(baseName, '');
+  if (!base) return;
+  const stale = ['jpg', 'png', 'webp'].filter((ext) => ext !== keepExt).map((ext) => `${folder}/${base}.${ext}`);
+  if (stale.length) await supabaseAdmin.storage.from(bucket).remove(stale);
 }
 
 /** ไฟล์นี้มีอยู่จริงไหม — ใช้ยืนยันหลังเบราว์เซอร์อัปโหลดตรง ก่อนบันทึกลงฐานข้อมูล */

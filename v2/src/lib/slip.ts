@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { slips } from '@/db/schema';
 import { env } from './env';
-import { downloadAsDataUrl, saveDataImage } from './storage';
+import { createSignedUpload, downloadAsDataUrl, fileExists, saveDataImage } from './storage';
 import type { ApiBody, ApiResult } from './types';
 import { id, nowIso, round2, safeJson, validYmd } from './utils';
 
@@ -132,6 +132,33 @@ function slipResponse(idValue: string, url: string, info: SlipInfo, expectDate: 
   };
 }
 
+export async function signSlipUpload(expectDate: string, user: { username: string }): Promise<ApiResult> {
+  if (!validYmd(expectDate)) return { ok: false, error: 'returned_date_required' };
+  const fileId = id('SP');
+  const file = await createSignedUpload('slips', `${expectDate}_${user.username}_${fileId}`, 'jpg');
+  return {
+    ok: true, fileId, key: file.key, url: file.url,
+    uploadUrl: file.uploadUrl, uploadToken: file.uploadToken
+  };
+}
+
+/** ตรวจว่า key ที่ส่งกลับมาเป็นของ user คนนี้จริง และไฟล์ขึ้นไปแล้ว */
+async function takePendingSlip(key: string, username: string) {
+  const match = /^slips\/(.+)_([A-Za-z0-9]+)\.jpg$/.exec(key);
+  const owner = match?.[1]?.split('_').slice(1).join('_');
+  if (!match || !owner || owner.toLowerCase() !== username.toLowerCase()) {
+    return { ok: false as const, error: 'forbidden' };
+  }
+  if (!(await fileExists(key))) return { ok: false as const, error: 'upload_missing' };
+  const fileName = key.slice('slips/'.length);
+  return {
+    ok: true as const,
+    fileId: match[2],
+    key,
+    url: `/files/slips/${encodeURIComponent(fileName)}`
+  };
+}
+
 export async function verifySlip(body: ApiBody, user: { username: string }): Promise<ApiResult> {
   const expectDate = String(body.expectDate || '').trim();
   const expectAmount = round2(body.expectAmount);
@@ -140,7 +167,25 @@ export async function verifySlip(body: ApiBody, user: { username: string }): Pro
 
   let row: { id: string; url: string; infoJson: string; username: string; fileName: string };
 
-  if (body.image) {
+  // สลิปที่เบราว์เซอร์อัปตรงไป Supabase แล้ว (รูปความละเอียดสูงเกินลิมิต body ของ Vercel)
+  // ต้องโหลดกลับมาเข้า OCR เอง เพราะฝั่งเซิร์ฟเวอร์ไม่เคยเห็นไฟล์
+  if (body.key) {
+    const pending = await takePendingSlip(String(body.key), user.username);
+    if (!pending.ok) return pending;
+    const dataUrl = await downloadAsDataUrl(pending.key);
+    if (!dataUrl) return { ok: false, error: 'upload_missing' };
+    const info: SlipInfo = {
+      v: 1, user: user.username.toLowerCase(), uploaded: nowIso(), ...(await runOcr(dataUrl))
+    };
+    await db.insert(slips).values({
+      id: pending.fileId, username: user.username, uploadedAt: info.uploaded!,
+      fileName: pending.key, url: pending.url, infoJson: JSON.stringify(info)
+    });
+    row = {
+      id: pending.fileId, url: pending.url, infoJson: JSON.stringify(info),
+      username: user.username, fileName: pending.key
+    };
+  } else if (body.image) {
     const fileId = id('SP');
     const file = await saveDataImage(body.image, 'slips', `${expectDate}_${user.username}_${fileId}`);
     const info: SlipInfo = {

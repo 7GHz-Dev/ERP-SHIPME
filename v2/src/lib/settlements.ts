@@ -7,7 +7,7 @@ import { env } from './env';
 import { appOptionsPayload } from './options';
 import { settleRates } from '@/db/schema';
 import { checkStoredSlip, getSlip } from './slip';
-import { replaceDataImage } from './storage';
+import { createSignedUpload, fileExists, removeStale, replaceDataImage } from './storage';
 import type { ApiResult } from './types';
 import { fmtBaht, fmtDateStr, id, nowIso, round2, safeJson, validYmd } from './utils';
 
@@ -355,19 +355,67 @@ export async function saveSettlement(
   return { ok: true, mode: 'created', record: { ...record, created: now, updated: now } };
 }
 
+/** ใบปิดบัญชีใบไหน + ใครเป็นเจ้าของ — ใช้ทั้งตอนขอ signed upload และตอนบันทึกรูป */
+async function settlementFor(settlementId: unknown, user: { username: string; role: string }) {
+  const [row] = await db.select().from(settlements).where(eq(settlements.id, String(settlementId || ''))).limit(1);
+  if (!row) return { error: { ok: false, error: 'settlement_not_found' } as ApiResult };
+  const isBoss = ['admin', 'manager'].includes(user.role);
+  if (row.username.toLowerCase() !== user.username.toLowerCase() && !isBoss) {
+    return { error: { ok: false, error: 'forbidden' } as ApiResult };
+  }
+  return { row };
+}
+
+/** ชื่อไฟล์รูปใบปิดบัญชี — คิดจากฝั่งเซิร์ฟเวอร์เสมอ ไม่รับ path จากเบราว์เซอร์ */
+export const settlementImageBase = (row: { inspectDate: string; username: string }) =>
+  `${row.inspectDate}_${row.username}`;
+
+export async function signSettlementImage(
+  settlementId: unknown,
+  user: { username: string; role: string }
+): Promise<ApiResult> {
+  const found = await settlementFor(settlementId, user);
+  if (found.error) return found.error;
+  await removeStale('settlements', settlementImageBase(found.row!), 'png');
+  const file = await createSignedUpload('settlements', settlementImageBase(found.row!), 'png');
+  return {
+    ok: true, key: file.key, url: file.url,
+    uploadUrl: file.uploadUrl, uploadToken: file.uploadToken
+  };
+}
+
+/**
+ * บันทึกรูปใบปิดบัญชี — รับได้ 2 แบบ
+ *   key   = เบราว์เซอร์อัปตรงไป Supabase แล้ว (ทางหลัก รูปใหญ่เกินลิมิต body ของ Vercel)
+ *   image = data URL ส่งผ่าน API (ยังรับไว้เผื่อรูปเล็กและเพื่อความเข้ากันได้กับของเดิม)
+ */
 export async function saveSettlementImage(
   settlementId: unknown,
   image: unknown,
-  user: { username: string; role: string }
+  user: { username: string; role: string },
+  key?: unknown
 ): Promise<ApiResult> {
-  const [row] = await db.select().from(settlements).where(eq(settlements.id, String(settlementId || ''))).limit(1);
-  if (!row) return { ok: false, error: 'settlement_not_found' };
-  const isBoss = ['admin', 'manager'].includes(user.role);
-  if (row.username.toLowerCase() !== user.username.toLowerCase() && !isBoss) {
-    return { ok: false, error: 'forbidden' };
+  const found = await settlementFor(settlementId, user);
+  if (found.error) return found.error;
+  const row = found.row!;
+
+  let url: string;
+  let fileName: string;
+
+  if (key) {
+    // ยอมรับเฉพาะ path ที่เซิร์ฟเวอร์เป็นคนออกให้เท่านั้น
+    const expected = `settlements/${settlementImageBase(row)}.png`;
+    if (String(key) !== expected) return { ok: false, error: 'bad_request' };
+    if (!(await fileExists(expected))) return { ok: false, error: 'upload_missing' };
+    fileName = `${settlementImageBase(row)}.png`;
+    url = `/files/settlements/${encodeURIComponent(fileName)}`;
+  } else {
+    const file = await replaceDataImage(image, 'settlements', settlementImageBase(row));
+    url = file.url;
+    fileName = file.fileName;
   }
-  const file = await replaceDataImage(image, 'settlements', `${row.inspectDate}_${row.username}`);
-  await db.update(settlements).set({ imageUrl: file.url, updatedAt: nowIso() })
+
+  await db.update(settlements).set({ imageUrl: url, updatedAt: nowIso() })
     .where(eq(settlements.id, row.id));
-  return { ok: true, url: file.url, name: file.fileName, folder: 'settlements' };
+  return { ok: true, url, name: fileName, folder: 'settlements' };
 }
