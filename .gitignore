@@ -8,3 +8,4 @@ data/uploads/*
 data/backups/
 data/imports/
 npm-debug.log*
+v2/.next/

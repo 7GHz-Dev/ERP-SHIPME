@@ -15,9 +15,9 @@ export const env = {
   sessionHours: number(process.env.SESSION_HOURS, 12),
   maxAccuracy: number(process.env.MAX_ACCURACY_METERS, 200),
   maxAccuracyDesktop: number(process.env.MAX_ACCURACY_METERS_DESKTOP, 5000),
-  adminUsername: process.env.ADMIN_USERNAME || 'admin',
-  adminPassword: process.env.ADMIN_PASSWORD || '',
-  adminName: process.env.ADMIN_NAME || 'ผู้ดูแลระบบ',
+  // ไม่มี ADMIN_* แล้ว — ระบบเดิมสร้างบัญชีผู้ดูแลตอนเปิดเซิร์ฟเวอร์ครั้งแรกที่ฐานข้อมูลว่าง
+  // แต่ serverless ไม่มีจังหวะ "เปิดเซิร์ฟเวอร์" ให้ทำแบบนั้น
+  // ผู้ใช้มาจากการนำเข้าข้อมูล ถ้าต้องสร้างเพิ่มให้ใช้ scripts/temp-user.mts
   geocodeEndpoint: process.env.GEOCODE_ENDPOINT || '',
   ocrEndpoint: process.env.OCR_ENDPOINT || '',
   slipStrict: bool(process.env.SLIP_STRICT),

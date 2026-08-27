@@ -6,6 +6,9 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 // เช็กอิน/ปิดบัญชีต้องอยู่ใกล้ Supabase (Singapore) ไม่งั้นแต่ละ query วิ่งข้ามทวีป
 export const preferredRegion = ['sin1'];
+// OCR สลิปตั้ง timeout ของตัวเองไว้ 30 วินาที ถ้า function ตัดก่อนจะได้ error กลาง ๆ
+// ที่ผู้ใช้อ่านไม่รู้เรื่อง แทนข้อความบอกสาเหตุจริง — เผื่อเวลาให้มากกว่านั้น
+export const maxDuration = 60;
 
 const noStore = { 'cache-control': 'no-store' };
 
