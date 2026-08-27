@@ -3,12 +3,18 @@ import { db } from '@/db';
 import { checkins, geocodeCache } from '@/db/schema';
 import { guard, login } from './auth';
 import { env } from './env';
+import {
+  appOptionsPayload, readAppOptions, sheetLayoutDefault, writeAppOption
+} from './options';
+import {
+  decideLeave, leavesByStatus, leavesOf, listEmployees, readLeaves, requestLeave, saveEmployee
+} from './people';
+import { listReceipts, myReceipts, saveReceipt } from './receipts';
 import { saveDataImage } from './storage';
+import type { ApiBody, ApiResult, Handler } from './types';
 import { checkinPolicy, id, isWindowsDevice, nowIso, ymd } from './utils';
 
-export type ApiBody = Record<string, any>;
-export type ApiResult = Record<string, any>;
-type Handler = (body: ApiBody) => Promise<ApiResult>;
+export type { ApiBody, ApiResult };
 
 /**
  * หน้าเว็บทั้งระบบยิงมาที่ POST /api ปลายทางเดียว แล้วแยกด้วยฟิลด์ "action"
@@ -154,15 +160,85 @@ const handlers: Record<string, Handler> = {
     return { ok: true, rows: rows.map(checkinRecord) };
   },
 
+  // ---- ลา ----
+  requestLeave: async (body) => {
+    const session = await guard(body);
+    return session.error || requestLeave(body, session.user);
+  },
+  myLeaves: async (body) => {
+    const session = await guard(body);
+    if (session.error) return session.error;
+    return { ok: true, rows: await leavesOf(session.user.username) };
+  },
+  listLeaves: async (body) => {
+    const session = await guard(body, ['admin']);
+    if (session.error) return session.error;
+    const status = String(body.status || '').trim().toLowerCase();
+    return { ok: true, rows: status ? await leavesByStatus(status) : await readLeaves() };
+  },
+  decideLeave: async (body) => {
+    const session = await guard(body, ['admin']);
+    return session.error || decideLeave(body, session.user.name);
+  },
+
+  // ---- พนักงาน ----
+  listEmployees: async (body) => {
+    const session = await guard(body, ['admin']);
+    return session.error || listEmployees();
+  },
+  saveEmployee: async (body) => {
+    const session = await guard(body, ['admin']);
+    return session.error || saveEmployee(body);
+  },
+
+  // ---- ตัวเลือกระบบ ----
+  appOptions: async (body) => {
+    const session = await guard(body);
+    if (session.error) return session.error;
+    return {
+      ok: true,
+      ...(await appOptionsPayload()),
+      canEdit: ['admin', 'manager'].includes(session.user.role),
+      canEditSheet: session.user.role === 'admin'
+    };
+  },
+  saveAppOptions: async (body) => {
+    const session = await guard(body, ['admin', 'manager']);
+    if (session.error) return session.error;
+    const current = await readAppOptions();
+    for (const key of ['ports', 'emPorts', 'seal', 'knock', 'overtime'] as const) {
+      if (body.options?.[key] !== undefined) {
+        await writeAppOption(key, body.options[key] ?? current[key]);
+      }
+    }
+    return { ok: true, ...(await appOptionsPayload()) };
+  },
+  saveSheetLayout: async (body) => {
+    const session = await guard(body, ['admin']);
+    if (session.error) return session.error;
+    await writeAppOption('sheet', body.reset === true ? sheetLayoutDefault() : body.layout);
+    return { ok: true, ...(await appOptionsPayload()), canEditSheet: true };
+  },
+
+  // ---- ใบเสร็จ ----
+  saveReceipt: async (body) => {
+    const session = await guard(body);
+    return session.error || saveReceipt(body, session.user, reverseGeocode);
+  },
+  myReceipts: async (body) => {
+    const session = await guard(body);
+    return session.error || myReceipts(session.user.username);
+  },
+  listReceipts: async (body) => {
+    const session = await guard(body, ['admin', 'manager']);
+    return session.error || listReceipts();
+  },
+
   // ---- ยังต้องพอร์ต (ดู MIGRATION.md) ----
   ...Object.fromEntries([
-    'requestLeave', 'myLeaves', 'listLeaves', 'decideLeave',
-    'listEmployees', 'saveEmployee',
-    'appOptions', 'saveAppOptions', 'saveSheetLayout',
     'claimConfig', 'saveClaimConfig', 'saveClaim', 'myClaims', 'listClaims',
     'settleConfig', 'saveSettleRates', 'saveSettlement', 'saveSettleImage',
     'mySettlements', 'listSettlements',
-    'saveReceipt', 'myReceipts', 'listReceipts',
     'blLookup', 'transportDiag', 'verifySlip', 'slipOcrDiag'
   ].map((action) => [action, notImplemented(action)]))
 };
