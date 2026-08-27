@@ -1,8 +1,9 @@
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '@/db';
-import { checkins, geocodeCache, settlements } from '@/db/schema';
+import { checkins, geocodeCache, settlements, users } from '@/db/schema';
 import { guard, login } from './auth';
 import { claimConfig, listClaims, saveClaim, saveClaimRates } from './claims';
+import { AUTO_MIN_CONTAINERS } from './constants';
 import { env } from './env';
 import {
   appOptionsPayload, readAppOptions, sheetLayoutDefault, writeAppOption
@@ -11,9 +12,14 @@ import {
   decideLeave, leavesByStatus, leavesOf, listEmployees, readLeaves, requestLeave, saveEmployee
 } from './people';
 import { listReceipts, myReceipts, saveReceipt } from './receipts';
+import {
+  listSettlements, saveSettleRates, saveSettlement, saveSettlementImage, settleConfig
+} from './settlements';
+import { ocrDiagnostics, verifySlip } from './slip';
 import { saveDataImage } from './storage';
+import { lookupTransport, transportDiagnostics } from './transport';
 import type { ApiBody, ApiResult, Handler } from './types';
-import { checkinPolicy, id, isWindowsDevice, nowIso, ymd } from './utils';
+import { checkinPolicy, id, isWindowsDevice, nowIso, publicUser, validYmd, ymd } from './utils';
 
 export type { ApiBody, ApiResult };
 
@@ -125,14 +131,8 @@ async function checkin(body: ApiBody): Promise<ApiResult> {
   return { ok: true, record: checkinRecord(row as CheckinRow) };
 }
 
-const notImplemented = (action: string): Handler => async () => ({
-  ok: false,
-  error: 'not_implemented',
-  detail: `ยังไม่ได้พอร์ต action "${action}" มาที่ v2`
-});
-
 const handlers: Record<string, Handler> = {
-  // ---- พอร์ตแล้ว ----
+  // ---- เช็กอิน ----
   login,
   me: async (body) => {
     const session = await guard(body);
@@ -270,12 +270,65 @@ const handlers: Record<string, Handler> = {
     return { ok: true, rows: await listClaims(null, 500) };
   },
 
-  // ---- ยังต้องพอร์ต (ดู MIGRATION.md) ----
-  ...Object.fromEntries([
-    'settleConfig', 'saveSettleRates', 'saveSettlement', 'saveSettleImage',
-    'mySettlements', 'listSettlements',
-    'blLookup', 'transportDiag', 'verifySlip', 'slipOcrDiag'
-  ].map((action) => [action, notImplemented(action)]))
+  // ---- งานขนส่ง ----
+  blLookup: async (body) => {
+    const session = await guard(body);
+    if (session.error) return session.error;
+    const date = String(body.date || '').trim();
+    if (!validYmd(date)) return { ok: false, error: 'missing_inspect_date' };
+    let user = session.user;
+    // admin/manager ดูของพนักงานคนอื่นได้
+    if (body.username && ['admin', 'manager'].includes(user.role)) {
+      const [row] = await db.select().from(users).where(eq(users.username, String(body.username))).limit(1);
+      if (row) user = publicUser(row)!;
+    }
+    return { ...(await lookupTransport(date, user)), date, shipping: user.name };
+  },
+  transportDiag: async (body) => {
+    const session = await guard(body, ['admin', 'manager']);
+    return session.error || transportDiagnostics();
+  },
+
+  // ---- ปิดบัญชี ----
+  settleConfig: async (body) => {
+    const session = await guard(body);
+    return session.error || settleConfig(session.user);
+  },
+  saveSettleRates: async (body) => {
+    const session = await guard(body, ['admin', 'manager']);
+    if (session.error) return session.error;
+    return { ok: true, autoRates: await saveSettleRates(body.rates), autoMin: AUTO_MIN_CONTAINERS };
+  },
+  saveSettlement: async (body) => {
+    const session = await guard(body);
+    return session.error || saveSettlement(body.settlement, session.user);
+  },
+  saveSettleImage: async (body) => {
+    const session = await guard(body);
+    if (session.error) return session.error;
+    if (!body.id || !body.image) return { ok: false, error: 'bad_request' };
+    return saveSettlementImage(String(body.id), body.image, session.user);
+  },
+  mySettlements: async (body) => {
+    const session = await guard(body);
+    if (session.error) return session.error;
+    return { ok: true, rows: await listSettlements(session.user.username, 100) };
+  },
+  listSettlements: async (body) => {
+    const session = await guard(body, ['admin', 'manager']);
+    if (session.error) return session.error;
+    return { ok: true, rows: await listSettlements(null, 500) };
+  },
+
+  // ---- สลิป ----
+  verifySlip: async (body) => {
+    const session = await guard(body);
+    return session.error || verifySlip(body, session.user);
+  },
+  slipOcrDiag: async (body) => {
+    const session = await guard(body, ['admin', 'manager']);
+    return session.error || ocrDiagnostics();
+  }
 };
 
 export async function dispatch(body: ApiBody = {}): Promise<ApiResult> {

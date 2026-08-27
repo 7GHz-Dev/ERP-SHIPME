@@ -34,19 +34,19 @@
 - `src/lib/auth.ts` — session / login / guard
 - `src/lib/storage.ts` — อัปโหลด, signed upload URL สำหรับรูปใหญ่, signed URL ตอนอ่าน
 - `src/app/api/route.ts` + `src/app/files/[...path]/route.ts`
-- **24 / 33 action**
+- **33 / 33 action — ครบแล้ว**
   - เช็กอิน — `login` `me` `todayStatus` `checkin` `myCheckins` `report`
   - ลา — `requestLeave` `myLeaves` `listLeaves` `decideLeave`
   - พนักงาน — `listEmployees` `saveEmployee`
   - ตัวเลือกระบบ — `appOptions` `saveAppOptions` `saveSheetLayout`
   - ใบเสร็จ — `saveReceipt` `myReceipts` `listReceipts`
   - การเบิก — `claimConfig` `saveClaimConfig` `saveClaim` `myClaims` `listClaims`
+  - งานขนส่ง — `blLookup` `transportDiag`
+  - ปิดบัญชี — `settleConfig` `saveSettleRates` `saveSettlement` `saveSettleImage` `mySettlements` `listSettlements`
+  - สลิป — `verifySlip` `slipOcrDiag`
 
-### ยังต้องทำ — 9 action ที่เหลือ
-
-1. **งานขนส่ง** — `blLookup` `transportDiag` (จาก `src/transport.js`)
-2. **ปิดบัญชี** — `settleConfig` `saveSettleRates` `saveSettlement` `saveSettleImage` `mySettlements` `listSettlements` (จาก `src/settlements.js`)
-3. **สลิป** — `verifySlip` `slipOcrDiag` (จาก `src/slip.js`)
+ทดสอบผ่าน HTTP จริง **45/45** (`scripts/smoke.mts`) และตรวจ `blLookup` กับข้อมูลงานขนส่งจริงแล้ว
+(จัดกลุ่ม BL, รวมจำนวนตู้, จับคู่ชื่อชิปปิ้ง ถูกต้องทุกวันที่ที่ลอง)
 
 action ที่ยังไม่พอร์ตจะตอบ `not_implemented` พร้อมชื่อ action — ไม่เงียบหาย
 
@@ -69,12 +69,16 @@ Supabase project `buzitxvrqcoomlxkyhxn` (Singapore) — migrate + import ข้�
 ทดสอบผ่าน HTTP จริงแล้ว 20/20 (`scripts/smoke.mts`) — ล็อกอิน, citext ไม่สนตัวพิมพ์,
 อ่านข้อมูลที่ย้ายมาได้ครบ, EXTRA MOVEMENT ยังขั้นต่ำ 2 ตู้, action ที่ยังไม่พอร์ตตอบ `not_implemented`
 
-### งานอื่นที่เหลือ
-- `public/index.html`, `public/admin.html` — ก๊อปมาจาก root แล้วแก้เฉพาะ **การอัปโหลดรูปใหญ่**
-  (รูปใบปิดบัญชี PNG ~4,000px เกินลิมิต body 4.5 MB ของ Vercel ต้องเปลี่ยนไปใช้ `createSignedUpload`)
-  รูปเช็กอินเป็น JPEG คุณภาพ 0.55 ขนาดเล็ก ยังส่งผ่าน API ได้ตามเดิม
-- `scripts/import-sqlite.ts` — ย้ายข้อมูลจริงจาก `data/checkin.sqlite` เข้า Postgres
-- เทส — ของเดิมมี 3 เทสที่ครอบ flow หลัก ควรพอร์ตมาให้ครบก่อนตัดระบบ
+### งานที่เหลือก่อนขึ้น production
+
+1. **หน้าเว็บ** — ก๊อป `index.html` / `admin.html` จาก root มาไว้ `public/` แล้วแก้จุดเดียวคือ
+   **การอัปโหลดรูปใหญ่**: รูปใบปิดบัญชีเป็น PNG ~4,000px ซึ่งเกินลิมิต body **4.5 MB** ของ Vercel
+   ต้องเปลี่ยนไปขอ `createSignedUpload` แล้วอัปตรงไป Supabase
+   (รูปเช็กอิน/ใบเสร็จเป็น JPEG คุณภาพ 0.55 ขนาดเล็ก ยังส่งผ่าน API ได้ตามเดิม)
+2. **ทดสอบกับของจริง** — ยังไม่ได้ลองเช็กอินพร้อมรูป / บันทึกใบเบิก / ปิดบัญชีพร้อมสลิป จากหน้าเว็บจริง
+   `scripts/smoke.mts` ครอบแค่ว่า action ตอบถูกและกันข้อมูลผิดได้ ยังไม่ได้เขียนข้อมูลจริง
+3. **deploy** — ต่อ Vercel กับ repo ตั้ง env ทั้ง 8 ตัว แล้วเลือก region **Singapore** ให้ตรงกับ Supabase
+4. **เทสอัตโนมัติ** — ระบบเดิมมี 3 เทสครอบ flow หลัก ควรพอร์ตมาก่อนตัดระบบจริง
 
 ## ตั้งค่าครั้งแรก
 

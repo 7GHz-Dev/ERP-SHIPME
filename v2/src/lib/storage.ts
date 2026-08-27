@@ -93,6 +93,18 @@ export async function fileExists(key: string) {
   return !error && Array.isArray(data) && data.length > 0;
 }
 
+/**
+ * ดึงไฟล์กลับมาเป็น data URL — ใช้ตอนกด "อ่านสลิปใหม่" ซึ่งต้องส่งรูปเข้า OCR อีกรอบ
+ * (ระบบเดิมอ่านจากดิสก์ด้วย fs.readFileSync ตรงนี้ต้องโหลดจาก Storage แทน)
+ */
+export async function downloadAsDataUrl(key: string) {
+  const { data, error } = await supabaseAdmin.storage.from(bucket).download(key);
+  if (error || !data) return '';
+  const buffer = Buffer.from(await data.arrayBuffer());
+  const contentType = data.type || 'image/jpeg';
+  return `data:${contentType};base64,${buffer.toString('base64')}`;
+}
+
 /** สร้าง URL ชั่วคราวสำหรับเปิดดูไฟล์ (route /files/... เรียกใช้ตัวนี้) */
 export async function signedUrlFor(key: string) {
   const { data, error } = await supabaseAdmin.storage.from(bucket)
