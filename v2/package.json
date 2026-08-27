@@ -1,0 +1,33 @@
+{
+  "name": "shipme-erp-v2",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Next.js + Supabase rewrite of the off-site check-in / claim / settlement system",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio",
+    "import:sqlite": "tsx scripts/import-sqlite.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.47.10",
+    "drizzle-orm": "0.38.3",
+    "next": "15.1.6",
+    "postgres": "3.4.5",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "zod": "3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.5",
+    "@types/react": "19.0.7",
+    "drizzle-kit": "0.30.1",
+    "tsx": "4.19.2",
+    "typescript": "5.7.3"
+  }
+}
