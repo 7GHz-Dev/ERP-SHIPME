@@ -44,6 +44,8 @@ export const env = {
   // ผู้ใช้มาจากการนำเข้าข้อมูล ถ้าต้องสร้างเพิ่มให้ใช้ scripts/temp-user.mts
   geocodeEndpoint: process.env.GEOCODE_ENDPOINT || '',
   ocrEndpoint: process.env.OCR_ENDPOINT || '',
+  // Google Cloud Vision — อ่านตัวหนังสือไทยบนสลิปได้แม่นที่สุดในบรรดาที่ลองมา
+  visionApiKey: process.env.GOOGLE_VISION_API_KEY || '',
   slipStrict: bool(process.env.SLIP_STRICT),
   slipAmountTolerance: number(process.env.SLIP_AMOUNT_TOLERANCE, 1),
   // ถังของ Supabase Storage — ตั้งเป็น private ทั้งหมด แล้วเข้าถึงผ่าน signed URL เท่านั้น

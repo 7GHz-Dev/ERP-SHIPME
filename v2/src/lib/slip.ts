@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { slips } from '@/db/schema';
 import { env } from './env';
@@ -128,21 +128,69 @@ export function parseText(text: unknown) {
   return { amounts, dates, amount: amounts[0] || 0, date: dates[0] || '', txn: txnMatch?.[1] || '', bank };
 }
 
-async function runOcr(image: string): Promise<Partial<SlipInfo>> {
-  if (!env.ocrEndpoint) return { ocr: 'slip_ocr_unavailable', detail: 'ยังไม่ได้ตั้งค่า OCR_ENDPOINT' };
+const fromText = (text: string): Partial<SlipInfo> => ({
+  ocr: 'ok', ...parseText(text), sample: text.replace(/\s+/g, ' ').slice(0, 300)
+});
+
+/** Google Cloud Vision REST — ต้องบอก languageHints เป็นไทยด้วย ไม่งั้นอ่านสระ/วรรณยุกต์เพี้ยน */
+async function runGoogleVision(dataUrl: string): Promise<Partial<SlipInfo>> {
+  const content = String(dataUrl).replace(/^data:[^,]*,/, '');
+  try {
+    const response = await fetch(
+      `https://vision.googleapis.com/v1/images:annotate?key=${encodeURIComponent(env.visionApiKey)}`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          requests: [{
+            image: { content },
+            // DOCUMENT_TEXT_DETECTION อ่านข้อความหนาแน่นแบบสลิป/ใบเสร็จได้ดีกว่า TEXT_DETECTION
+            features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
+            imageContext: { languageHints: ['th', 'en'] }
+          }]
+        }),
+        signal: AbortSignal.timeout(25000)
+      }
+    );
+    const body = await response.json().catch(() => null);
+    if (!response.ok) {
+      return { ocr: 'slip_ocr_failed', detail: `Google Vision: ${body?.error?.message || `HTTP ${response.status}`}` };
+    }
+    const result = body?.responses?.[0];
+    if (result?.error?.message) return { ocr: 'slip_ocr_failed', detail: `Google Vision: ${result.error.message}` };
+    const text = result?.fullTextAnnotation?.text || result?.textAnnotations?.[0]?.description || '';
+    if (!text) return { ocr: 'slip_ocr_failed', detail: 'Google Vision อ่านไม่พบตัวหนังสือในรูป — ถ่ายให้ชัดขึ้นหรือกดเพิ่มความละเอียด' };
+    return fromText(String(text));
+  } catch (error) {
+    return { ocr: 'slip_ocr_failed', detail: String((error as Error).message || error) };
+  }
+}
+
+/** endpoint ของตัวเอง: รับ POST {image} แล้วตอบ {text} */
+async function runCustomEndpoint(image: string): Promise<Partial<SlipInfo>> {
   try {
     const response = await fetch(env.ocrEndpoint, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ image }),
-      signal: AbortSignal.timeout(30000)
+      signal: AbortSignal.timeout(25000)
     });
     if (!response.ok) throw new Error(`OCR HTTP ${response.status}`);
     const body = await response.json();
-    return { ocr: 'ok', ...parseText(body.text || ''), sample: String(body.text || '').replace(/\s+/g, ' ').slice(0, 300) };
+    return fromText(String(body.text || ''));
   } catch (error) {
     return { ocr: 'slip_ocr_failed', detail: String((error as Error).message || error) };
   }
+}
+
+async function runOcr(image: string): Promise<Partial<SlipInfo>> {
+  // ตั้ง OCR_ENDPOINT ไว้ = ตั้งใจใช้ของตัวเอง ให้มาก่อนเสมอ
+  if (env.ocrEndpoint) return runCustomEndpoint(image);
+  if (env.visionApiKey) return runGoogleVision(image);
+  return {
+    ocr: 'slip_ocr_unavailable',
+    detail: 'ยังไม่ได้ตั้ง GOOGLE_VISION_API_KEY (หรือ OCR_ENDPOINT ถ้าใช้บริการอื่น)'
+  };
 }
 
 export type SlipCheck = {
@@ -310,15 +358,54 @@ export function checkStoredSlip(info: SlipInfo, expectDate: unknown, expectAmoun
   return checkSlip(info, expectDate, expectAmount);
 }
 
-export function ocrDiagnostics() {
+const ocrProvider = () => env.ocrEndpoint ? 'OCR endpoint ของตัวเอง'
+  : (env.visionApiKey ? 'Google Cloud Vision' : '');
+
+/**
+ * ปุ่ม "ตรวจ OCR" ในหน้า admin — ลองอ่านสลิปใบล่าสุดจริง ๆ
+ * บอกแค่ว่า "ตั้งค่าแล้ว" ไม่พอ เพราะ API key ผิดหรือยังไม่ได้เปิด API ก็ยังดูเหมือนตั้งค่าแล้ว
+ */
+export async function ocrDiagnostics() {
+  const provider = ocrProvider();
+  const base = { ok: true, driveService: false, v2: false, strict: env.slipStrict, provider };
+
+  if (!provider) {
+    return {
+      ...base,
+      status: 'not_configured',
+      message: 'ยังไม่ได้ตั้งค่า OCR — ตอนนี้พนักงานต้องกรอกยอด วันที่ และเลขที่รายการจากสลิปเอง'
+    };
+  }
+
+  const [latest] = await db.select().from(slips).orderBy(desc(slips.uploadedAt)).limit(1);
+  if (!latest) {
+    return {
+      ...base,
+      status: 'ok',
+      message: `ตั้งค่า ${provider} แล้ว — ยังไม่มีสลิปในระบบให้ทดลองอ่าน จะตรวจให้อัตโนมัติเมื่อพนักงานแนบสลิปใบแรก`
+    };
+  }
+
+  const dataUrl = await downloadAsDataUrl(latest.fileName);
+  if (!dataUrl) {
+    return { ...base, status: 'ok', message: `ตั้งค่า ${provider} แล้ว แต่เปิดไฟล์สลิปใบล่าสุดไม่ได้`, file: latest.fileName };
+  }
+
+  const result = await runOcr(dataUrl);
+  const parsed = { amount: result.amount || 0, date: result.date || '', txn: result.txn || '', bank: result.bank || '' };
+  const complete = Boolean(parsed.amount && parsed.date && parsed.txn);
+
   return {
-    ok: true,
-    driveService: false,
-    v2: false,
-    strict: env.slipStrict,
-    status: env.ocrEndpoint ? 'ok' : 'not_configured',
-    message: env.ocrEndpoint
-      ? 'ตั้งค่า OCR endpoint แล้ว ระบบจะตรวจเมื่ออัปโหลดสลิป'
-      : 'ไม่ได้ใช้ Google Drive OCR; ขณะนี้ใช้การกรอกค่าจากสลิปเอง หรือตั้ง OCR_ENDPOINT เพื่อเปิดตรวจอัตโนมัติ'
+    ...base,
+    status: result.ocr === 'ok' ? 'ok' : 'error',
+    message: result.ocr === 'ok'
+      ? (complete
+        ? `${provider} อ่านสลิปใบล่าสุดได้ครบทุกช่อง`
+        : `${provider} อ่านได้บางส่วน — ช่องที่ขาดพนักงานต้องกรอกเอง`)
+      : `${provider} อ่านไม่สำเร็จ: ${result.detail || ''}`,
+    parsed,
+    sample: result.sample || '',
+    file: latest.fileName,
+    fileUrl: latest.url
   };
 }
