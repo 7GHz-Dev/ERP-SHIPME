@@ -9,3 +9,6 @@ data/backups/
 data/imports/
 npm-debug.log*
 v2/.next/
+ocr/.venv/
+ocr/slip-sample.jpg
+ocr/__pycache__/

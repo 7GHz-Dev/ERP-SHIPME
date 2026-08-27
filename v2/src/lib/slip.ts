@@ -166,16 +166,22 @@ async function runGoogleVision(dataUrl: string): Promise<Partial<SlipInfo>> {
   }
 }
 
-/** endpoint ของตัวเอง: รับ POST {image} แล้วตอบ {text} */
+/** endpoint ของตัวเอง (เช่น บริการ PaddleOCR ในโฟลเดอร์ ocr/): รับ POST {image} แล้วตอบ {text} */
 async function runCustomEndpoint(image: string): Promise<Partial<SlipInfo>> {
   try {
+    const headers: Record<string, string> = { 'content-type': 'application/json' };
+    if (env.ocrToken) headers.authorization = `Bearer ${env.ocrToken}`;
     const response = await fetch(env.ocrEndpoint, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers,
       body: JSON.stringify({ image }),
       signal: AbortSignal.timeout(25000)
     });
-    if (!response.ok) throw new Error(`OCR HTTP ${response.status}`);
+    if (!response.ok) {
+      // เครื่อง OCR มักบอกสาเหตุมาใน detail อยู่แล้ว เอามาโชว์ต่อจะแก้ปัญหาง่ายกว่าเห็นแค่เลข HTTP
+      const detail = await response.json().catch(() => null);
+      throw new Error(detail?.detail ? `OCR: ${detail.detail}` : `OCR HTTP ${response.status}`);
+    }
     const body = await response.json();
     return fromText(String(body.text || ''));
   } catch (error) {
@@ -358,7 +364,7 @@ export function checkStoredSlip(info: SlipInfo, expectDate: unknown, expectAmoun
   return checkSlip(info, expectDate, expectAmount);
 }
 
-const ocrProvider = () => env.ocrEndpoint ? 'OCR endpoint ของตัวเอง'
+const ocrProvider = () => env.ocrEndpoint ? 'PaddleOCR (OCR_ENDPOINT)'
   : (env.visionApiKey ? 'Google Cloud Vision' : '');
 
 /**
