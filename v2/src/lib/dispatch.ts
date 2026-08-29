@@ -19,6 +19,7 @@ import {
 import { ocrDiagnostics, signSlipUpload, verifySlip } from './slip';
 import { saveDataImage } from './storage';
 import { lookupTransport, transportDiagnostics } from './transport';
+import { pruneTransportSheets, syncTransportSheet, transportSyncStatus } from './transport-sync';
 import type { ApiBody, ApiResult, Handler } from './types';
 import { checkinPolicy, id, isWindowsDevice, nowIso, publicUser, validYmd, ymd } from './utils';
 
@@ -343,6 +344,15 @@ const handlers: Record<string, Handler> = {
   slipOcrDiag: async (body) => {
     const session = await guard(body, ['admin', 'manager']);
     return session.error || ocrDiagnostics();
+  },
+
+  // ---- ชีตงานขนส่งยิงข้อมูลเข้ามาเอง ----
+  // ไม่ใช้ token ของผู้ใช้ เพราะคนยิงคือ Apps Script ในชีต ไม่ใช่คนที่ล็อกอินอยู่
+  syncTransport: syncTransportSheet,
+  pruneTransport: pruneTransportSheets,
+  transportSyncStatus: async (body) => {
+    const session = await guard(body, ['admin', 'manager']);
+    return session.error || transportSyncStatus();
   }
 };
 

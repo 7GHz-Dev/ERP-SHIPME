@@ -54,6 +54,8 @@ export const env = {
   visionApiKey: process.env.GOOGLE_VISION_API_KEY || '',
   slipStrict: bool(process.env.SLIP_STRICT),
   slipAmountTolerance: number(process.env.SLIP_AMOUNT_TOLERANCE, 1),
+  // กุญแจให้ Apps Script ในชีตงานขนส่งยิงข้อมูลเข้ามาได้ (เว้นว่าง = ปิดรับ sync)
+  transportSyncToken: (process.env.TRANSPORT_SYNC_TOKEN || '').trim(),
   // ถังของ Supabase Storage — ตั้งเป็น private ทั้งหมด แล้วเข้าถึงผ่าน signed URL เท่านั้น
   bucket: process.env.SUPABASE_BUCKET || 'uploads'
 } as const;
