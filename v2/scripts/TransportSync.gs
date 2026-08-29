@@ -47,6 +47,8 @@ function setupSync() {
 
   ScriptApp.newTrigger('onSheetEdit').forSpreadsheet(ss).onEdit().create();
   ScriptApp.newTrigger('onSheetChange').forSpreadsheet(ss).onChange().create();
+  // ตัวยิงจริง — onEdit สร้าง trigger เองไม่ได้ (สิทธิ์จำกัด) จึงต้องมีตัวนี้เดินรอเก็บคิว
+  ScriptApp.newTrigger('flushQueue').timeBased().everyMinutes(1).create();
   // กันกรณี trigger พลาด (แก้จากมือถือบางรุ่น / สคริปต์อื่นเขียนทับ) — กวาดใหม่ทุกชั่วโมง
   ScriptApp.newTrigger('syncAllSheets').timeBased().everyHours(1).create();
 
@@ -60,47 +62,80 @@ function onSheetEdit(e) {
   queueSheet(e.range.getSheet().getName());
 }
 
-/** แถวถูกเพิ่ม/ลบ หรือแท็บถูกลบ — onEdit ไม่จับกรณีพวกนี้ */
+/**
+ * แถวถูกเพิ่ม/ลบ หรือแท็บถูกเพิ่ม/ลบ — onEdit ไม่จับกรณีพวกนี้
+ * onChange ได้สิทธิ์เต็มกว่า onEdit แต่ก็ไม่รับประกัน จึงไม่เรียก syncAllSheets ตรง ๆ
+ * (ถ้าล้มกลางทางแท็บอื่นจะไม่ได้ยิง) — จดคิวไว้ให้ flushQueue เก็บเหมือนกันทุกกรณี
+ */
 function onSheetChange(e) {
   var type = e && e.changeType ? String(e.changeType) : '';
-  if (type === 'REMOVE_GRID' || type === 'INSERT_GRID') { syncAllSheets(); return; }
-  var sheet = SpreadsheetApp.getActive().getActiveSheet();
+  var ss = SpreadsheetApp.getActive();
+  if (type === 'REMOVE_GRID' || type === 'INSERT_GRID') {
+    // แท็บหาย/เพิ่ม ต้องกวาดทั้งไฟล์เพื่อให้ pruneTransport ลบแท็บที่ไม่มีแล้วออกจาก Supabase
+    var sheets = ss.getSheets();
+    for (var i = 0; i < sheets.length; i++) queueSheet(sheets[i].getName());
+    PropertiesService.getDocumentProperties().setProperty('needPrune', '1');
+    return;
+  }
+  var sheet = ss.getActiveSheet();
   if (sheet) queueSheet(sheet.getName());
 }
 
+/**
+ * จดว่าแท็บไหนเปลี่ยน แล้วปล่อยให้ flushQueue (trigger รายนาที) มาเก็บทีหลัง
+ *
+ * ห้ามสร้าง trigger จากในนี้เด็ดขาด — onEdit ทำงานด้วยสิทธิ์จำกัด (AuthMode.LIMITED)
+ * เรียก ScriptApp.newTrigger() แล้วจะโยน exception ทันที ทำให้ทั้งฟังก์ชันตายก่อนได้ยิงข้อมูล
+ * (บั๊กเดิมเป็นแบบนั้น: sync ทำงานเฉพาะตอนกด Run เองเท่านั้น)
+ * PropertiesService ใช้ได้ใน LIMITED จึงเหลือแค่จดคิวไว้อย่างเดียว
+ */
 function queueSheet(name) {
   if (!name) return;
   var props = PropertiesService.getDocumentProperties();
   var pending = {};
   try { pending = JSON.parse(props.getProperty('pending') || '{}'); } catch (err) { pending = {}; }
-  pending[name] = true;
+  pending[name] = Date.now();
   props.setProperty('pending', JSON.stringify(pending));
-
-  // ตั้งเวลายิงครั้งเดียว ถ้ามีคิวอยู่แล้วไม่ต้องตั้งซ้ำ
-  var triggers = ScriptApp.getProjectTriggers();
-  for (var i = 0; i < triggers.length; i++) {
-    if (triggers[i].getHandlerFunction() === 'flushQueue') return;
-  }
-  ScriptApp.newTrigger('flushQueue').timeBased().after(SYNC.DEBOUNCE_SECONDS * 1000).create();
 }
 
-/** ยิงแท็บที่ค้างคิวทั้งหมด แล้วเก็บ trigger ตัวเองทิ้ง */
+/**
+ * trigger รายนาที — ยิงเฉพาะแท็บที่ "หยุดแก้แล้วอย่างน้อย DEBOUNCE_SECONDS วินาที"
+ * แท็บที่ยังพิมพ์อยู่จะรอรอบหน้า กันยิงรัวระหว่างคนกำลังพิมพ์ติด ๆ กัน
+ */
 function flushQueue() {
-  var triggers = ScriptApp.getProjectTriggers();
-  for (var i = 0; i < triggers.length; i++) {
-    if (triggers[i].getHandlerFunction() === 'flushQueue') ScriptApp.deleteTrigger(triggers[i]);
-  }
-
   var props = PropertiesService.getDocumentProperties();
   var pending = {};
   try { pending = JSON.parse(props.getProperty('pending') || '{}'); } catch (err) { pending = {}; }
-  props.deleteProperty('pending');
 
   var ss = SpreadsheetApp.getActive();
+  var now = Date.now();
+  var stillWaiting = {};
+  var sent = 0;
+
   for (var name in pending) {
     if (!pending.hasOwnProperty(name)) continue;
+    var changedAt = Number(pending[name]) || 0;
+    if (now - changedAt < SYNC.DEBOUNCE_SECONDS * 1000) { stillWaiting[name] = changedAt; continue; }
     var sheet = ss.getSheetByName(name);
-    if (sheet) pushSheet(sheet);
+    if (sheet) { pushSheet(sheet); sent++; }
+  }
+
+  // เขียนคิวที่เหลือกลับ (เฉพาะตอนมีการเปลี่ยนแปลง กัน write ทุกนาทีโดยเปล่าประโยชน์)
+  if (sent > 0) {
+    var keys = Object.keys(stillWaiting);
+    if (keys.length) props.setProperty('pending', JSON.stringify(stillWaiting));
+    else props.deleteProperty('pending');
+
+    // มีแท็บถูกเพิ่ม/ลบ — บอก v2 ว่าตอนนี้เหลือแท็บอะไรบ้าง จะได้ลบแท็บที่หายไปออก
+    if (props.getProperty('needPrune') && !keys.length) {
+      props.deleteProperty('needPrune');
+      var names = [];
+      var all = ss.getSheets();
+      for (var j = 0; j < all.length; j++) {
+        if (SYNC.SKIP_SHEETS.indexOf(all[j].getName()) < 0) names.push(all[j].getName());
+      }
+      if (names.length) call({ action: 'pruneTransport', token: SYNC.TOKEN, sourceFile: ss.getName(), sheets: names });
+    }
   }
 }
 
