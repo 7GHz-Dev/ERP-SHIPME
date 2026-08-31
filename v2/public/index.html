@@ -1375,7 +1375,7 @@ function newClaimForm(rec){
   $('cl-mode').textContent = f.id
     ? ('แก้ไขรายการ • แก้ไขมาแล้ว '+f.editCount+' ครั้ง (เหลืออีก '+Math.max(0, CLAIM_MAX_EDITS-f.editCount)+' ครั้ง)')
     : 'รายการใหม่';
-  $('cl-save').textContent = f.id ? '💾 บันทึกการแก้ไข + คัดลอกรายการที่เพิ่ม' : '💾 บันทึกเบิก + คัดลอก';
+  $('cl-save').textContent = f.id ? '💾 บันทึกการแก้ไข + คัดลอกรายการที่แก้ไข' : '💾 บันทึกเบิก + คัดลอก';
   $('cl-new').classList.toggle('hidden', !f.id);                 // ปุ่มยกเลิก มีเฉพาะตอนแก้ไขใบเดิม
   $('cl-copy').classList.toggle('hidden', !claim.lastText);       // คัดลอกซ้ำได้ ถ้าเคยบันทึกไปแล้ว
   $('cl-saved').classList.add('hidden');
@@ -1385,11 +1385,13 @@ function newClaimForm(rec){
 
 // ภาพของใบเบิกก่อนแก้ไข (ยอดต่อหัวข้อ + ยอดต่อเหตุผลย่อย) ใช้หา "รายการที่เพิ่ม"
 function claimSnapshot(rec){
-  var snap={ items:{}, total:Number(rec.total)||0 };
+  var snap={ items:{}, total:Number(rec.total)||0, containers:Number(rec.containers)||0 };
   (rec.items||[]).forEach(function(it){
     var reasons={};
     (it.reasons||[]).forEach(function(r){ reasons[String(r.label||'').trim()]=Number(r.amount)||0; });
-    snap.items[it.key]={ amount:Number(it.amount)||0, qty:Number(it.qty)||0, reasons:reasons };
+    // label เก็บไว้ด้วย เผื่อหัวข้อนั้นถูกตัดออกในใบใหม่ — ยังต้องเอ่ยชื่อได้
+    snap.items[it.key]={ label:String(it.label||it.key), amount:Number(it.amount)||0,
+                         qty:Number(it.qty)||0, reasons:reasons };
   });
   return snap;
 }
@@ -1799,50 +1801,93 @@ function claimLine(c){
   return c.label+(s.note?(' ('+s.note+')'):'')+' = '+fmtM(itemAmount(c.key));
 }
 
-// ---- ข้อความ "เฉพาะรายการที่เพิ่ม" (ใช้เมื่อกดบันทึกการแก้ไขใบเบิก) ----
-// เทียบกับใบก่อนแก้ (f.orig): หัวข้อที่เพิ่มใหม่ / หัวข้อที่ยอดเพิ่มขึ้น / เหตุผลย่อยที่เพิ่มเข้ามา
-// ถ้าไม่มีอะไรเพิ่มเลย (เช่น แก้ยอดลง หรือแก้แต่ข้อความ) จะคัดลอกใบเต็มให้แทน
-function claimAddedText(editCount){
-  var f=claim.form, orig=(f && f.orig) || { items:{} }, L=[], added=0, n=0;
+// ---- ข้อความ "เฉพาะสิ่งที่แก้ไข" (ใช้เมื่อกดบันทึกการแก้ไขใบเบิก) ----
+// เทียบกับใบก่อนแก้ (f.orig): หัวข้อที่เพิ่มใหม่ / ยอดที่เพิ่มขึ้น / ยอดที่ลดลง / หัวข้อที่ถูกตัดออก
+// ต้องไม่ตกไปคัดลอกใบเต็มเด็ดขาด — ใบเต็มอ่านแล้วเหมือนใบเบิกใหม่ ทำให้จ่ายซ้ำได้
+// ตรรกะต้องตรงกับ editDetail() ฝั่งเซิร์ฟเวอร์ ไม่งั้นข้อความที่คัดลอกตอนกดบันทึก
+// จะไม่ตรงกับข้อความที่กดคัดลอกย้อนหลังจากประวัติ
+function claimEditText(editCount){
+  var f=claim.form, orig=(f && f.orig) || { items:{}, containers:0 };
+  var up=[], down=[], added=0, removed=0, kept={};
+
   claim.cfg.forEach(function(c){
-    var s=f.sel[c.key]; if(!s.on) return;
-    if(c.ownQty && itemQty(c)<=0) return;   // จำนวนตู้ 0 = ไม่มียอดเพิ่ม
-    var prev=orig.items[c.key];
+    var s=f.sel[c.key];
+    if(!s || !s.on) return;
+    if(c.ownQty && itemQty(c)<=0) return;    // ติ๊กไว้แต่ 0 ตู้ = ไม่ได้อยู่ในใบ
+    var was=orig.items[c.key];
 
     if(c.key==='special'){
-      var prevR=(prev && prev.reasons) || {};
-      var diff=0, lines=[];
-      s.reasons.filter(function(r){ return r.on && String(r.label||'').trim(); }).forEach(function(r){
-        var lb=String(r.label).trim(), was=Number(prevR[lb])||0, now=Number(r.amount)||0;
-        if(now<=was) return;
-        diff+=now-was;
-        lines.push('   - '+lb+' = '+fmtM(now)+(was?(' (เพิ่มจาก '+fmtM(was)+')'):''));
+      var chosen=s.reasons.filter(function(r){ return r.on && String(r.label||'').trim(); });
+      if(!chosen.length) return;             // ไม่ได้เลือกเหตุผล = ไม่ได้อยู่ในใบ (ปล่อยให้ตกไปรอบ "ตัดออก")
+      kept[c.key]=1;
+      var before={}, nUp=[], nDown=[], plus=0, minus=0;
+      var prevR=(was && was.reasons) || {};
+      Object.keys(prevR).forEach(function(k){ before[k]=Number(prevR[k])||0; });
+      chosen.forEach(function(r){
+        var lb=String(r.label).trim(), wasAmt=Number(before[lb])||0, now=Number(r.amount)||0;
+        delete before[lb];
+        if(now>wasAmt){
+          plus+=now-wasAmt;
+          nUp.push('   - '+lb+' = '+fmtM(now)+(wasAmt?(' (เพิ่มจาก '+fmtM(wasAmt)+')'):''));
+        } else if(now<wasAmt){
+          minus+=wasAmt-now;
+          nDown.push('   - '+lb+' = '+fmtM(now)+' (ลดจาก '+fmtM(wasAmt)+')');
+        }
       });
-      if(!lines.length) return;
-      n++; added+=diff;
-      L.push(c.label+' + '+fmtM(diff));
-      lines.forEach(function(x){ L.push(x); });
+      Object.keys(before).forEach(function(lb){
+        var amt=Number(before[lb])||0; if(!(amt>0)) return;
+        minus+=amt;
+        nDown.push('   - '+lb+' = '+fmtM(amt)+'  ← ตัดออก');
+      });
+      if(nUp.length){ added+=plus; up.push(c.label+' + '+fmtM(plus)); nUp.forEach(function(x){ up.push(x); }); }
+      if(nDown.length){ removed+=minus; down.push(c.label+' - '+fmtM(minus)); nDown.forEach(function(x){ down.push(x); }); }
       return;
     }
 
+    kept[c.key]=1;
     var amt=itemAmount(c.key);
-    if(!prev){ n++; added+=amt; L.push(claimLine(c)+'  ← เพิ่มใหม่'); return; }
-    if(amt>prev.amount){
-      n++; added+=amt-prev.amount;
-      L.push(claimLine(c)+' (เพิ่มจาก '+fmtM(prev.amount)+' = +'+fmtM(amt-prev.amount)+')');
+    if(!was){ added+=amt; up.push(claimLine(c)+'  ← เพิ่มใหม่'); return; }
+    if(amt>was.amount){
+      added+=amt-was.amount;
+      up.push(claimLine(c)+' (เพิ่มจาก '+fmtM(was.amount)+' = +'+fmtM(amt-was.amount)+')');
+    } else if(amt<was.amount){
+      removed+=was.amount-amt;
+      down.push(claimLine(c)+' (ลดจาก '+fmtM(was.amount)+' = -'+fmtM(was.amount-amt)+')');
     }
   });
 
-  if(!n) return claimText(editCount);
+  // หัวข้อที่ใบก่อนหน้ามี แต่ใบนี้เอาออกแล้ว
+  Object.keys(orig.items).forEach(function(k){
+    if(kept[k]) return;
+    var was=orig.items[k], amt=Number(was.amount)||0;
+    if(!(amt>0)) return;
+    removed+=amt;
+    down.push((was.label||k)+' = '+fmtM(amt)+'  ← ตัดออก');
+  });
+
+  var body=up.slice();
+  if(down.length){
+    if(up.length) body.push('— รายการที่ลดลง —');
+    down.forEach(function(x){ body.push(x); });
+  }
+  if(!body.length) body.push('ไม่มีรายการที่ยอดเปลี่ยนแปลง');
+
+  var foot=[];
+  if(added) foot.push('ยอดที่เพิ่ม '+fmtM(added)+' บาท');
+  if(removed) foot.push('ยอดที่ลดลง '+fmtM(removed)+' บาท');
+  foot.push('ยอดรวมใหม่ '+fmtM(claimTotal())+' บาท');
+
+  var title = up.length ? 'รายการเบิกที่เพิ่ม' : (down.length ? 'แก้ไขยอดเบิก' : 'แก้ไขใบเบิก');
+  var prevCont=Number(orig.containers)||0;
 
   var out=[];
-  out.push('📋 รายการเบิกที่เพิ่ม'+(editCount>0?(' (แก้ไขครั้งที่ '+editCount+')'):''));
+  out.push('‼️ '+title+(editCount>0?(' (แก้ไขครั้งที่ '+editCount+')'):''));
   out.push('วันที่ตรวจปล่อย: '+fmtD(f.inspectDate));
-  out.push('จำนวนตู้: '+f.containers+' ตู้');
+  out.push('จำนวนตู้: '+f.containers+' ตู้'+((prevCont && prevCont!==f.containers)?(' (เดิม '+prevCont+' ตู้)'):''));
   out.push('--------------------------------');
-  L.forEach(function(x){ out.push(x); });
+  body.forEach(function(x){ out.push(x); });
   out.push('--------------------------------');
-  out.push('ยอดที่เพิ่ม '+fmtM(added)+' บาท');      // สรุปเฉพาะยอดที่เพิ่ม ไม่รวมยอดเดิมของใบ
+  foot.forEach(function(x){ out.push(x); });
   out.push('ผู้เบิก: '+(state.user.name||state.user.username));
   return out.join('\n');
 }
@@ -1899,9 +1944,9 @@ $('cl-save').addEventListener('click', function(){
 
   // คัดลอกทันทีในจังหวะที่ผู้ใช้กดปุ่ม — เบราว์เซอร์มือถือยอมให้เขียนคลิปบอร์ดเฉพาะช่วงสั้น ๆ หลังการกดเท่านั้น
   // ถ้ารอให้เซิร์ฟเวอร์บันทึกเสร็จก่อนค่อยคัดลอก จะโดนบล็อกบ่อย (โดยเฉพาะ iOS)
-  // แก้ไขใบเดิม = คัดลอกเฉพาะรายการที่เพิ่ม / ใบใหม่ = คัดลอกทั้งใบ
+  // แก้ไขใบเดิม = คัดลอกเฉพาะสิ่งที่แก้ไข / ใบใหม่ = คัดลอกทั้งใบ
   var wasEdit = !!f.id;
-  var text = wasEdit ? claimAddedText(f.editCount+1) : claimText(0);
+  var text = wasEdit ? claimEditText(f.editCount+1) : claimText(0);
   copyText(text, true);
 
   var b=$('cl-save'), old=b.textContent;
@@ -1923,7 +1968,7 @@ $('cl-save').addEventListener('click', function(){
       ? ('บันทึกการแก้ไขครั้งที่ '+rec.editCount+' ของใบวันที่ '+savedDate+' แล้ว')
       : ('บันทึกใบเบิกวันที่ '+savedDate+' แล้ว'))
       + ' • ยอดรวม '+savedTotal+' บาท • '
-      + (res.mode==='updated' ? 'คัดลอกเฉพาะรายการที่เพิ่มให้แล้ว ✓' : 'คัดลอกข้อความให้แล้ว ✓')
+      + (res.mode==='updated' ? 'คัดลอกเฉพาะรายการที่แก้ไขให้แล้ว ✓' : 'คัดลอกข้อความให้แล้ว ✓')
       + ' — ฟอร์มถูกล้างพร้อมทำรายการใหม่ (แก้ไขใบเดิมได้จากประวัติด้านล่าง)';
     $('cl-saved').classList.remove('hidden');
     toast('บันทึกและคัดลอกแล้ว ✓');
@@ -1983,10 +2028,10 @@ function renderClaimList(){
     var used=Number(r.editCount)||0;
     var left=Math.max(0, max-used);
     var revs=claimRevisions(r);
-    var revHTML='<div class="cl-revnote">แต่ละครั้ง = เฉพาะรายการที่เพิ่มจากครั้งก่อนหน้า</div>'+
+    var revHTML='<div class="cl-revnote">แต่ละครั้ง = เฉพาะสิ่งที่แก้ไขจากครั้งก่อนหน้า</div>'+
       revs.map(function(v){
         return '<div class="cl-revrow">'+
-          '<span class="cl-revlb">'+(v.n===0?'🟢 ':'✏️ ')+esc(v.label)+'</span>'+
+          '<span class="cl-revlb">'+(v.n===0?'🟢 ':'‼️ ')+esc(v.label)+'</span>'+
           (v.text
             ? '<button class="btn btn-ghost cl-revcopy" onclick="claimCopyRev('+i+','+v.n+')">📋 คัดลอกข้อความ</button>'
             : '<span class="muted" style="font-size:11px">ไม่มีข้อความ (ใบก่อนอัปเดตระบบ)</span>')+

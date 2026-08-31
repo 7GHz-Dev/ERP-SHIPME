@@ -1484,7 +1484,7 @@ function claimRevisions(r){
   var eds=r.editDetails||[];
   var n=Number(r.editCount)||0;
   for(var j=eds.length-1;j>=0;j--){ if(String(eds[j]||'')){ n=Math.max(n, j+1); break; } }
-  // ป้ายสั้น ๆ: ครั้งแรก / แก้ไข1 … แก้ไข5 (แต่ละครั้ง = เฉพาะรายการที่เพิ่มจากครั้งก่อนหน้า)
+  // ป้ายสั้น ๆ: ครั้งแรก / แก้ไข1 … แก้ไข5 (แต่ละครั้ง = เฉพาะสิ่งที่แก้ไขจากครั้งก่อนหน้า)
   for(var k=1;k<=n;k++) out.push({ n:k, label:'แก้ไข'+k, text:String(eds[k-1]||'') });
   return out;
 }
@@ -1493,11 +1493,11 @@ window.cmView=function(i){
   var r=claimRows[i]; if(!r) return;
   $('cm-detail').textContent=r.detailAll||r.detail||'(ไม่มีรายละเอียด)';
   var revs=claimRevisions(r);
-  $('cm-revs').innerHTML='<div class="muted" style="font-size:12px;margin:0 2px 6px">แต่ละครั้ง = เฉพาะรายการที่เพิ่มจากครั้งก่อนหน้า</div>'+
+  $('cm-revs').innerHTML='<div class="muted" style="font-size:12px;margin:0 2px 6px">แต่ละครั้ง = เฉพาะสิ่งที่แก้ไขจากครั้งก่อนหน้า</div>'+
     revs.map(function(v){
       return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 9px;margin-bottom:5px;'+
                'background:#f7f9fb;border:1px solid var(--line);border-radius:9px">'+
-        '<span style="font-size:12px;font-weight:700;white-space:nowrap">'+(v.n===0?'🟢 ':'✏️ ')+esc(v.label)+'</span>'+
+        '<span style="font-size:12px;font-weight:700;white-space:nowrap">'+(v.n===0?'🟢 ':'‼️ ')+esc(v.label)+'</span>'+
         (v.text
           ? '<button class="btn btn-ghost btn-sm" style="width:auto;padding:5px 9px;font-size:11px" onclick="cmCopyRev('+i+','+v.n+')">📋 คัดลอกข้อความ</button>'
           : '<span class="muted" style="font-size:11px">ไม่มีข้อความ (ใบก่อนอัปเดตระบบ)</span>')+

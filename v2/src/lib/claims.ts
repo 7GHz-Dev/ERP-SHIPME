@@ -145,53 +145,105 @@ function claimDetail(record: ClaimRecord) {
 }
 
 function itemMap(items: unknown) {
-  const map: Record<string, { amount: number; reasons: Record<string, number> }> = {};
-  for (const item of Array.isArray(items) ? items : []) {
-    map[(item as ClaimItem).key] = {
-      amount: Number((item as ClaimItem).amount) || 0,
-      reasons: Object.fromEntries(((item as ClaimItem).reasons || []).map((r) => [r.label, Number(r.amount) || 0]))
+  const map: Record<string, { label: string; amount: number; reasons: Record<string, number> }> = {};
+  for (const raw of Array.isArray(items) ? items : []) {
+    const item = raw as ClaimItem;
+    map[item.key] = {
+      label: String(item.label || item.key),
+      amount: Number(item.amount) || 0,
+      reasons: Object.fromEntries((item.reasons || []).map((r) => [r.label, Number(r.amount) || 0]))
     };
   }
   return map;
 }
 
-/** ข้อความ "เฉพาะรายการที่เพิ่ม" ของการแก้ไขครั้งนั้น — ไม่มีอะไรเพิ่มก็คัดลอกใบเต็มแทน */
-function addedDetail(record: ClaimRecord, previousItems: unknown) {
-  const previous = itemMap(previousItems);
-  const lines: string[] = [];
+/**
+ * ข้อความของ "การแก้ไขครั้งนั้น" — เฉพาะสิ่งที่ต่างจากใบก่อนหน้า ไม่ใช่ใบเต็ม
+ * เดิมถ้าไม่มีรายการเพิ่มเลยจะคัดลอกใบเต็มแทน ซึ่งอ่านแล้วเหมือนใบเบิกใหม่ทั้งใบ
+ * (เคสจริง: FOLK 31/8/2026 แก้เงินสำรอง 43,500 → 16,000 แล้วได้ใบเต็ม เสี่ยงจ่ายซ้ำ)
+ * ยอดที่ "ลดลง/ตัดออก" จึงต้องขึ้นด้วย ไม่งั้นบรรทัดสรุปจะบอกยอดผิดทาง
+ */
+function editDetail(record: ClaimRecord, previous: { items: unknown; containers: number }) {
+  const old = itemMap(previous.items);
+  const up: string[] = [];        // รายการที่เพิ่มขึ้น
+  const down: string[] = [];      // รายการที่ลดลง / ถูกตัดออก
   let added = 0;
+  let removed = 0;
+  const kept = new Set<string>();
 
   for (const item of record.items) {
-    const old = previous[item.key];
+    kept.add(item.key);
+    const was = old[item.key];
+
     if (item.key === 'special') {
-      const nested: string[] = [];
-      let difference = 0;
+      const before = { ...(was?.reasons || {}) };
+      const nestedUp: string[] = [];
+      const nestedDown: string[] = [];
+      let plus = 0;
+      let minus = 0;
       for (const reason of item.reasons) {
-        const was = Number(old?.reasons?.[reason.label]) || 0;
-        if (reason.amount <= was) continue;
-        difference += reason.amount - was;
-        nested.push(`   - ${reason.label} = ${fmtBaht(reason.amount)}${was ? ` (เพิ่มจาก ${fmtBaht(was)})` : ''}`);
+        const wasAmount = Number(before[reason.label]) || 0;
+        delete before[reason.label];
+        if (reason.amount > wasAmount) {
+          plus += reason.amount - wasAmount;
+          nestedUp.push(`   - ${reason.label} = ${fmtBaht(reason.amount)}${wasAmount ? ` (เพิ่มจาก ${fmtBaht(wasAmount)})` : ''}`);
+        } else if (reason.amount < wasAmount) {
+          minus += wasAmount - reason.amount;
+          nestedDown.push(`   - ${reason.label} = ${fmtBaht(reason.amount)} (ลดจาก ${fmtBaht(wasAmount)})`);
+        }
       }
-      if (nested.length) {
-        added += difference;
-        lines.push(`${item.label} + ${fmtBaht(difference)}`, ...nested);
+      // เหตุผลย่อยที่เคยมีแล้วถูกเอาออกทั้งบรรทัด
+      for (const [label, amount] of Object.entries(before)) {
+        if (!(Number(amount) > 0)) continue;
+        minus += Number(amount);
+        nestedDown.push(`   - ${label} = ${fmtBaht(Number(amount))}  ← ตัดออก`);
       }
-    } else if (!old) {
+      if (nestedUp.length) { added += plus; up.push(`${item.label} + ${fmtBaht(round2(plus))}`, ...nestedUp); }
+      if (nestedDown.length) { removed += minus; down.push(`${item.label} - ${fmtBaht(round2(minus))}`, ...nestedDown); }
+      continue;
+    }
+
+    if (!was) {
       added += item.amount;
-      lines.push(`${itemLine(item)}  ← เพิ่มใหม่`);
-    } else if (item.amount > old.amount) {
-      added += item.amount - old.amount;
-      lines.push(`${itemLine(item)} (เพิ่มจาก ${fmtBaht(old.amount)} = +${fmtBaht(item.amount - old.amount)})`);
+      up.push(`${itemLine(item)}  ← เพิ่มใหม่`);
+    } else if (item.amount > was.amount) {
+      const difference = round2(item.amount - was.amount);
+      added += difference;
+      up.push(`${itemLine(item)} (เพิ่มจาก ${fmtBaht(was.amount)} = +${fmtBaht(difference)})`);
+    } else if (item.amount < was.amount) {
+      const difference = round2(was.amount - item.amount);
+      removed += difference;
+      down.push(`${itemLine(item)} (ลดจาก ${fmtBaht(was.amount)} = -${fmtBaht(difference)})`);
     }
   }
 
-  if (!lines.length) return claimDetail(record);
+  // หัวข้อที่ใบก่อนหน้ามี แต่ใบนี้ไม่มีแล้ว
+  for (const [key, was] of Object.entries(old)) {
+    if (kept.has(key) || !(was.amount > 0)) continue;
+    removed += was.amount;
+    down.push(`${was.label} = ${fmtBaht(was.amount)}  ← ตัดออก`);
+  }
+
+  const body = [...up];
+  if (down.length) body.push(...(up.length ? ['— รายการที่ลดลง —'] : []), ...down);
+  if (!body.length) body.push('ไม่มีรายการที่ยอดเปลี่ยนแปลง');
+
+  const foot: string[] = [];
+  if (added) foot.push(`ยอดที่เพิ่ม ${fmtBaht(round2(added))} บาท`);
+  if (removed) foot.push(`ยอดที่ลดลง ${fmtBaht(round2(removed))} บาท`);
+  foot.push(`ยอดรวมใหม่ ${fmtBaht(record.total)} บาท`);
+
+  const title = up.length ? 'รายการเบิกที่เพิ่ม' : (down.length ? 'แก้ไขยอดเบิก' : 'แก้ไขใบเบิก');
+  const containerLine = previous.containers && previous.containers !== record.containers
+    ? `จำนวนตู้: ${record.containers} ตู้ (เดิม ${previous.containers} ตู้)`
+    : `จำนวนตู้: ${record.containers} ตู้`;
+
   return [
-    `📋 รายการเบิกที่เพิ่ม (แก้ไขครั้งที่ ${record.editCount})`,
+    `‼️ ${title} (แก้ไขครั้งที่ ${record.editCount})`,
     `วันที่ตรวจปล่อย: ${fmtDateStr(record.inspectDate)}`,
-    `จำนวนตู้: ${record.containers} ตู้`,
-    '--------------------------------', ...lines, '--------------------------------',
-    `ยอดที่เพิ่ม ${fmtBaht(round2(added))} บาท`, `ผู้เบิก: ${record.name}`
+    containerLine,
+    '--------------------------------', ...body, '--------------------------------',
+    ...foot, `ผู้เบิก: ${record.name}`
   ].join('\n');
 }
 
@@ -256,7 +308,10 @@ export async function saveClaim(
     record.detailFirst = row.detailFirst || row.detailAll || row.detail;
     const editDetails = safeJson<string[]>(row.editDetailsJson, Array(CLAIM_MAX_EDITS).fill(''));
     while (editDetails.length < CLAIM_MAX_EDITS) editDetails.push('');
-    editDetails[record.editCount - 1] = addedDetail(record, safeJson<ClaimItem[]>(row.itemsJson, []));
+    editDetails[record.editCount - 1] = editDetail(record, {
+      items: safeJson<ClaimItem[]>(row.itemsJson, []),
+      containers: Number(row.containers) || 0
+    });
     record.editDetails = editDetails;
 
     try {
