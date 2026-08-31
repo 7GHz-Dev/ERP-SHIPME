@@ -17,6 +17,23 @@
   input, select, textarea { padding:9px 12px; border:1px solid #cbd5e1; border-radius:9px; font-size:14px; font-family:inherit; background:#fff; }
   input:focus, select:focus, textarea:focus { outline:none; border-color:var(--blue2); }
   .hidden { display:none !important; }
+  /* ---- กล่องดูรูป / แผนที่ / สลิป — ซ้อนบนหน้าเดิม ไม่เด้งแท็บใหม่ ---- */
+  /* z-index สูงกว่า .modal-bg เพราะสลิปกดเปิดจากในกล่องรายละเอียดที่ซ้อนอยู่แล้ว */
+  .vw-bg { position:fixed; inset:0; background:rgba(15,23,42,.82); z-index:120;
+           display:flex; align-items:center; justify-content:center; padding:12px; }
+  .vw-box { background:#fff; border-radius:14px; width:100%; max-width:960px; max-height:94vh;
+            display:flex; flex-direction:column; overflow:hidden; box-shadow:0 12px 40px rgba(0,0,0,.45); }
+  .vw-head { display:flex; align-items:center; justify-content:space-between; gap:10px;
+             padding:10px 12px; border-bottom:1px solid #e5eaf2; }
+  .vw-head b { font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .vw-x { border:0; background:#eef2f7; border-radius:9px; width:34px; height:34px; flex:0 0 auto;
+          font-size:16px; line-height:1; color:#334155; cursor:pointer; padding:0; }
+  .vw-body { flex:1; min-height:0; overflow:auto; background:#0f172a;
+             display:flex; align-items:center; justify-content:center; }
+  .vw-body img { max-width:100%; max-height:84vh; display:block; }
+  .vw-body iframe { width:100%; height:72vh; border:0; display:block; background:#fff; }
+  .vw-foot { padding:8px 12px; border-top:1px solid #e5eaf2; font-size:12px; text-align:right; }
+  .vw-msg { color:#94a3b8; font-size:13px; padding:40px 16px; text-align:center; }
   a { color:var(--blue2); text-decoration:none; }
   a:hover { text-decoration:underline; }
 
@@ -615,6 +632,17 @@
 </div>
 
 <div id="toast" class="toast hidden"></div>
+<!-- กล่องดูรูป / แผนที่ / สลิป (ซ้อนบนหน้าเดิม) -->
+<div id="vw" class="vw-bg hidden">
+  <div class="vw-box">
+    <div class="vw-head">
+      <b id="vw-title">ดู</b>
+      <button id="vw-close" class="vw-x" type="button" aria-label="ปิด">&#10005;</button>
+    </div>
+    <div class="vw-body" id="vw-body"></div>
+    <div class="vw-foot"><a id="vw-open" href="#" target="_blank" rel="noopener">&#8599; เปิดในแท็บใหม่</a></div>
+  </div>
+</div>
 
 <script>
 /* Fastify ให้บริการ API บนโดเมนเดียวกับหน้าเว็บ */
@@ -855,13 +883,13 @@ $('ci-btn').addEventListener('click', function(){
 function driveId(url){ var m=/[-\w]{25,}/.exec(url||''); return m?m[0]:''; }
 function photoCell(r){
   if(r.photoUrl && (r.photoUrl.indexOf('/files/')===0 || r.photoUrl.indexOf('drive.google.com')<0)){
-    return '<a href="'+esc(r.photoUrl)+'" target="_blank"><div class="ph"><img src="'+esc(r.photoUrl)+'" loading="lazy" alt="รูป"></div></a>';
+    return '<a href="'+esc(r.photoUrl)+'" target="_blank"'+vwAttr('img', r.photoUrl, 'รูปถ่าย — '+(r.name||''))+'><div class="ph"><img src="'+esc(r.photoUrl)+'" loading="lazy" alt="รูป"></div></a>';
   }
   var id=driveId(r.photoUrl);
   if(!id) return '<div class="ph"></div>';
   var thumb='https://drive.google.com/thumbnail?id='+id+'&sz=w200';
   var full='https://drive.google.com/file/d/'+id+'/view';
-  return '<a href="'+full+'" target="_blank"><div class="ph">'+
+  return '<a href="'+full+'" target="_blank"'+vwAttr('img', 'https://drive.google.com/thumbnail?id='+id+'&sz=w1600', 'รูปถ่าย — '+(r.name||''))+'><div class="ph">'+
     '<img src="'+thumb+'" loading="lazy" alt="รูป" onerror="this.style.display=\'none\'"></div></a>';
 }
 function mapCell(r){
@@ -871,13 +899,13 @@ function mapCell(r){
   var link=r.mapLink||('https://www.google.com/maps?q='+lat+','+lng);
   return '<div class="mp-wrap">'+
     '<div class="mp"><iframe src="'+esc(src)+'" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe></div>'+
-    '<a href="'+esc(link)+'" target="_blank" class="mp-link">เปิดแผนที่เต็มจอ</a></div>';
+    '<a href="'+esc(link)+'" target="_blank" class="mp-link"'+vwAttr('map', src, 'แผนที่ — '+(r.address||r.name||''))+'>เปิดแผนที่เต็มจอ</a></div>';
 }
 function attRowHTML(r){
   var t=r.time?fmtDT(r.time):'';
   var isOut=String(r.type).indexOf('เลิก')>=0;
   var link=r.mapLink||(r.lat?('https://www.google.com/maps?q='+r.lat+','+r.lng):'');
-  var addr=r.address?(link?('<a href="'+esc(link)+'" target="_blank">'+esc(r.address)+'</a>'):esc(r.address)):'—';
+  var addr=r.address?(link?('<a href="'+esc(link)+'" target="_blank"'+vwAttr('map', mapEmbed(r.lat, r.lng), 'สถานที่ — '+r.address)+'>'+esc(r.address)+'</a>'):esc(r.address)):'—';
   return '<tr>'+
     '<td>'+photoCell(r)+'</td>'+
     '<td class="name">'+esc(r.name)+'</td>'+
@@ -1716,7 +1744,7 @@ function slipCell(r){
   h+='<div class="muted">'+(r.slipAmount?(fmtM(r.slipAmount)+' บาท'):'—')+
      (r.slipDate?(' • '+esc(fmtD(r.slipDate))):'')+(r.slipBank?(' • '+esc(r.slipBank)):'')+'</div>';
   h+='<div style="margin-top:3px"><span class="pill '+(okAuto?'approved':'pending')+'">'+esc(r.slipStatus||'รอตรวจ')+'</span></div>';
-  if(r.slipUrl) h+='<div style="margin-top:3px"><a href="'+esc(r.slipUrl)+'" target="_blank">เปิดสลิป</a></div>';
+  if(r.slipUrl) h+='<div style="margin-top:3px"><a href="'+esc(r.slipUrl)+'" target="_blank"'+vwAttr('img', photoFull(r.slipUrl), 'สลิปโอนคืนบริษัท')+'>เปิดสลิป</a></div>';
   return h;
 }
 
@@ -1729,11 +1757,11 @@ window.smView=function(i){
        '<br>ยอดในสลิป: <b>'+(r.slipAmount?fmtM(r.slipAmount)+' บาท':'—')+'</b> • วันที่ในสลิป: <b>'+(r.slipDate?esc(fmtD(r.slipDate)):'—')+'</b>'+
        (r.slipBank?('<br>ธนาคาร: '+esc(r.slipBank)):'')+
        '<br>ผลตรวจ: '+esc(r.slipStatus||'—')+
-       (r.slipUrl?('<br><a href="'+esc(r.slipUrl)+'" target="_blank">เปิดรูปสลิป</a>'):''))
+       (r.slipUrl?('<br><a href="'+esc(r.slipUrl)+'" target="_blank"'+vwAttr('img', photoFull(r.slipUrl), 'สลิปโอนคืนบริษัท')+'>เปิดรูปสลิป</a>'):''))
     : ((Number(r.balance)>0) ? '🧾 ใบนี้ต้องโอนคืนบริษัท แต่ยังไม่มีสลิปในระบบ (ใบเก่าก่อนเปิดใช้ระบบสลิป)'
                              : '🧾 ใบนี้ไม่ต้องโอนคืนบริษัท จึงไม่มีสลิป');
   $('sm-image').innerHTML = r.imageUrl
-    ? ('🖼️ รูปใบปิดบัญชีบนเซิร์ฟเวอร์: <a href="'+esc(r.imageUrl)+'" target="_blank">เปิดไฟล์</a>')
+    ? ('🖼️ รูปใบปิดบัญชีบนเซิร์ฟเวอร์: <a href="'+esc(r.imageUrl)+'" target="_blank"'+vwAttr('img', photoFull(r.imageUrl), 'ใบปิดบัญชี')+'>เปิดไฟล์</a>')
     : 'ยังไม่มีรูปใบปิดบัญชีบนเซิร์ฟเวอร์ (พนักงานกด "สร้างใบปิดบัญชี" แล้วระบบจะอัปโหลดให้)';
   $('sm-company').value=r.companyReturnedDate||'';
   $('sm-modal').classList.remove('hidden');
@@ -1827,7 +1855,7 @@ $('slip-check').addEventListener('click', function(){
       html+='<div class="'+((p.amount&&p.date&&p.txn)?'':'err')+'" style="'+((p.amount&&p.date&&p.txn)?'background:#dcfce7;color:#166534;padding:10px 12px;border-radius:9px;font-size:13px':'')+'">'+
         (((p.amount&&p.date&&p.txn)?'✅ ':'⚠️ ')+msg)+'</div>';
       html+='<div class="muted" style="margin:10px 0 6px">ทดลองอ่านไฟล์: <b>'+esc(res.file||'')+'</b>'+
-        (res.fileUrl?(' — <a href="'+esc(res.fileUrl)+'" target="_blank">เปิดสลิป</a>'):'')+'</div>';
+        (res.fileUrl?(' — <a href="'+esc(res.fileUrl)+'" target="_blank"'+vwAttr('img', photoFull(res.fileUrl), 'สลิปที่ทดลองอ่าน')+'>เปิดสลิป</a>'):'')+'</div>';
       html+='<div class="tbl-wrap"><table class="grid"><tbody>'+
         row('ยอดเงินที่อ่านได้', p.amount?fmtM(p.amount)+' บาท':'', !!p.amount)+
         row('วันที่ที่อ่านได้', p.date?fmtD(p.date):'', !!p.date)+
@@ -1906,7 +1934,7 @@ function renderReceipts(){
   if(!rows.length){ $('rc-body').innerHTML='<tr><td colspan="7" class="muted" style="padding:16px">ไม่มีข้อมูล</td></tr>'; return; }
   $('rc-body').innerHTML=rows.map(function(r){
     var link=r.mapLink||(r.lat?('https://www.google.com/maps?q='+r.lat+','+r.lng):'');
-    var addr=r.address?(link?('<a href="'+esc(link)+'" target="_blank">'+esc(r.address)+'</a>'):esc(r.address)):'—';
+    var addr=r.address?(link?('<a href="'+esc(link)+'" target="_blank"'+vwAttr('map', mapEmbed(r.lat, r.lng), 'สถานที่ส่งใบเสร็จ — '+r.address)+'>'+esc(r.address)+'</a>'):esc(r.address)):'—';
     return '<tr>'+
       '<td>'+photoCell(r)+'</td>'+
       '<td class="time-cell">'+(r.inspectDate?esc(fmtD(r.inspectDate)):'<span class="muted">—</span>')+
@@ -2387,6 +2415,66 @@ function renderSheetPreview(){
     else { clearSess(); window.location.href='index.html'; }
   }).catch(function(){ clearSess(); window.location.href='index.html'; });
 })();
+
+// ---------- กล่องดูรูป / แผนที่ / สลิป ----------
+// เดิมทุกอย่างเป็นลิงก์ target="_blank" กดทีนึงเด้งออกจากแอปที กลับมาต้องไถหาที่เดิมใหม่ทุกรอบ
+// จึงเปิดซ้อนในหน้าเดิมแทน แต่ยังคง href ไว้ — กดค้าง/คลิกกลางเพื่อเปิดแท็บใหม่ยังได้เหมือนเดิม
+// และถ้า JS พัง ลิงก์ก็ยังทำงานแบบเก่าได้
+function vwOpen(kind, src, link, title){
+  if(!src) return;
+  var body=$('vw-body');
+  $('vw-title').textContent = title || (kind==='map' ? 'แผนที่' : 'รูป');
+  $('vw-open').href = link || src;
+  $('vw').classList.remove('hidden');
+
+  if(kind==='map' || /\.pdf($|\?)/i.test(src)){
+    var frame=document.createElement('iframe');
+    frame.setAttribute('referrerpolicy','no-referrer-when-downgrade');
+    frame.setAttribute('loading','lazy');
+    frame.src=src;
+    body.innerHTML=''; body.appendChild(frame);
+    return;
+  }
+  body.innerHTML='<div class="vw-msg">กำลังโหลด…</div>';
+  var img=document.createElement('img');
+  img.alt=title||'';
+  img.onload=function(){ body.innerHTML=''; body.appendChild(img); };
+  // โหลดไม่ขึ้น (ไฟล์หาย / Drive ไม่ให้ดึง) = บอกทางออก ดีกว่าโชว์กล่องดำเปล่า ๆ
+  img.onerror=function(){ body.innerHTML='<div class="vw-msg">เปิดไฟล์ในกล่องนี้ไม่ได้ — กด "เปิดในแท็บใหม่" ด้านล่าง</div>'; };
+  img.src=src;
+}
+function vwClose(){
+  $('vw').classList.add('hidden');
+  $('vw-body').innerHTML='';        // ล้างทิ้ง ไม่งั้น iframe แผนที่ยังวิ่งอยู่เบื้องหลัง
+}
+// ดักคลิกที่ document ทีเดียว — ตารางถูกวาดใหม่ตลอด จะผูก listener รายปุ่มไม่ไหว
+document.addEventListener('click', function(e){
+  var t=e.target;
+  if(!t || !t.closest) return;
+  if(t.id==='vw' || t.closest('#vw-close')){ vwClose(); return; }
+  var a=t.closest('[data-vw]');
+  if(!a) return;
+  e.preventDefault();
+  vwOpen(a.getAttribute('data-vw'), a.getAttribute('data-src'), a.getAttribute('href'), a.getAttribute('data-title'));
+});
+document.addEventListener('keydown', function(e){
+  if(e.key==='Escape' && !$('vw').classList.contains('hidden')) vwClose();
+});
+
+// ติดแอตทริบิวต์ให้ลิงก์เปิดในกล่องซ้อน — ไม่มี src = ไม่ติด ลิงก์ทำงานแบบเดิม
+function vwAttr(kind, src, title){
+  return src ? (' data-vw="'+kind+'" data-src="'+esc(src)+'" data-title="'+esc(title||'')+'"') : '';
+}
+// URL ฝังแผนที่จากพิกัด — ไม่มีพิกัด = คืนค่าว่าง ลิงก์นั้นจะเปิดแท็บใหม่เหมือนเดิม
+function mapEmbed(lat, lng){
+  if(lat==null||lat===''||lng==null||lng==='') return '';
+  return 'https://maps.google.com/maps?q='+encodeURIComponent(lat+','+lng)+'&z=16&output=embed';
+}
+// รูปขนาดเต็มสำหรับกล่องซ้อน — ของ Drive ต้องขอ thumbnail ตัวใหญ่ เพราะหน้า /view ฝังไม่ได้
+function photoFull(url){
+  if(!url || url.indexOf('/files/')===0 || url.indexOf('drive.google.com')<0) return url;
+  var id=driveId(url); return id?('https://drive.google.com/thumbnail?id='+id+'&sz=w1600'):url;
+}
 </script>
 </body>
 </html>
