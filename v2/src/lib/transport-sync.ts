@@ -17,10 +17,26 @@ import type { ApiBody, ApiResult } from './types';
 
 export type IncomingJob = {
   transportDate: string; shipping: string; bl: string; containerNo: string;
-  quantity: number; port: string; customer: string; doFee: number;
+  quantity: number; port: string; customer: string;
+  vessel: string; doFee: number; dem: number; extraMovement: number; storage: number;
+  liftOn: number; liftOff: number; orderForm: number; inspectorFee: number;
+  overtime: number; sealFee: number; otherFee: number; detention: number; repairFee: number;
+  note: string; driver: string; settled: boolean; docSentDate: string; invoiceNo: string;
 };
 
 const text = (value: unknown, max = 300) => String(value ?? '').trim().slice(0, max);
+
+/**
+ * ตัวเลขจากชีต — ตัดลูกน้ำออกและกัน #REF! / #VALUE! ที่สูตรในชีตพังแล้วส่งมาเป็นข้อความ
+ * ถ้าไม่กัน ค่าพวกนี้จะกลายเป็น NaN แล้ว insert ลง double ไม่ผ่านทั้งก้อน
+ */
+const money = (value: unknown) => {
+  const n = Number(String(value ?? '').replace(/,/g, '').trim());
+  return Number.isFinite(n) ? n : 0;
+};
+
+/** ชีตติ๊ก TRUE/ใช่/1 — รับได้หมด */
+const flag = (value: unknown) => /^(true|yes|1|ใช่|y)$/i.test(String(value ?? '').trim());
 
 /**
  * ชื่อไฟล์ที่ชีตส่งมาคือชื่อจริงบน Drive ("สำเนาของ MAESOT FREEZONE 2026")
@@ -82,8 +98,26 @@ function normalizeRows(input: unknown): IncomingJob[] {
       quantity: Number(row.quantity) || 0,
       port: text(row.port),
       customer: text(row.customer),
+      vessel: text(row.vessel, 120),
       // ค่าแลก DO — ใบแจ้งหนี้แบบ No VAT ใช้ยอดนี้ ชีตเก่าที่ยังไม่ส่งมาจะเป็น 0
-      doFee: Number(row.doFee ?? row.do_fee) || 0
+      doFee: money(row.doFee ?? row.do_fee),
+      dem: money(row.dem),
+      extraMovement: money(row.extraMovement),
+      storage: money(row.storage),
+      liftOn: money(row.liftOn),
+      liftOff: money(row.liftOff),
+      orderForm: money(row.orderForm),
+      inspectorFee: money(row.inspectorFee),
+      overtime: money(row.overtime),
+      sealFee: money(row.sealFee),
+      otherFee: money(row.otherFee),
+      detention: money(row.detention),
+      repairFee: money(row.repairFee),
+      note: text(row.note, 500),
+      driver: text(row.driver, 200),
+      settled: flag(row.settled),
+      docSentDate: toYmd(row.docSentDate),
+      invoiceNo: text(row.invoiceNo, 40)
     });
   }
   return rows;

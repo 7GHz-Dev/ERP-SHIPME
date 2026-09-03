@@ -31,9 +31,34 @@ var ALIASES = {
   container: ['containerno', 'เบอร์ตู้', 'หมายเลขตู้', 'เลขตู้', 'container', 'containernumber', 'cntrno', 'ตู้'],
   qty:       ['จำนวนตู้', 'จำนวน', 'จน.ตู้', 'qty', 'quantity'],
   port:      ['ท่า', 'ท่าเรือ', 'ท่าส่งออก', 'port', 'terminal'],
-  doFee:     ['แลกdo', 'ค่าแลกdo', 'แลกd/o', 'do'],
-  customer:  ['ชื่อลูกค้า', 'ลูกค้า', 'ชิปเปอร์', 'ชิพเปอร์', 'shipper', 'customer', 'customername', 'consignee', 'ชื่อผู้นำเข้า']
+  customer:  ['ชื่อลูกค้า', 'ลูกค้า', 'ชิปเปอร์', 'ชิพเปอร์', 'shipper', 'customer', 'customername', 'consignee', 'ชื่อผู้นำเข้า'],
+
+  // ---- คอลัมน์ที่เหลือในชีต ดึงเข้า Supabase ให้ครบทั้งแผ่น ----
+  vessel:       ['vessel', 'เรือ', 'ชื่อเรือ'],
+  doFee:        ['แลกdo', 'ค่าแลกdo', 'แลกd/o', 'do'],
+  dem:          ['dem', 'ค่าdem', 'demurrage'],
+  extraMovement:['extramovement', 'extra movement', 'ค่าextramovement'],
+  storage:      ['storage', 'ค่าstorage'],
+  liftOn:       ['lifton', 'ค่าlifton'],
+  liftOff:      ['liftoff', 'ค่าliftoff'],
+  orderForm:    ['orderform', 'ค่าorderform'],
+  inspectorFee: ['ค่านายตรวจ', 'นายตรวจ'],
+  overtime:     ['ค่าล่วงเวลา', 'ล่วงเวลา', 'ot'],
+  sealFee:      ['ค่าตะกั่ว', 'ตะกั่ว'],
+  otherFee:     ['คชจอื่นๆ', 'คชจ.อื่นๆ', 'ค่าใช้จ่ายอื่นๆ', 'อื่นๆ'],
+  detention:    ['ค่าdetention', 'detention'],
+  repairFee:    ['ค่าซ่อมตู้', 'ซ่อมตู้'],
+  note:         ['หมายเหตุ', 'remark', 'note'],
+  driver:       ['รายชื่อคนรถ', 'คนรถ', 'พนักงานขับรถ', 'driver'],
+  settled:      ['ปิดบัญชีแล้ว', 'ปิดบัญชี'],
+  docSentDate:  ['นำเอกสารส่งแม่สอด', 'ส่งแม่สอด', 'นำเอกสาร'],
+  invoiceNo:    ['เลขที่ใบแจ้งหนี้', 'ใบแจ้งหนี้', 'invoiceno']
 };
+
+/** คอลัมน์ตัวเลขทั้งหมด — วนใส่ทีเดียว จะได้ไม่ต้องเขียนซ้ำ 13 บรรทัด */
+var NUM_COLS = ['doFee','dem','extraMovement','storage','liftOn','liftOff','orderForm',
+                'inspectorFee','overtime','sealFee','otherFee','detention','repairFee'];
+var TXT_COLS = ['vessel','note','driver','invoiceNo'];
 
 var SOURCE_ORDER = ['MAESOT FREEZONE', 'TRANSIT'];
 var HEADER_SCAN_ROWS = 15;
@@ -214,16 +239,27 @@ function readSheetRows(sheet) {
     var ymd = cellToYMD(dateCell);
     if (!ymd) continue;                       // ไม่มีวันที่ตรวจปล่อย = หน้าปิดบัญชีค้นไม่เจออยู่ดี
 
-    out.push({
+    var out_row = {
       transportDate: ymd,
       shipping: String(shipCell == null ? '' : shipCell).trim(),
       bl: bl,
       containerNo: c.container >= 0 ? String(row[c.container] == null ? '' : row[c.container]).trim() : '',
       quantity: c.qty >= 0 ? (Number(row[c.qty]) || 0) : 0,
       port: port,
-      customer: customer,
-      doFee: c.doFee >= 0 ? (Number(String(row[c.doFee] == null ? '' : row[c.doFee]).replace(/,/g, '')) || 0) : 0
-    });
+      customer: customer
+    };
+    // ตัวเลข: ตัดลูกน้ำออก ค่าที่เป็น #REF! หรือว่างให้เป็น 0
+    for (var n = 0; n < NUM_COLS.length; n++) {
+      var nk = NUM_COLS[n];
+      out_row[nk] = c[nk] >= 0 ? cellToNumber(row[c[nk]]) : 0;
+    }
+    for (var t2 = 0; t2 < TXT_COLS.length; t2++) {
+      var tk = TXT_COLS[t2];
+      out_row[tk] = c[tk] >= 0 ? String(row[c[tk]] == null ? '' : row[c[tk]]).trim() : '';
+    }
+    out_row.settled = c.settled >= 0 && /^(true|yes|1|ใช่)$/i.test(String(row[c.settled] == null ? '' : row[c.settled]).trim());
+    out_row.docSentDate = c.docSentDate >= 0 ? cellToYMD(row[c.docSentDate]) : '';
+    out.push(out_row);
   }
   return out;
 }
@@ -259,15 +295,25 @@ function detectColumns(rows) {
       container: findCol(head, ALIASES.container),
       qty:       findCol(head, ALIASES.qty),
       port:      findCol(head, ALIASES.port),
-      customer:  findCol(head, ALIASES.customer),
-      doFee:     findCol(head, ALIASES.doFee)
+      customer:  findCol(head, ALIASES.customer)
     };
+    // คอลัมน์ส่วนเสริม — ไม่นับคะแนน ไม่มีก็ข้ามไป (สองไฟล์มีคอลัมน์ไม่เท่ากัน)
+    NUM_COLS.concat(TXT_COLS).concat(['settled','docSentDate']).forEach(function(k){
+      cols[k] = findCol(head, ALIASES[k]);
+    });
     var score = (cols.shipping >= 0 ? 2 : 0) + (cols.transport >= 0 ? 2 : 0) + (cols.bl >= 0 ? 2 : 0) +
                 (cols.container >= 0 ? 1 : 0) + (cols.qty >= 0 ? 1 : 0) +
                 (cols.port >= 0 ? 1 : 0) + (cols.customer >= 0 ? 1 : 0);
     if (!best || score > best.score) best = { row: i, cols: cols, score: score };
   }
   return best;
+}
+
+/** ตัวเลขในชีตมีลูกน้ำ และบางช่องเป็น #REF! จากสูตรที่พัง — กันไว้ให้เป็น 0 */
+function cellToNumber(v) {
+  if (typeof v === 'number') return isFinite(v) ? v : 0;
+  var n = Number(String(v == null ? '' : v).replace(/,/g, '').trim());
+  return isFinite(n) ? n : 0;
 }
 
 function cellToYMD(v) {

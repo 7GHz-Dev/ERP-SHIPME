@@ -201,8 +201,32 @@ export const transportJobs = pgTable('transport_jobs', {
   quantity: doublePrecision('quantity').notNull().default(0),
   port: text('port').notNull().default(''),
   customer: text('customer').notNull().default(''),
+  // ---- คอลัมน์ที่เหลือจากชีตงานขนส่ง ----
+  // ดึงมาทั้งแผ่นเพื่อให้ v2 มีข้อมูลชุดเดียวกับชีต ไม่ต้องเปิดชีตควบไปมา
+  // ตัวเลขทั้งหมดเก็บเป็น double ตัดลูกน้ำออกแล้ว ช่องที่เป็น #REF!/ว่าง = 0
+  vessel: text('vessel').notNull().default(''),
   // ค่าแลก DO อยู่ในชีตงานขนส่ง ไม่ได้อยู่ในใบปิดบัญชี — ใบแจ้งหนี้แบบ No VAT ใช้ยอดนี้
   doFee: doublePrecision('do_fee').notNull().default(0),
+  dem: doublePrecision('dem').notNull().default(0),
+  extraMovement: doublePrecision('extra_movement').notNull().default(0),
+  storage: doublePrecision('storage').notNull().default(0),
+  liftOn: doublePrecision('lift_on').notNull().default(0),
+  liftOff: doublePrecision('lift_off').notNull().default(0),
+  orderForm: doublePrecision('order_form').notNull().default(0),
+  inspectorFee: doublePrecision('inspector_fee').notNull().default(0),
+  overtime: doublePrecision('overtime').notNull().default(0),
+  sealFee: doublePrecision('seal_fee').notNull().default(0),
+  otherFee: doublePrecision('other_fee').notNull().default(0),
+  detention: doublePrecision('detention').notNull().default(0),
+  repairFee: doublePrecision('repair_fee').notNull().default(0),
+  note: text('note').notNull().default(''),
+  driver: text('driver').notNull().default(''),
+  // ชีตติ๊ก TRUE ไว้เมื่อปิดบัญชีแล้ว (มีเฉพาะไฟล์ TRANSIT)
+  settled: boolean('settled').notNull().default(false),
+  // วันที่ส่งเอกสารไปแม่สอด — ชื่อคอลัมน์ต่างกันสองไฟล์ แต่ความหมายเดียวกัน
+  docSentDate: text('doc_sent_date').notNull().default(''),
+  // เลขที่ใบแจ้งหนี้ที่ทีมบัญชีเคยกรอกไว้ในชีตเอง (ของเดิมก่อนมีเมนูใบแจ้งหนี้ใน v2)
+  invoiceNo: text('invoice_no').notNull().default(''),
   sourceFile: text('source_file').notNull().default(''),
   sourceSheet: text('source_sheet').notNull().default(''),
   sourceName: text('source_name').notNull().default(''),
