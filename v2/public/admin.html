@@ -2944,11 +2944,11 @@ function printInvoice(saved){
   // (ของเดิมแยกเป็นอีกตารางหนึ่ง ความกว้างคอลัมน์เลยไม่ตรงกัน)
   var sumRow = function(label, value, bold){
     var b0 = bold ? '<b>' : '', b1 = bold ? '</b>' : '';
-    return '<tr>'
-      + '<td class="nb"></td><td class="nb"></td><td class="nb"></td>'
-      + '<td class="sl">'+b0+label+b1+'</td>'
+    // หัวข้อละ 1 บรรทัด — รวบ 4 คอลัมน์แรกเป็นช่องเดียว ยอดอยู่ตรงคอลัมน์ "จำนวนเงิน"
+    return '<tr class="sumrow">'
+      + '<td class="sl" colspan="4">'+b0+label+b1+'</td>'
       + '<td class="r sv">'+b0+value+b1+'</td>'
-      + '<td class="nb"></td></tr>';
+      + '<td></td></tr>';
   };
 
   var html = '<!doctype html><html lang="th"><head><meta charset="utf-8">'
@@ -2962,10 +2962,14 @@ function printInvoice(saved){
     + '.head{font-weight:700;font-size:15px}'
     + '.co{text-align:center;margin-bottom:6px}'
     + '.logo{display:block;margin:0 auto 6px;max-height:78px}'
-    + '.nb{border:0}'                              // ช่องว่างซ้ายของแถวสรุป ไม่เอาเส้น
-    + '.sl{text-align:right;border:0;font-weight:600}'
-    + '.sv{border:0;border-bottom:1px solid #333}'
-    + '@media print{body{margin:10mm}}'
+    + 'thead th{background:#d9d9d9}'
+    + '.sumrow td{background:#d9d9d9}'
+    + '.sl{text-align:right;font-weight:600}'
+    + '.sv{text-align:right}'
+    + '.foot{position:relative}'
+    + '.stamp{position:absolute;right:0;bottom:0;max-height:150px;max-width:230px}'
+    + '@media print{body{margin:10mm}'
+    +   'thead th,.sumrow td{-webkit-print-color-adjust:exact;print-color-adjust:exact}}'
     + '</style></head><body>'
     + '<div class="co">'
     +   (co.logoUrl ? '<img class="logo" src="'+esc(co.logoUrl)+'" alt="" onerror="this.style.display=\'none\'">' : '')
@@ -2991,13 +2995,16 @@ function printInvoice(saved){
     +   sumRow('หักภาษี ณ ที่จ่าย 3%', '-', false)
     +   sumRow('รวมเงินที่ต้องชำระ', baht(total), true)
     + '</tbody></table>'
-    + '<br><table class="noborder"><tr><td>'
-    +   '<div><b>ช่องทางการชำระเงิน</b></div>'
-    +   '<div>ชื่อบัญชี : '+esc(co.bankAccountName||'')+'</div>'
-    +   '<div>เลขที่บัญชี : '+esc(co.bankAccountNo||'')+'</div>'
-    +   '<div style="margin-top:8px">หมายเหตุ '+esc(co.note||'')+'</div>'
-    +   '<div style="margin-top:22px">ผู้จัดทำใบแจ้งหนี้ &nbsp;&nbsp;&nbsp; '+esc((state.user&&state.user.name)||'')+'</div>'
-    + '</td></tr></table>'
+    + '<div class="foot">'
+    +   '<table class="noborder" style="margin-top:10px"><tr><td>'
+    +     '<div><b>ช่องทางการชำระเงิน</b></div>'
+    +     '<div>ชื่อบัญชี : '+esc(co.bankAccountName||'')+'</div>'
+    +     '<div>เลขที่บัญชี : '+esc(co.bankAccountNo||'')+'</div>'
+    +     '<div style="margin-top:8px">หมายเหตุ '+esc(co.note||'')+'</div>'
+    +     '<div style="margin-top:22px">ผู้จัดทำใบแจ้งหนี้ &nbsp;&nbsp;&nbsp; '+esc((state.user&&state.user.name)||'')+'</div>'
+    +   '</td></tr></table>'
+    +   (co.stampUrl ? '<img class="stamp" src="'+esc(co.stampUrl)+'" alt="" onerror="this.style.display=\'none\'">' : '')
+    + '</div>'
     + '</body></html>';
 
   var w = window.open('', '_blank');

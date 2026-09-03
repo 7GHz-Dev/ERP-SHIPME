@@ -123,7 +123,9 @@ export const INVOICE_COMPANY = {
   note: 'หัก ณ ที่จ่ายในนาม บริษัท ชิป มี โลจิสติกส์ จำกัด พร้อมส่ง Slip โอนเงินมาที่ E-MAIL. shipme.acc@gmail.com',
   // โลโก้หัวใบแจ้งหนี้ — วางไฟล์ที่ v2/public/logo.png แล้วมันจะขึ้นเอง
   // ถ้ายังไม่มีไฟล์ หน้าพิมพ์จะซ่อนรูปให้อัตโนมัติ (onerror) ไม่ขึ้นเป็นรูปแตก
-  logoUrl: '/logo.png'
+  logoUrl: '/logo.png',
+  // ตราประทับบริษัท มุมขวาล่างของใบ — วางไฟล์ที่ v2/public/stamp.png
+  stampUrl: '/stamp.png'
 } as const;
 
 /**
