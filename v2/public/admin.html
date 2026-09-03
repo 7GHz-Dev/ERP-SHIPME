@@ -135,6 +135,13 @@
   .modal-bg { position:fixed; inset:0; background:rgba(15,23,42,.5); display:flex; align-items:center; justify-content:center; z-index:60; padding:16px; }
   .modal { background:#fff; border-radius:16px; padding:22px; width:100%; max-width:440px; max-height:92vh; overflow:auto; }
   .modal h3 { margin:0 0 16px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media (max-width:560px){ .grid2 { grid-template-columns:1fr; } }
+  .inv-sum { margin-top:14px; border-top:2px solid var(--line); padding-top:12px; display:grid; gap:6px; }
+  .inv-sum .row { display:flex; justify-content:space-between; gap:16px; font-size:14px; }
+  .inv-sum .row.total { font-weight:700; font-size:16px; border-top:1px solid var(--line); padding-top:8px; }
+  #inv-items input { width:100%; padding:6px 8px; font-size:13px; }
+  #inv-items td { padding:4px; }
   .modal label { display:block; font-size:13px; color:var(--muted); font-weight:600; margin:0 0 6px; }
   .modal input, .modal select, .modal textarea { width:100%; margin-bottom:14px; }
   .modal .actions { display:flex; gap:10px; justify-content:flex-end; }
@@ -170,6 +177,7 @@
     <button class="navbtn" data-tab="attend">การเข้างาน</button>
     <button class="navbtn" data-tab="claim">การเบิก</button>
     <button class="navbtn" data-tab="settle">ปิดบัญชี</button>
+    <button class="navbtn" data-tab="invoice">ใบแจ้งหนี้</button>
     <button class="navbtn" data-tab="receipt">ใบเสร็จ</button>
     <button class="navbtn" data-tab="leave">การลา</button>
     <button class="navbtn" data-tab="emp">พนักงาน</button>
@@ -477,6 +485,64 @@
     </section>
 
     <!-- RECEIPT (ใบเสร็จที่พนักงานถ่ายส่ง) -->
+    <section id="tab-invoice" class="hidden">
+      <h3 class="sec">ใบแจ้งหนี้</h3>
+      <p class="muted" style="margin:0 0 14px">
+        เลือกงานจากใบปิดบัญชีของพนักงานชิปปิ้งมาออกใบแจ้งหนี้ —
+        <b>V</b> = มี VAT (ค่า LIFT ON/OFF, STORAGE, EXTRA MOVEMENT จากใบปิดบัญชี คูณ 1.04 แล้วบวก VAT 7%),
+        <b>NV</b> = ไม่มี VAT (ค่าแลก DO จากชีตงานขนส่ง)
+      </p>
+
+      <div class="subnav">
+        <button type="button" class="btn btn-ghost btn-sm inv-sub active" data-sub="new">➕ ออกใบใหม่</button>
+        <button type="button" class="btn btn-ghost btn-sm inv-sub" data-sub="list">📄 ใบที่ออกแล้ว</button>
+      </div>
+
+      <!-- ---------- ออกใบใหม่ ---------- -->
+      <div id="inv-pane-new">
+        <div class="toolbar">
+          <input id="inv-search" type="text" placeholder="ค้นหา เลข BL / ลูกค้า / ชื่อพนักงาน" class="grow">
+          <input id="inv-from" type="date" title="วันที่ตรวจปล่อย ตั้งแต่">
+          <input id="inv-to" type="date" title="วันที่ตรวจปล่อย ถึง">
+          <select id="inv-filter">
+            <option value="">ทุกงาน</option>
+            <option value="open">ยังไม่ได้ออกใบ</option>
+            <option value="done">ออกใบแล้ว</option>
+          </select>
+          <button id="inv-reload" class="btn btn-ghost btn-sm">โหลดใหม่</button>
+        </div>
+        <div class="tablewrap">
+          <table>
+            <thead><tr>
+              <th>วันที่ตรวจปล่อย</th><th>พนักงาน</th><th>เลข BL</th><th>ลูกค้า</th>
+              <th class="right">ตู้</th><th class="right">ยอดก่อน VAT</th><th>ออกใบแล้ว</th><th></th>
+            </tr></thead>
+            <tbody id="inv-src-body"><tr><td colspan="8" class="muted">กำลังโหลด…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ---------- ใบที่ออกแล้ว ---------- -->
+      <div id="inv-pane-list" class="hidden">
+        <div class="toolbar">
+          <input id="invl-search" type="text" placeholder="ค้นหา เลขที่ใบ / BL / ลูกค้า" class="grow">
+          <input id="invl-from" type="date" title="วันที่ออกใบ ตั้งแต่">
+          <input id="invl-to" type="date" title="วันที่ออกใบ ถึง">
+          <button id="invl-reload" class="btn btn-ghost btn-sm">โหลดใหม่</button>
+        </div>
+        <div class="tablewrap">
+          <table>
+            <thead><tr>
+              <th>เลขที่</th><th>วันที่</th><th>ลูกค้า</th><th>B/L</th>
+              <th class="right">ก่อน VAT</th><th class="right">VAT</th><th class="right">รวม</th>
+              <th>สถานะ</th><th></th>
+            </tr></thead>
+            <tbody id="inv-list-body"><tr><td colspan="9" class="muted">กำลังโหลด…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
     <section id="tab-receipt" class="hidden">
       <h3 class="sec">ใบเสร็จที่พนักงานส่งเข้ามา</h3>
       <p class="muted" style="margin:0 0 14px">
@@ -556,6 +622,8 @@
       <option value="employee-office">พนักงานสำนักงาน — คอม Windows • ไม่ถ่ายรูป</option>
       <option value="employee-shipping">พนักงานจัดส่ง — มือถือ • ถ่ายรูป</option>
       <option value="manager">ผู้จัดการ — คอม Windows • ไม่ถ่ายรูป</option>
+      <option value="manager-account">ผู้จัดการบัญชี — ออก/อนุมัติใบแจ้งหนี้</option>
+      <option value="employee-account">พนักงานบัญชี — ออกใบแจ้งหนี้</option>
       <option value="admin">ผู้ดูแล (admin) — ไม่ต้องเช็คชื่อ</option>
     </select>
     <label>สถานะ</label>
@@ -583,6 +651,63 @@
 </div>
 
 <!-- settlement detail modal -->
+<!-- invoice form / print -->
+<div id="inv-modal" class="modal-bg hidden">
+  <div class="modal" style="max-width:860px">
+    <h3 id="inv-title">ออกใบแจ้งหนี้</h3>
+
+    <div class="inv-form">
+      <div class="grid2">
+        <div>
+          <label>ประเภท</label>
+          <select id="inv-kind">
+            <option value="V">V — มีภาษีมูลค่าเพิ่ม 7%</option>
+            <option value="NV">NV — ไม่มีภาษีมูลค่าเพิ่ม</option>
+          </select>
+        </div>
+        <div>
+          <label>วันที่ออกใบ</label>
+          <input id="inv-date" type="date">
+        </div>
+      </div>
+      <div class="grid2">
+        <div><label>เลขที่ใบแจ้งหนี้</label><input id="inv-no" type="text" readonly></div>
+        <div><label>B/L</label><input id="inv-bl" type="text"></div>
+      </div>
+      <label>ชื่อลูกค้า</label>
+      <input id="inv-cust" type="text" placeholder="บริษัท ... จำกัด (สำนักงานใหญ่)">
+      <label>ที่อยู่ลูกค้า</label>
+      <input id="inv-addr" type="text" placeholder="เลขที่ หมู่ ตำบล อำเภอ จังหวัด รหัสไปรษณีย์">
+      <label>เลขประจำตัวผู้เสียภาษีลูกค้า</label>
+      <input id="inv-tax" type="text" inputmode="numeric" placeholder="13 หลัก">
+
+      <label style="margin-top:14px">รายการ</label>
+      <div class="tablewrap" style="margin-bottom:8px">
+        <table id="inv-items">
+          <thead><tr>
+            <th style="width:44px">ลำดับ</th><th>รายการ</th>
+            <th style="width:80px" class="right">จำนวน</th>
+            <th style="width:110px" class="right">ราคา/หน่วย</th>
+            <th style="width:120px" class="right">จำนวนเงิน</th>
+            <th style="width:120px">หมายเหตุ</th><th style="width:40px"></th>
+          </tr></thead>
+          <tbody id="inv-items-body"></tbody>
+        </table>
+      </div>
+      <button id="inv-add" type="button" class="btn btn-ghost btn-sm">➕ เพิ่มรายการ</button>
+
+      <div id="inv-sum" class="inv-sum"></div>
+      <div id="inv-msg" class="muted" style="margin-top:10px"></div>
+    </div>
+
+    <div class="actions">
+      <button id="inv-save" class="btn btn-ok btn-sm">บันทึกใบแจ้งหนี้</button>
+      <button id="inv-print" class="btn btn-primary btn-sm">🖨️ พิมพ์ / PDF</button>
+      <button id="inv-close" class="btn btn-ghost btn-sm">ปิด</button>
+    </div>
+  </div>
+</div>
+
 <div id="sm-modal" class="modal-bg hidden">
   <div class="modal" style="max-width:560px">
     <h3>รายละเอียดการปิดบัญชี</h3>
@@ -675,16 +800,31 @@ $('btn-logout').addEventListener('click', logout);
 function logout(){ clearSess(); window.location.href='index.html'; }
 
 function enterApp(){
-  var isManager = state.user.role==='manager';
-  $('who').textContent = state.user.name + (isManager ? ' (ผู้จัดการ)' : ' (ผู้ดูแล)');
-  $('brand-title').textContent = isManager ? '🗂️ แดชบอร์ด' : '🗂️ แดชบอร์ดผู้ดูแล';
-  // เมนูเข้างานมีเฉพาะผู้จัดการ (admin ไม่ต้องลงเวลา) และเปิดเป็นแท็บแรกให้เลย
-  document.querySelector('.navbtn[data-tab="checkin"]').classList.toggle('hidden', !isManager);
-  document.querySelector('.navbtn[data-tab="leave"]').classList.toggle('hidden', isManager);
-  document.querySelector('.navbtn[data-tab="emp"]').classList.toggle('hidden', isManager);
+  var role = state.user.role;
+  var isManager = role==='manager';
+  // ฝ่ายบัญชีใช้หน้านี้แค่ 2 เมนู: เข้างาน (คอม Windows) กับใบแจ้งหนี้ — ที่เหลือซ่อนทั้งหมด
+  var isAccount = role==='manager-account' || role==='employee-account';
+  var roleWord = isAccount ? (role==='manager-account' ? ' (ผู้จัดการบัญชี)' : ' (พนักงานบัญชี)')
+                           : (isManager ? ' (ผู้จัดการ)' : ' (ผู้ดูแล)');
+  $('who').textContent = state.user.name + roleWord;
+  $('brand-title').textContent = isAccount ? '🧾 ใบแจ้งหนี้' : (isManager ? '🗂️ แดชบอร์ด' : '🗂️ แดชบอร์ดผู้ดูแล');
+
+  if(isAccount){
+    // เหลือเฉพาะ 2 เมนูของฝ่ายบัญชี
+    Array.prototype.forEach.call(document.querySelectorAll('.navbtn'), function(btn){
+      var tab = btn.getAttribute('data-tab');
+      btn.classList.toggle('hidden', tab!=='checkin' && tab!=='invoice');
+    });
+  } else {
+    // เมนูเข้างานมีเฉพาะผู้จัดการ (admin ไม่ต้องลงเวลา) และเปิดเป็นแท็บแรกให้เลย
+    document.querySelector('.navbtn[data-tab="checkin"]').classList.toggle('hidden', !isManager);
+    document.querySelector('.navbtn[data-tab="leave"]').classList.toggle('hidden', isManager);
+    document.querySelector('.navbtn[data-tab="emp"]').classList.toggle('hidden', isManager);
+  }
   $('subbtn-sheet').classList.toggle('hidden', !canEditSheet());   // หน้าตารูปใบปิดบัญชี = เฉพาะ admin
   $('view-app').classList.remove('hidden');
-  switchTab(isManager ? 'checkin' : 'dash');
+  switchTab(isAccount ? 'invoice' : (isManager ? 'checkin' : 'dash'));
+  if(isAccount) return;    // loadAll() ยิง action ที่ฝ่ายบัญชีไม่มีสิทธิ์ จะได้ forbidden เต็มหน้าจอ
   loadAll();
 }
 
@@ -694,11 +834,12 @@ Array.prototype.forEach.call(document.querySelectorAll('.navbtn'), function(t){
 });
 function switchTab(name){
   Array.prototype.forEach.call(document.querySelectorAll('.navbtn'), function(t){ t.classList.toggle('active', t.getAttribute('data-tab')===name); });
-  ['checkin','dash','attend','claim','settle','receipt','leave','emp','settings'].forEach(function(s){ $('tab-'+s).classList.toggle('hidden', s!==name); });
+  ['checkin','dash','attend','claim','settle','invoice','receipt','leave','emp','settings'].forEach(function(s){ $('tab-'+s).classList.toggle('hidden', s!==name); });
   if(name==='checkin') initCheckin();   // ขอสิทธิ์ตำแหน่งเฉพาะตอนเปิดแท็บเข้างานจริง ๆ
   if(name==='claim') initClaimTab();    // โหลดใบเบิกของพนักงานตอนเปิดแท็บครั้งแรก
   if(name==='settle') initSettleTab();
   if(name==='receipt') initReceiptTab();
+  if(name==='invoice') initInvoiceTab();
   if(name==='settings') initSettingsTab();
   window.scrollTo(0,0);
 }
@@ -1054,9 +1195,12 @@ var ROLE_LABEL = {
   admin:'<span class="pill approved">ผู้ดูแล</span>',
   manager:'<span class="pill pending">ผู้จัดการ</span>',
   'employee-office':'พนักงานสำนักงาน',
-  'employee-shipping':'พนักงานจัดส่ง'
+  'employee-shipping':'พนักงานจัดส่ง',
+  'manager-account':'<span class="pill pending">ผู้จัดการบัญชี</span>',
+  'employee-account':'พนักงานบัญชี'
 };
-var ROLE_VALID = { admin:1, manager:1, 'employee-office':1, 'employee-shipping':1 };
+var ROLE_VALID = { admin:1, manager:1, 'employee-office':1, 'employee-shipping':1,
+                   'manager-account':1, 'employee-account':1 };
 
 $('emp-refresh').addEventListener('click', loadEmployees);
 $('emp-search').addEventListener('input', renderEmployees);
@@ -2407,11 +2551,378 @@ function renderSheetPreview(){
   } catch(e){ toast('วาดตัวอย่างไม่สำเร็จ: '+(e && e.message ? e.message : e), 4000); }
 }
 
+
+// ---------- ใบแจ้งหนี้ ----------
+// V  = มี VAT   → ค่า LIFT ON/OFF, STORAGE, EXTRA MOVEMENT จากใบปิดบัญชี × 1.04 แล้วบวก VAT 7%
+// NV = ไม่มี VAT → ค่าแลก DO จากชีตงานขนส่ง (คนละที่มากับฝั่ง V)
+var invState = { cfg:null, sources:[], list:[], editing:null, loaded:false };
+
+function baht(n){
+  var v = Number(n) || 0;
+  return v.toLocaleString('th-TH', { minimumFractionDigits:2, maximumFractionDigits:2 });
+}
+
+function initInvoiceTab(){
+  if(invState.loaded) return;
+  invState.loaded = true;
+  api({ action:'invoiceConfig', token:state.token }).then(function(res){
+    if(res.ok) invState.cfg = res;
+  });
+  loadInvoiceSources();
+  loadInvoiceList();
+}
+
+Array.prototype.forEach.call(document.querySelectorAll('.inv-sub'), function(btn){
+  btn.addEventListener('click', function(){
+    var sub = btn.getAttribute('data-sub');
+    Array.prototype.forEach.call(document.querySelectorAll('.inv-sub'), function(b){ b.classList.toggle('active', b===btn); });
+    $('inv-pane-new').classList.toggle('hidden', sub!=='new');
+    $('inv-pane-list').classList.toggle('hidden', sub!=='list');
+  });
+});
+
+$('inv-reload').addEventListener('click', loadInvoiceSources);
+$('invl-reload').addEventListener('click', loadInvoiceList);
+$('inv-search').addEventListener('input', renderInvoiceSources);
+$('inv-filter').addEventListener('change', renderInvoiceSources);
+$('invl-search').addEventListener('input', renderInvoiceList);
+
+function loadInvoiceSources(){
+  $('inv-src-body').innerHTML = '<tr><td colspan="8" class="muted">กำลังโหลด…</td></tr>';
+  api({ action:'invoiceSources', token:state.token, from:$('inv-from').value, to:$('inv-to').value })
+    .then(function(res){
+      if(!res.ok){ $('inv-src-body').innerHTML = '<tr><td colspan="8" class="muted">โหลดไม่สำเร็จ: '+esc(res.error)+'</td></tr>'; return; }
+      invState.sources = res.rows || [];
+      renderInvoiceSources();
+    });
+}
+
+function renderInvoiceSources(){
+  var q = $('inv-search').value.trim().toLowerCase();
+  var mode = $('inv-filter').value;
+  var rows = invState.sources.filter(function(r){
+    var done = !!(r.issued && (r.issued.V || r.issued.NV));
+    if(mode==='open' && done) return false;
+    if(mode==='done' && !done) return false;
+    if(!q) return true;
+    return [r.bl, r.customer, r.name, r.username].join(' ').toLowerCase().indexOf(q) >= 0;
+  });
+  if(!rows.length){ $('inv-src-body').innerHTML = '<tr><td colspan="8" class="muted">ไม่มีรายการ</td></tr>'; return; }
+  $('inv-src-body').innerHTML = rows.map(function(r, i){
+    var tags = [];
+    if(r.issued && r.issued.V) tags.push('<span class="pill approved">'+esc(r.issued.V)+'</span>');
+    if(r.issued && r.issued.NV) tags.push('<span class="pill approved">'+esc(r.issued.NV)+'</span>');
+    return '<tr>'
+      + '<td>'+esc(r.inspectDate)+'</td>'
+      + '<td>'+esc(r.name||r.username)+'</td>'
+      + '<td><b>'+esc(r.bl)+'</b></td>'
+      + '<td>'+esc(r.customer||'—')+'</td>'
+      + '<td class="right">'+(r.containers||0)+'</td>'
+      + '<td class="right">'+baht(r.vatAmount)+'</td>'
+      + '<td>'+(tags.join(' ')||'<span class="muted">ยังไม่ออก</span>')+'</td>'
+      + '<td class="right" style="white-space:nowrap">'
+      +   '<button class="btn btn-primary btn-sm inv-make" data-i="'+i+'" data-kind="V">V</button> '
+      +   '<button class="btn btn-ghost btn-sm inv-make" data-i="'+i+'" data-kind="NV">NV</button>'
+      + '</td></tr>';
+  }).join('');
+  Array.prototype.forEach.call($('inv-src-body').querySelectorAll('.inv-make'), function(btn){
+    btn.addEventListener('click', function(){
+      openInvoiceForm(rows[Number(btn.getAttribute('data-i'))], btn.getAttribute('data-kind'));
+    });
+  });
+}
+
+function openInvoiceForm(src, kind){
+  invState.editing = { src:src, kind:kind };
+  $('inv-title').textContent = 'ออกใบแจ้งหนี้ — ' + (kind==='V' ? 'มี VAT' : 'ไม่มี VAT');
+  $('inv-kind').value = kind;
+  $('inv-date').value = new Date().toISOString().slice(0,10);
+  $('inv-bl').value = src.bl || '';
+  $('inv-cust').value = src.customer || '';
+  $('inv-addr').value = '';
+  $('inv-tax').value = '';
+  $('inv-no').value = invState.cfg && invState.cfg.next ? invState.cfg.next[kind] : '(ออกให้ตอนบันทึก)';
+  $('inv-msg').textContent = 'กำลังดึงรายการ…';
+  $('inv-items-body').innerHTML = '';
+  $('inv-modal').classList.remove('hidden');
+
+  api({ action:'invoicePreview', token:state.token, kind:kind, settlementId:src.settlementId, bl:src.bl })
+    .then(function(res){
+      if(!res.ok){
+        $('inv-msg').textContent = res.error==='bl_not_found' ? 'ไม่พบเลข BL นี้ในใบปิดบัญชี'
+          : (res.error==='settlement_not_found' ? 'ไม่พบใบปิดบัญชี' : 'ดึงรายการไม่สำเร็จ: '+res.error);
+        renderInvoiceItems([]);
+        return;
+      }
+      $('inv-msg').textContent = res.items.length ? '' :
+        (kind==='NV' ? 'ไม่พบค่าแลก DO ของ BL นี้ในชีตงานขนส่ง — เพิ่มรายการเองได้' : 'ไม่มีค่าใช้จ่ายที่เข้าเงื่อนไข — เพิ่มรายการเองได้');
+      renderInvoiceItems(res.items);
+    });
+}
+
+function renderInvoiceItems(items){
+  var body = $('inv-items-body');
+  body.innerHTML = (items||[]).map(function(it, i){
+    return '<tr>'
+      + '<td class="right">'+(i+1)+'</td>'
+      + '<td><input type="text" class="ii-label" value="'+esc(it.label)+'"></td>'
+      + '<td><input type="number" step="any" class="ii-qty right" value="'+(it.qty||'')+'"></td>'
+      + '<td><input type="number" step="any" class="ii-price right" value="'+(it.unitPrice||'')+'"></td>'
+      + '<td><input type="number" step="0.01" class="ii-amount right" value="'+(it.amount||0)+'"></td>'
+      + '<td><input type="text" class="ii-note" value="'+esc(it.note||'')+'"></td>'
+      + '<td><button type="button" class="btn btn-ghost btn-sm ii-del">✕</button></td>'
+      + '</tr>';
+  }).join('');
+  bindInvoiceItemEvents();
+  recalcInvoice();
+}
+
+function bindInvoiceItemEvents(){
+  var body = $('inv-items-body');
+  Array.prototype.forEach.call(body.querySelectorAll('.ii-del'), function(btn){
+    btn.addEventListener('click', function(){ btn.closest('tr').remove(); renumberInvoiceItems(); recalcInvoice(); });
+  });
+  // จำนวน × ราคา/หน่วย = จำนวนเงิน (กรอกจำนวนเงินเองก็ได้ ถ้าไม่ได้กรอกอีก 2 ช่อง)
+  Array.prototype.forEach.call(body.querySelectorAll('.ii-qty, .ii-price'), function(inp){
+    inp.addEventListener('input', function(){
+      var tr = inp.closest('tr');
+      var qty = Number(tr.querySelector('.ii-qty').value) || 0;
+      var price = Number(tr.querySelector('.ii-price').value) || 0;
+      if(qty && price) tr.querySelector('.ii-amount').value = Math.round(qty * price * 100) / 100;
+      recalcInvoice();
+    });
+  });
+  Array.prototype.forEach.call(body.querySelectorAll('.ii-amount'), function(inp){
+    inp.addEventListener('input', recalcInvoice);
+  });
+}
+
+function renumberInvoiceItems(){
+  Array.prototype.forEach.call($('inv-items-body').querySelectorAll('tr'), function(tr, i){
+    tr.cells[0].textContent = i + 1;
+  });
+}
+
+function readInvoiceItems(){
+  return Array.prototype.map.call($('inv-items-body').querySelectorAll('tr'), function(tr, i){
+    return {
+      no: i + 1,
+      label: tr.querySelector('.ii-label').value.trim(),
+      qty: Number(tr.querySelector('.ii-qty').value) || 0,
+      unitPrice: Number(tr.querySelector('.ii-price').value) || 0,
+      amount: Number(tr.querySelector('.ii-amount').value) || 0,
+      note: tr.querySelector('.ii-note').value.trim()
+    };
+  }).filter(function(it){ return it.label || it.amount; });
+}
+
+function recalcInvoice(){
+  var kind = $('inv-kind').value;
+  var items = readInvoiceItems();
+  var subtotal = Math.round(items.reduce(function(s, i){ return s + i.amount; }, 0) * 100) / 100;
+  var vat = kind === 'V' ? Math.round(subtotal * 0.07 * 100) / 100 : 0;
+  var total = Math.round((subtotal + vat) * 100) / 100;
+  $('inv-sum').innerHTML =
+      '<div class="row"><span>ค่าบริการรวม</span><b>'+baht(subtotal)+'</b></div>'
+    + '<div class="row"><span>ภาษีมูลค่าเพิ่ม 7%</span><b>'+(kind==='V'?baht(vat):'—')+'</b></div>'
+    + '<div class="row total"><span>รวมเงินทั้งสิ้น</span><b>'+baht(total)+'</b></div>'
+    + '<div class="row"><span>หักภาษี ณ ที่จ่าย 3%</span><b>—</b></div>'
+    + '<div class="row total"><span>รวมเงินที่ต้องชำระ</span><b>'+baht(total)+'</b></div>';
+}
+
+$('inv-kind').addEventListener('change', function(){
+  var kind = $('inv-kind').value;
+  if(invState.cfg && invState.cfg.next) $('inv-no').value = invState.cfg.next[kind];
+  recalcInvoice();
+});
+$('inv-add').addEventListener('click', function(){
+  var tr = document.createElement('tr');
+  tr.innerHTML = '<td class="right"></td>'
+    + '<td><input type="text" class="ii-label"></td>'
+    + '<td><input type="number" step="any" class="ii-qty right"></td>'
+    + '<td><input type="number" step="any" class="ii-price right"></td>'
+    + '<td><input type="number" step="0.01" class="ii-amount right"></td>'
+    + '<td><input type="text" class="ii-note"></td>'
+    + '<td><button type="button" class="btn btn-ghost btn-sm ii-del">✕</button></td>';
+  $('inv-items-body').appendChild(tr);
+  bindInvoiceItemEvents(); renumberInvoiceItems();
+});
+$('inv-close').addEventListener('click', function(){ $('inv-modal').classList.add('hidden'); });
+
+$('inv-save').addEventListener('click', function(){
+  var items = readInvoiceItems();
+  if(!items.length){ $('inv-msg').textContent = 'ต้องมีอย่างน้อย 1 รายการ'; return; }
+  var edit = invState.editing || {};
+  $('inv-save').disabled = true;
+  $('inv-msg').textContent = 'กำลังบันทึก…';
+  api({
+    action:'saveInvoice', token:state.token,
+    kind:$('inv-kind').value, issueDate:$('inv-date').value,
+    bl:$('inv-bl').value.trim(),
+    customerName:$('inv-cust').value.trim(),
+    customerAddress:$('inv-addr').value.trim(),
+    customerTaxId:$('inv-tax').value.trim(),
+    settlementId: edit.src ? edit.src.settlementId : '',
+    items: items
+  }).then(function(res){
+    $('inv-save').disabled = false;
+    if(!res.ok){ $('inv-msg').textContent = 'บันทึกไม่สำเร็จ: ' + esc(res.error); return; }
+    $('inv-no').value = res.number;
+    $('inv-msg').innerHTML = '<b style="color:#059669">บันทึกแล้ว — เลขที่ ' + esc(res.number) + '</b>';
+    // เลขรันถัดไปขยับแล้ว ต้องดึงใหม่ ไม่งั้นใบต่อไปจะโชว์เลขเดิม
+    api({ action:'invoiceConfig', token:state.token }).then(function(cfg){ if(cfg.ok) invState.cfg = cfg; });
+    loadInvoiceSources();
+    loadInvoiceList();
+  });
+});
+
+$('inv-print').addEventListener('click', function(){ printInvoice(); });
+
+function loadInvoiceList(){
+  $('inv-list-body').innerHTML = '<tr><td colspan="9" class="muted">กำลังโหลด…</td></tr>';
+  api({ action:'listInvoices', token:state.token, from:$('invl-from').value, to:$('invl-to').value })
+    .then(function(res){
+      if(!res.ok){ $('inv-list-body').innerHTML = '<tr><td colspan="9" class="muted">โหลดไม่สำเร็จ: '+esc(res.error)+'</td></tr>'; return; }
+      invState.list = res.rows || [];
+      invState.canApprove = !!res.canApprove;
+      renderInvoiceList();
+    });
+}
+
+var INV_STATUS = {
+  draft:'<span class="pill pending">ร่าง</span>',
+  approved:'<span class="pill approved">อนุมัติแล้ว</span>',
+  cancelled:'<span class="pill rejected">ยกเลิก</span>'
+};
+
+function renderInvoiceList(){
+  var q = $('invl-search').value.trim().toLowerCase();
+  var rows = invState.list.filter(function(r){
+    if(!q) return true;
+    return [r.number, r.bl, r.customerName].join(' ').toLowerCase().indexOf(q) >= 0;
+  });
+  if(!rows.length){ $('inv-list-body').innerHTML = '<tr><td colspan="9" class="muted">ยังไม่มีใบแจ้งหนี้</td></tr>'; return; }
+  $('inv-list-body').innerHTML = rows.map(function(r, i){
+    var act = '<button class="btn btn-ghost btn-sm invl-view" data-i="'+i+'">ดู</button>';
+    if(invState.canApprove && r.status==='draft'){
+      act += ' <button class="btn btn-ok btn-sm invl-ok" data-i="'+i+'">อนุมัติ</button>';
+    }
+    return '<tr>'
+      + '<td><b>'+esc(r.number)+'</b></td>'
+      + '<td>'+esc(r.issueDate)+'</td>'
+      + '<td>'+esc(r.customerName||'—')+'</td>'
+      + '<td>'+esc(r.bl||'—')+'</td>'
+      + '<td class="right">'+baht(r.subtotal)+'</td>'
+      + '<td class="right">'+(r.kind==='V'?baht(r.vat):'—')+'</td>'
+      + '<td class="right"><b>'+baht(r.total)+'</b></td>'
+      + '<td>'+(INV_STATUS[r.status]||esc(r.status))+'</td>'
+      + '<td class="right" style="white-space:nowrap">'+act+'</td></tr>';
+  }).join('');
+  Array.prototype.forEach.call($('inv-list-body').querySelectorAll('.invl-view'), function(b){
+    b.addEventListener('click', function(){ printInvoice(rows[Number(b.getAttribute('data-i'))]); });
+  });
+  Array.prototype.forEach.call($('inv-list-body').querySelectorAll('.invl-ok'), function(b){
+    b.addEventListener('click', function(){
+      var r = rows[Number(b.getAttribute('data-i'))];
+      b.disabled = true;
+      api({ action:'decideInvoice', token:state.token, number:r.number, decision:'approved' })
+        .then(function(res){ if(res.ok) loadInvoiceList(); else { b.disabled=false; alert('อนุมัติไม่สำเร็จ: '+res.error); } });
+    });
+  });
+}
+
+/** เปิดหน้าต่างใหม่แล้ววาดใบแจ้งหนี้ตามฟอร์มในชีต — สั่งพิมพ์หรือ Save as PDF ได้เลย */
+function printInvoice(saved){
+  var co = (invState.cfg && invState.cfg.company) || {};
+  var kind, number, date, cust, addr, tax, bl, items, subtotal, vat, total;
+  if(saved){
+    kind = saved.kind; number = saved.number; date = saved.issueDate;
+    cust = saved.customerName; addr = saved.customerAddress; tax = saved.customerTaxId;
+    bl = saved.bl; items = saved.items || [];
+    subtotal = saved.subtotal; vat = saved.vat; total = saved.total;
+  } else {
+    kind = $('inv-kind').value; number = $('inv-no').value; date = $('inv-date').value;
+    cust = $('inv-cust').value; addr = $('inv-addr').value; tax = $('inv-tax').value;
+    bl = $('inv-bl').value; items = readInvoiceItems();
+    subtotal = Math.round(items.reduce(function(s,i){ return s+i.amount; },0)*100)/100;
+    vat = kind === 'V' ? Math.round(subtotal*0.07*100)/100 : 0;
+    total = Math.round((subtotal+vat)*100)/100;
+  }
+  var d = date ? date.split('-') : [];
+  var thDate = d.length===3 ? (d[2]+'/'+d[1]+'/'+d[0]) : date;
+
+  // ฟอร์มมี 15 บรรทัดเสมอเหมือนในชีต เติมบรรทัดว่างให้ครบ
+  var lines = '';
+  for(var i=0; i<Math.max(15, items.length); i++){
+    var it = items[i];
+    lines += '<tr>'
+      + '<td class="c">'+(i+1)+'</td>'
+      + '<td>'+(it?esc(it.label):'')+'</td>'
+      + '<td class="c">'+(it&&it.qty?it.qty:'')+'</td>'
+      + '<td class="r">'+(it&&it.unitPrice?baht(it.unitPrice):'')+'</td>'
+      + '<td class="r">'+(it&&it.amount?baht(it.amount):'')+'</td>'
+      + '<td>'+(it?esc(it.note||''):'')+'</td></tr>';
+  }
+
+  var html = '<!doctype html><html lang="th"><head><meta charset="utf-8">'
+    + '<title>'+esc(number)+'</title><style>'
+    + 'body{font-family:"Sarabun","Leelawadee UI","Tahoma",sans-serif;font-size:13px;color:#111;margin:24px;}'
+    + 'table{border-collapse:collapse;width:100%;}'
+    + 'th,td{border:1px solid #333;padding:5px 7px;}'
+    + '.c{text-align:center}.r{text-align:right}'
+    + '.noborder,.noborder td{border:0;padding:2px 0;}'
+    + 'h1{font-size:19px;text-align:center;margin:14px 0;letter-spacing:1px}'
+    + '.head{font-weight:700;font-size:15px}'
+    + '.sum td{border:0;padding:3px 7px}'
+    + '.sum .lbl{text-align:right}.sum .val{text-align:right;width:130px;border-bottom:1px solid #333}'
+    + '@media print{body{margin:10mm}}'
+    + '</style></head><body>'
+    + '<table class="noborder"><tr><td>'
+    +   '<div class="head">'+esc(co.name||'')+'</div>'
+    +   '<div>'+esc(co.address||'')+'</div>'
+    +   '<div>เลขประจำตัวผู้เสียภาษี '+esc(co.taxId||'')+'</div>'
+    + '</td></tr></table>'
+    + '<h1>ใบแจ้งหนี้ / INVOICE</h1>'
+    + '<table class="noborder"><tr>'
+    +   '<td style="width:62%">ชื่อลูกค้า : '+esc(cust||'')+'</td>'
+    +   '<td class="r" style="width:16%">วันที่</td><td style="width:22%">'+esc(thDate||'')+'</td></tr>'
+    + '<tr><td>ที่อยู่ : '+esc(addr||'')+'</td>'
+    +   '<td class="r">ใบแจ้งหนี้เลขที่</td><td><b>'+esc(number||'')+'</b></td></tr>'
+    + '<tr><td>เลขประจำตัวผู้เสียภาษี : '+esc(tax||'')+'</td>'
+    +   '<td class="r">B/L</td><td>'+esc(bl||'')+'</td></tr></table><br>'
+    + '<table><thead><tr>'
+    +   '<th style="width:50px">ลำดับ</th><th>รายการ</th><th style="width:60px">จำนวน</th>'
+    +   '<th style="width:90px">ราคา/หน่วย</th><th style="width:110px">จำนวนเงิน</th><th style="width:110px">หมายเหตุ</th>'
+    + '</tr></thead><tbody>'+lines+'</tbody></table>'
+    + '<table class="sum"><tr><td class="lbl">ค่าบริการรวม</td><td class="val">'+baht(subtotal)+'</td></tr>'
+    +   '<tr><td class="lbl">ภาษีมูลค่าเพิ่ม 7%</td><td class="val">'+(kind==='V'?baht(vat):'')+'</td></tr>'
+    +   '<tr><td class="lbl"><b>รวมเงินทั้งสิ้น</b></td><td class="val"><b>'+baht(total)+'</b></td></tr>'
+    +   '<tr><td class="lbl">หักภาษี ณ ที่จ่าย 3%</td><td class="val">-</td></tr>'
+    +   '<tr><td class="lbl"><b>รวมเงินที่ต้องชำระ</b></td><td class="val"><b>'+baht(total)+'</b></td></tr></table>'
+    + '<br><table class="noborder"><tr><td>'
+    +   '<div><b>ช่องทางการชำระเงิน</b></div>'
+    +   '<div>ชื่อบัญชี : '+esc(co.bankAccountName||'')+'</div>'
+    +   '<div>เลขที่บัญชี : '+esc(co.bankAccountNo||'')+'</div>'
+    +   '<div style="margin-top:8px">หมายเหตุ '+esc(co.note||'')+'</div>'
+    +   '<div style="margin-top:22px">ผู้จัดทำใบแจ้งหนี้ &nbsp;&nbsp;&nbsp; '+esc((state.user&&state.user.name)||'')+'</div>'
+    + '</td></tr></table>'
+    + '</body></html>';
+
+  var w = window.open('', '_blank');
+  if(!w){ alert('เบราว์เซอร์บล็อกหน้าต่างใหม่ — อนุญาต popup ของเว็บนี้ก่อน'); return; }
+  w.document.write(html);
+  w.document.close();
+  w.focus();
+  setTimeout(function(){ w.print(); }, 300);
+}
+
 // ---------- INIT ----------
+// ใครเปิดหน้านี้ได้บ้าง — ฝ่ายบัญชีเข้ามาใช้เมนูใบแจ้งหนี้ (เมนูอื่นถูกซ่อนใน enterApp)
+var ADMIN_PAGE_ROLES = { admin:1, manager:1, 'manager-account':1, 'employee-account':1 };
 (function init(){
   if(!loadSess()){ window.location.href='index.html'; return; }
   api({action:'me', token:state.token}).then(function(res){
-    if(res.ok && (res.user.role==='admin' || res.user.role==='manager')){ state.user=res.user; enterApp(); }
+    if(res.ok && ADMIN_PAGE_ROLES[res.user.role]){ state.user=res.user; enterApp(); }
     else { clearSess(); window.location.href='index.html'; }
   }).catch(function(){ clearSess(); window.location.href='index.html'; });
 })();

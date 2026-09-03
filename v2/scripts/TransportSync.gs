@@ -31,6 +31,7 @@ var ALIASES = {
   container: ['containerno', 'เบอร์ตู้', 'หมายเลขตู้', 'เลขตู้', 'container', 'containernumber', 'cntrno', 'ตู้'],
   qty:       ['จำนวนตู้', 'จำนวน', 'จน.ตู้', 'qty', 'quantity'],
   port:      ['ท่า', 'ท่าเรือ', 'ท่าส่งออก', 'port', 'terminal'],
+  doFee:     ['แลกdo', 'ค่าแลกdo', 'แลกd/o', 'do'],
   customer:  ['ชื่อลูกค้า', 'ลูกค้า', 'ชิปเปอร์', 'ชิพเปอร์', 'shipper', 'customer', 'customername', 'consignee', 'ชื่อผู้นำเข้า']
 };
 
@@ -220,7 +221,8 @@ function readSheetRows(sheet) {
       containerNo: c.container >= 0 ? String(row[c.container] == null ? '' : row[c.container]).trim() : '',
       quantity: c.qty >= 0 ? (Number(row[c.qty]) || 0) : 0,
       port: port,
-      customer: customer
+      customer: customer,
+      doFee: c.doFee >= 0 ? (Number(String(row[c.doFee] == null ? '' : row[c.doFee]).replace(/,/g, '')) || 0) : 0
     });
   }
   return out;
@@ -257,7 +259,8 @@ function detectColumns(rows) {
       container: findCol(head, ALIASES.container),
       qty:       findCol(head, ALIASES.qty),
       port:      findCol(head, ALIASES.port),
-      customer:  findCol(head, ALIASES.customer)
+      customer:  findCol(head, ALIASES.customer),
+      doFee:     findCol(head, ALIASES.doFee)
     };
     var score = (cols.shipping >= 0 ? 2 : 0) + (cols.transport >= 0 ? 2 : 0) + (cols.bl >= 0 ? 2 : 0) +
                 (cols.container >= 0 ? 1 : 0) + (cols.qty >= 0 ? 1 : 0) +

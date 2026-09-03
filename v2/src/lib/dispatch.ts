@@ -20,6 +20,9 @@ import { ocrDiagnostics, signSlipUpload, verifySlip } from './slip';
 import { saveDataImage } from './storage';
 import { lookupTransport, transportDiagnostics } from './transport';
 import { pruneTransportSheets, syncTransportSheet, transportSyncStatus } from './transport-sync';
+import {
+  decideInvoice, invoiceConfig, invoicePreview, invoiceSources, listInvoices, saveInvoice
+} from './invoices';
 import type { ApiBody, ApiResult, Handler } from './types';
 import { checkinPolicy, id, isWindowsDevice, nowIso, publicUser, validYmd, ymd } from './utils';
 
@@ -132,6 +135,9 @@ async function checkin(body: ApiBody): Promise<ApiResult> {
   }
   return { ok: true, record: checkinRecord(row as CheckinRow) };
 }
+
+/** ใครเข้าเมนูใบแจ้งหนี้ได้บ้าง — admin/manager เดิมยังเข้าได้เพื่อดูแลระบบ */
+const ACCOUNT_ROLES = ['admin', 'manager', 'manager-account', 'employee-account'];
 
 const handlers: Record<string, Handler> = {
   // ---- เช็กอิน ----
@@ -353,6 +359,33 @@ const handlers: Record<string, Handler> = {
   transportSyncStatus: async (body) => {
     const session = await guard(body, ['admin', 'manager']);
     return session.error || transportSyncStatus();
+  },
+
+  // ---- ใบแจ้งหนี้ (ฝ่ายบัญชี) ----
+  // employee-account ออกใบได้ แต่อนุมัติเองไม่ได้ — manager-account เป็นคนอนุมัติ
+  invoiceConfig: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || invoiceConfig();
+  },
+  invoiceSources: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || invoiceSources(body);
+  },
+  invoicePreview: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || invoicePreview(body);
+  },
+  saveInvoice: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || saveInvoice(body, session.user);
+  },
+  listInvoices: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || listInvoices(body, session.user);
+  },
+  decideInvoice: async (body) => {
+    const session = await guard(body, ['admin', 'manager-account']);
+    return session.error || decideInvoice(body, session.user);
   }
 };
 

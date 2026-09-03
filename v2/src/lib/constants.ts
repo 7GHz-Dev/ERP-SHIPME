@@ -89,3 +89,35 @@ export const SETTLE_RATE_DEFAULTS: Record<string, number> = {
 
 export const TRANSPORT_SOURCE_ORDER = ['MAESOT FREEZONE', 'TRANSIT'];
 export const TRANSPORT_SOURCE_STYLE: Record<string, string> = { TRANSIT: 'transit' };
+
+// ============ ใบแจ้งหนี้ ============
+
+/** VAT 7% ตามกฎหมาย — แยกเป็นค่าคงที่เพราะใช้ทั้งตอนคิดยอดและตอนแสดงหัวข้อในฟอร์ม */
+export const VAT_RATE = 0.07;
+
+/**
+ * ยอดฝั่งมี VAT คิดจากต้นทุนที่สำรองจ่าย × 1.04 ก่อนแล้วค่อยบวก VAT 7%
+ * (4% คือค่าบริการที่บวกจากต้นทุน ไม่ใช่ภาษี — ภาษีคิดทีหลังจากยอดที่บวกแล้ว)
+ */
+export const INVOICE_MARKUP = 1.04;
+
+/**
+ * ค่าใช้จ่ายที่ขึ้นใบแจ้งหนี้แบบมี VAT — คีย์ต้องตรงกับ costs ใน settlements.rows_json
+ * ค่าแลก DO ไม่อยู่ในนี้เพราะเป็นฝั่ง No VAT และดึงจากชีตงานขนส่งคนละที่กัน
+ */
+export const INVOICE_VAT_ITEMS = [
+  { key: 'lift_on', label: 'ADV - ค่า LIFT ON' },
+  { key: 'lift_off', label: 'ADV - ค่า LIFT OFF' },
+  { key: 'storage', label: 'ADV - ค่า STORAGE' },
+  { key: 'extra_movement', label: 'ADV - ค่า EXTRA MOVEMENT' }
+] as const;
+
+/** หัวกระดาษ/ท้ายกระดาษของใบแจ้งหนี้ — ลอกจากชีตต้นฉบับ แก้ที่เดียวแล้วเปลี่ยนทุกใบ */
+export const INVOICE_COMPANY = {
+  name: 'บริษัท ชิป มี โลจิสติกส์ จำกัด',
+  address: 'ที่อยู่ 106/10 หมู่ที่ 9 ตำบลทุ่งสุขลา อำเภอศรีราชา จังหวัดชลบุรี 20230',
+  taxId: '0205569011089',
+  bankAccountName: 'บจก ชิป มี โลจิสติกส์',
+  bankAccountNo: '228-3-81394-3 กสิกรไทย',
+  note: 'หัก ณ ที่จ่ายในนาม บริษัท ชิป มี โลจิสติกส์ จำกัด พร้อมส่ง Slip โอนเงินมาที่ E-MAIL. shipme.acc@gmail.com'
+} as const;

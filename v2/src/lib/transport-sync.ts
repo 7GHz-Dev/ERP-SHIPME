@@ -17,7 +17,7 @@ import type { ApiBody, ApiResult } from './types';
 
 export type IncomingJob = {
   transportDate: string; shipping: string; bl: string; containerNo: string;
-  quantity: number; port: string; customer: string;
+  quantity: number; port: string; customer: string; doFee: number;
 };
 
 const text = (value: unknown, max = 300) => String(value ?? '').trim().slice(0, max);
@@ -81,7 +81,9 @@ function normalizeRows(input: unknown): IncomingJob[] {
       containerNo: text(row.containerNo ?? row.container_no),
       quantity: Number(row.quantity) || 0,
       port: text(row.port),
-      customer: text(row.customer)
+      customer: text(row.customer),
+      // ค่าแลก DO — ใบแจ้งหนี้แบบ No VAT ใช้ยอดนี้ ชีตเก่าที่ยังไม่ส่งมาจะเป็น 0
+      doFee: Number(row.doFee ?? row.do_fee) || 0
     });
   }
   return rows;

@@ -201,6 +201,8 @@ export const transportJobs = pgTable('transport_jobs', {
   quantity: doublePrecision('quantity').notNull().default(0),
   port: text('port').notNull().default(''),
   customer: text('customer').notNull().default(''),
+  // ค่าแลก DO อยู่ในชีตงานขนส่ง ไม่ได้อยู่ในใบปิดบัญชี — ใบแจ้งหนี้แบบ No VAT ใช้ยอดนี้
+  doFee: doublePrecision('do_fee').notNull().default(0),
   sourceFile: text('source_file').notNull().default(''),
   sourceSheet: text('source_sheet').notNull().default(''),
   sourceName: text('source_name').notNull().default(''),
@@ -212,3 +214,45 @@ export const geocodeCache = pgTable('geocode_cache', {
   address: text('address').notNull(),
   updatedAt: text('updated_at').notNull()
 });
+
+/**
+ * ใบแจ้งหนี้ที่ฝ่ายบัญชีออกให้ลูกค้า
+ *
+ * เลขที่ใบแจ้งหนี้เป็น primary key ตรง ๆ (V/NV + yyyymm + เลขรัน 2 หลัก) เพราะเป็นเลข
+ * ที่ต้องไม่ซ้ำอยู่แล้วตามกฎหมาย และเป็นสิ่งที่คนอ้างถึงเวลาคุยกัน — ไม่ต้องมี id ซ้อนอีกชั้น
+ *
+ * itemsJson เก็บรายการในตารางทั้งชุด (เหมือน settlements.rows_json) เพราะจำนวนบรรทัด
+ * ไม่คงที่และไม่เคยต้อง query รายบรรทัด — ดึงทั้งใบมาแสดงเสมอ
+ */
+export const invoices = pgTable('invoices', {
+  number: text('number').primaryKey(),
+  kind: text('kind').notNull(),                       // 'V' = มี VAT | 'NV' = ไม่มี VAT
+  period: text('period').notNull(),                   // yyyymm — ใช้หาเลขรันถัดไปของเดือนนั้น
+  seq: integer('seq').notNull(),                      // เลขรันในเดือน (1-99)
+  issueDate: text('issue_date').notNull(),            // yyyy-MM-dd
+  customerName: text('customer_name').notNull().default(''),
+  customerAddress: text('customer_address').notNull().default(''),
+  customerTaxId: text('customer_tax_id').notNull().default(''),
+  bl: text('bl').notNull().default(''),
+  itemsJson: text('items_json').notNull(),
+  subtotal: doublePrecision('subtotal').notNull().default(0),
+  vat: doublePrecision('vat').notNull().default(0),
+  total: doublePrecision('total').notNull().default(0),
+  withholding: doublePrecision('withholding').notNull().default(0),
+  netTotal: doublePrecision('net_total').notNull().default(0),
+  note: text('note').notNull().default(''),
+  preparedBy: text('prepared_by').notNull().default(''),
+  status: text('status').notNull().default('draft'),  // draft | approved | cancelled
+  approvedBy: text('approved_by').notNull().default(''),
+  approvedAt: text('approved_at').notNull().default(''),
+  // ใบปิดบัญชีที่เอามาออกใบนี้ — กันออกซ้ำและตามกลับไปดูที่มาได้
+  settlementId: text('settlement_id').notNull().default(''),
+  createdBy: citext('created_by').notNull()
+    .references(() => users.username, { onUpdate: 'cascade' }),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull()
+}, (t) => [
+  // หาเลขรันถัดไปของเดือน + ไล่ดูใบตามช่วงเวลา
+  index('invoices_period_idx').on(t.kind, t.period, t.seq),
+  index('invoices_created_idx').on(t.createdBy, t.issueDate)
+]);

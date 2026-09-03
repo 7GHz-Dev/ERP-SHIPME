@@ -32,7 +32,11 @@ export function normalizeRole(role: unknown) {
 
 export function checkinPolicy(role: unknown) {
   const value = normalizeRole(role);
-  if (value === 'manager' || value === 'employee-office') return { canCheckin: true, device: 'windows', photo: false };
+  // ฝ่ายบัญชีนั่งออฟฟิศเหมือน manager/office — เข้างานผ่านคอม Windows ใช้แค่ตำแหน่ง ไม่ต้องถ่ายรูป
+  if (value === 'manager' || value === 'employee-office'
+    || value === 'manager-account' || value === 'employee-account') {
+    return { canCheckin: true, device: 'windows', photo: false };
+  }
   if (value === 'employee-shipping') return { canCheckin: true, device: 'mobile', photo: true };
   return { canCheckin: false, device: 'any', photo: false };
 }

@@ -618,6 +618,8 @@
 var API_URL = '/api';
 
 // ---------- state ----------
+// role ที่ต้องไปใช้หน้า admin.html แทนหน้าพนักงาน (ฝ่ายบัญชีใช้เมนูใบแจ้งหนี้ที่นั่น)
+var ADMIN_PAGE_ROLES = { admin:1, manager:1, 'manager-account':1, 'employee-account':1 };
 var state = { token:null, user:null, photo:null, loc:null, watchId:null, stream:null, policy:null,
               camReady:false, rcReady:false, blocked:false };
 var $ = function(id){ return document.getElementById(id); };
@@ -776,7 +778,7 @@ function doLogin(){
     btn.disabled=false; btn.textContent='เข้าสู่ระบบ';
     if(!res.ok){ st.textContent=errTH(res.error); st.classList.remove('hidden'); return; }
     state.token=res.token; state.user=res.user;
-    if(state.user.role==='admin' || state.user.role==='manager'){
+    if(ADMIN_PAGE_ROLES[state.user.role]){
       try { localStorage.setItem('admin_sess', JSON.stringify({token:state.token, user:state.user})); } catch(e){}
       window.location.href = 'admin.html';
       return;
@@ -3857,7 +3859,7 @@ function renderReceiptList(){
     api({action:'me', token:state.token}).then(function(res){
       if(!res.ok){ clearSession(); show('login'); return; }
       state.user=res.user;
-      if(state.user.role==='admin' || state.user.role==='manager'){
+      if(ADMIN_PAGE_ROLES[state.user.role]){
         try { localStorage.setItem('admin_sess', JSON.stringify({token:state.token, user:state.user})); } catch(e){}
         window.location.href = 'admin.html';
         return;

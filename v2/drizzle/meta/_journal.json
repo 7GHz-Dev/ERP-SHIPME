@@ -15,6 +15,13 @@
       "when": 1787836059868,
       "tag": "0001_puzzling_sway",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788410919803,
+      "tag": "0002_lying_infant_terrible",
+      "breakpoints": true
     }
   ]
 }
