@@ -2967,7 +2967,7 @@ function printInvoice(saved){
     + '.sl{text-align:right;font-weight:600}'
     + '.sv{text-align:right}'
     + '.foot{position:relative}'
-    + '.stamp{position:absolute;right:0;bottom:0;max-height:150px;max-width:230px}'
+    + '.stamp{position:absolute;right:6px;bottom:34px;max-height:105px;max-width:161px}'  // ลด 30% จาก 150x230 และยกขึ้นพ้นบรรทัด "ผู้จัดทำใบแจ้งหนี้"
     + '@media print{body{margin:10mm}'
     +   'thead th,.sumrow td{-webkit-print-color-adjust:exact;print-color-adjust:exact}}'
     + '</style></head><body>'
@@ -2996,7 +2996,8 @@ function printInvoice(saved){
     +   sumRow('รวมเงินที่ต้องชำระ', baht(total), true)
     + '</tbody></table>'
     + '<div class="foot">'
-    +   '<table class="noborder" style="margin-top:10px"><tr><td>'
+    // จำกัดความกว้างข้อความไว้ 70% กันหมายเหตุ (ยาว ~105 ตัวอักษร) ตัดบรรทัดไปลอดใต้ตราประทับ
+    +   '<table class="noborder" style="margin-top:10px;width:70%"><tr><td>'
     +     '<div><b>ช่องทางการชำระเงิน</b></div>'
     +     '<div>ชื่อบัญชี : '+esc(co.bankAccountName||'')+'</div>'
     +     '<div>เลขที่บัญชี : '+esc(co.bankAccountNo||'')+'</div>'
