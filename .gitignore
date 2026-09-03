@@ -13,3 +13,6 @@ ocr/.venv/
 ocr/slip-sample.jpg
 ocr/__pycache__/
 .vercel
+
+# macOS
+.DS_Store
