@@ -1,7 +1,7 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { invoices, settlements, transportJobs } from '@/db/schema';
-import { INVOICE_COMPANY, INVOICE_VAT_ITEMS, INVOICE_MARKUP, VAT_RATE } from './constants';
+import { INVOICE_COMPANY, INVOICE_VAT_ITEMS, INVOICE_DIVISOR, VAT_RATE } from './constants';
 import { id, nowIso, validYmd, ymd } from './utils';
 import type { ApiBody, ApiResult } from './types';
 
@@ -12,8 +12,8 @@ import type { ApiBody, ApiResult } from './types';
  *   V  (มี VAT)    — ค่า LIFT ON / LIFT OFF / STORAGE / EXTRA MOVEMENT จาก **ใบปิดบัญชี**
  *   NV (ไม่มี VAT) — ค่าแลก DO จาก **ชีตงานขนส่ง** (คนละที่มากัน)
  *
- * ยอดฝั่ง V คูณ 1.04 ก่อนคิด VAT 7% — เป็นค่าบริการที่บวกจากต้นทุนที่สำรองจ่ายไป
- * ส่วน NV เป็นเงินที่ออกแทนลูกค้าตรง ๆ จึงไม่บวกอะไรและไม่มี VAT
+ * ยอดฝั่ง V หาร 1.04 เพื่อถอดค่าบริการ 4% ที่ใบปิดบัญชีบวกมาแล้ว ก่อนคิด VAT 7%
+ * ส่วน NV เป็นเงินที่ออกแทนลูกค้าตรง ๆ จึงไม่ถอดอะไรและไม่มี VAT
  */
 
 export type InvoiceItem = {
@@ -84,7 +84,7 @@ export async function buildItems(kind: string, settlementId: string, bl: string)
     for (const item of INVOICE_VAT_ITEMS) {
       const raw = picked.reduce((sum, row) => sum + (Number(row?.costs?.[item.key]) || 0), 0);
       if (raw <= 0) continue;
-      const amount = money(raw * INVOICE_MARKUP);
+      const amount = money(raw / INVOICE_DIVISOR);
       items.push({ no: items.length + 1, label: item.label, qty: 0, unitPrice: 0, amount, note: '' });
     }
   } else {
@@ -116,7 +116,7 @@ export async function invoiceConfig(): Promise<ApiResult> {
     ok: true,
     company: INVOICE_COMPANY,
     vatRate: VAT_RATE,
-    markup: INVOICE_MARKUP,
+    divisor: INVOICE_DIVISOR,
     vatItems: INVOICE_VAT_ITEMS,
     period,
     next: {
@@ -185,7 +185,7 @@ export async function invoiceSources(body: ApiBody): Promise<ApiResult> {
         port: group.port,
         containers: group.containers,
         vatBase: money(group.vatBase),
-        vatAmount: money(group.vatBase * INVOICE_MARKUP),
+        vatAmount: money(group.vatBase / INVOICE_DIVISOR),
         issued: issuedMap.get(key) || {}
       });
     }
@@ -303,4 +303,73 @@ export async function decideInvoice(body: ApiBody, actor: { username: string }):
   }).where(eq(invoices.number, number));
 
   return { ok: true, number, status: decision };
+}
+
+/**
+ * ออกใบแจ้งหนี้หลายใบรวดเดียว — 1 BL ที่เลือก = 1 ใบ
+ *
+ * จองเลขรันทั้งชุดในทรานแซกชันเดียว ไม่ใช่วนเรียก saveInvoice ทีละใบ
+ * เพราะถ้าแยกกันแล้วล้มกลางทาง จะได้ใบครึ่ง ๆ กลาง ๆ และเลขรันขาดช่วง
+ * ตรวจครบทุกใบก่อน ถ้ามีใบไหนสร้างรายการไม่ได้จะไม่บันทึกอะไรเลย
+ */
+export async function saveInvoiceBatch(body: ApiBody, actor: { username: string; name: string }): Promise<ApiResult> {
+  const kind = text(body.kind) === 'NV' ? 'NV' : 'V';
+  const issueDate = validYmd(body.issueDate) ? String(body.issueDate) : ymd();
+  const period = issueDate.slice(0, 7).replace('-', '');
+
+  const targets = Array.isArray(body.targets) ? body.targets.slice(0, 50) : [];
+  if (!targets.length) return { ok: false, error: 'no_targets' };
+
+  // เตรียมรายการของทุกใบก่อน — ใบไหนไม่มีรายการให้ข้าม แล้วรายงานกลับไปว่าข้ามเพราะอะไร
+  const prepared: { bl: string; customer: string; settlementId: string; items: InvoiceItem[] }[] = [];
+  const skipped: { bl: string; reason: string }[] = [];
+
+  for (const target of targets) {
+    const settlementId = text(target?.settlementId, 60);
+    const bl = text(target?.bl, 120);
+    const built = await buildItems(kind, settlementId, bl);
+    if (!built.ok) {
+      skipped.push({ bl, reason: String(built.error.error || 'error') });
+      continue;
+    }
+    if (!built.items.length) {
+      // ฝั่ง NV เจอบ่อย เพราะ BL นั้นยังไม่มีค่าแลก DO ในชีตงานขนส่ง
+      skipped.push({ bl, reason: 'no_items' });
+      continue;
+    }
+    prepared.push({ bl: built.bl, customer: built.customer, settlementId, items: built.items });
+  }
+
+  if (!prepared.length) return { ok: false, error: 'no_items', skipped };
+
+  const now = nowIso();
+  const created = await db.transaction(async (tx) => {
+    const [row] = await tx.select({ maxSeq: sql<number | null>`max(${invoices.seq})` })
+      .from(invoices).where(and(eq(invoices.kind, kind), eq(invoices.period, period)));
+    let seq = Number(row?.maxSeq ?? 0);
+    const out: ApiResult[] = [];
+
+    for (const entry of prepared) {
+      seq += 1;
+      if (seq > 99) throw new Error('seq_overflow');
+      const number = invoiceNumber(kind, period, seq);
+      const totals = invoiceTotals(entry.items, kind);
+      await tx.insert(invoices).values({
+        number, kind, period, seq, issueDate,
+        customerName: entry.customer,
+        customerAddress: '', customerTaxId: '',
+        bl: entry.bl,
+        itemsJson: JSON.stringify(entry.items),
+        subtotal: totals.subtotal, vat: totals.vat, total: totals.total,
+        withholding: totals.withholding, netTotal: totals.netTotal,
+        note: '', preparedBy: actor.name,
+        settlementId: entry.settlementId,
+        createdBy: actor.username, createdAt: now, updatedAt: now
+      });
+      out.push({ number, bl: entry.bl, customer: entry.customer, ...totals });
+    }
+    return out;
+  });
+
+  return { ok: true, created, skipped, count: created.length };
 }

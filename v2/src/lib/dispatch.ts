@@ -21,7 +21,8 @@ import { saveDataImage } from './storage';
 import { lookupTransport, transportDiagnostics } from './transport';
 import { pruneTransportSheets, syncTransportSheet, transportSyncStatus } from './transport-sync';
 import {
-  decideInvoice, invoiceConfig, invoicePreview, invoiceSources, listInvoices, saveInvoice
+  decideInvoice, invoiceConfig, invoicePreview, invoiceSources, listInvoices,
+  saveInvoice, saveInvoiceBatch
 } from './invoices';
 import type { ApiBody, ApiResult, Handler } from './types';
 import { checkinPolicy, id, isWindowsDevice, nowIso, publicUser, validYmd, ymd } from './utils';
@@ -378,6 +379,10 @@ const handlers: Record<string, Handler> = {
   saveInvoice: async (body) => {
     const session = await guard(body, ACCOUNT_ROLES);
     return session.error || saveInvoice(body, session.user);
+  },
+  saveInvoiceBatch: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || saveInvoiceBatch(body, session.user);
   },
   listInvoices: async (body) => {
     const session = await guard(body, ACCOUNT_ROLES);

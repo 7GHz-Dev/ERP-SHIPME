@@ -489,7 +489,7 @@
       <h3 class="sec">ใบแจ้งหนี้</h3>
       <p class="muted" style="margin:0 0 14px">
         เลือกงานจากใบปิดบัญชีของพนักงานชิปปิ้งมาออกใบแจ้งหนี้ —
-        <b>V</b> = มี VAT (ค่า LIFT ON/OFF, STORAGE, EXTRA MOVEMENT จากใบปิดบัญชี คูณ 1.04 แล้วบวก VAT 7%),
+        <b>V</b> = มี VAT (ค่า LIFT ON/OFF, STORAGE, EXTRA MOVEMENT จากใบปิดบัญชี <b>หาร 1.04</b> เพื่อถอดค่าบริการ 4% แล้วบวก VAT 7%),
         <b>NV</b> = ไม่มี VAT (ค่าแลก DO จากชีตงานขนส่ง)
       </p>
 
@@ -511,13 +511,20 @@
           </select>
           <button id="inv-reload" class="btn btn-ghost btn-sm">โหลดใหม่</button>
         </div>
+        <div class="toolbar" style="margin-top:-6px">
+          <span id="inv-picked" class="muted">เลือกไว้ 0 รายการ</span>
+          <span class="grow"></span>
+          <button id="inv-batch-v" class="btn btn-primary btn-sm" disabled>ออกใบ V ที่เลือก</button>
+          <button id="inv-batch-nv" class="btn btn-ghost btn-sm" disabled>ออกใบ NV ที่เลือก</button>
+        </div>
         <div class="tablewrap">
           <table>
             <thead><tr>
+              <th style="width:34px"><input type="checkbox" id="inv-all" title="เลือกทั้งหมดที่เห็น"></th>
               <th>วันที่ตรวจปล่อย</th><th>พนักงาน</th><th>เลข BL</th><th>ลูกค้า</th>
               <th class="right">ตู้</th><th class="right">ยอดก่อน VAT</th><th>ออกใบแล้ว</th><th></th>
             </tr></thead>
-            <tbody id="inv-src-body"><tr><td colspan="8" class="muted">กำลังโหลด…</td></tr></tbody>
+            <tbody id="inv-src-body"><tr><td colspan="9" class="muted">กำลังโหลด…</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -2553,9 +2560,9 @@ function renderSheetPreview(){
 
 
 // ---------- ใบแจ้งหนี้ ----------
-// V  = มี VAT   → ค่า LIFT ON/OFF, STORAGE, EXTRA MOVEMENT จากใบปิดบัญชี × 1.04 แล้วบวก VAT 7%
+// V  = มี VAT   → ค่า LIFT ON/OFF, STORAGE, EXTRA MOVEMENT จากใบปิดบัญชี ÷ 1.04 แล้วบวก VAT 7%
 // NV = ไม่มี VAT → ค่าแลก DO จากชีตงานขนส่ง (คนละที่มากับฝั่ง V)
-var invState = { cfg:null, sources:[], list:[], editing:null, loaded:false };
+var invState = { cfg:null, sources:[], visible:[], list:[], editing:null, loaded:false, canApprove:false };
 
 function baht(n){
   var v = Number(n) || 0;
@@ -2588,10 +2595,10 @@ $('inv-filter').addEventListener('change', renderInvoiceSources);
 $('invl-search').addEventListener('input', renderInvoiceList);
 
 function loadInvoiceSources(){
-  $('inv-src-body').innerHTML = '<tr><td colspan="8" class="muted">กำลังโหลด…</td></tr>';
+  $('inv-src-body').innerHTML = '<tr><td colspan="9" class="muted">กำลังโหลด…</td></tr>';
   api({ action:'invoiceSources', token:state.token, from:$('inv-from').value, to:$('inv-to').value })
     .then(function(res){
-      if(!res.ok){ $('inv-src-body').innerHTML = '<tr><td colspan="8" class="muted">โหลดไม่สำเร็จ: '+esc(res.error)+'</td></tr>'; return; }
+      if(!res.ok){ $('inv-src-body').innerHTML = '<tr><td colspan="9" class="muted">โหลดไม่สำเร็จ: '+esc(res.error)+'</td></tr>'; return; }
       invState.sources = res.rows || [];
       renderInvoiceSources();
     });
@@ -2607,12 +2614,14 @@ function renderInvoiceSources(){
     if(!q) return true;
     return [r.bl, r.customer, r.name, r.username].join(' ').toLowerCase().indexOf(q) >= 0;
   });
-  if(!rows.length){ $('inv-src-body').innerHTML = '<tr><td colspan="8" class="muted">ไม่มีรายการ</td></tr>'; return; }
+  if(!rows.length){ $('inv-src-body').innerHTML = '<tr><td colspan="9" class="muted">ไม่มีรายการ</td></tr>'; return; }
+  invState.visible = rows;
   $('inv-src-body').innerHTML = rows.map(function(r, i){
     var tags = [];
     if(r.issued && r.issued.V) tags.push('<span class="pill approved">'+esc(r.issued.V)+'</span>');
     if(r.issued && r.issued.NV) tags.push('<span class="pill approved">'+esc(r.issued.NV)+'</span>');
     return '<tr>'
+      + '<td><input type="checkbox" class="inv-pick" data-i="'+i+'"></td>'
       + '<td>'+esc(r.inspectDate)+'</td>'
       + '<td>'+esc(r.name||r.username)+'</td>'
       + '<td><b>'+esc(r.bl)+'</b></td>'
@@ -2630,7 +2639,72 @@ function renderInvoiceSources(){
       openInvoiceForm(rows[Number(btn.getAttribute('data-i'))], btn.getAttribute('data-kind'));
     });
   });
+  Array.prototype.forEach.call($('inv-src-body').querySelectorAll('.inv-pick'), function(cb){
+    cb.addEventListener('change', updateInvoicePicked);
+  });
+  $('inv-all').checked = false;
+  updateInvoicePicked();
 }
+
+/** รายการที่ติ๊กไว้ตอนนี้ — อ่านจาก DOM ตรง ๆ จะได้ไม่ต้องเก็บ state ซ้อนให้หลุดกัน */
+function pickedInvoiceRows(){
+  var rows = invState.visible || [];
+  return Array.prototype.map.call($('inv-src-body').querySelectorAll('.inv-pick:checked'), function(cb){
+    return rows[Number(cb.getAttribute('data-i'))];
+  }).filter(Boolean);
+}
+
+function updateInvoicePicked(){
+  var n = pickedInvoiceRows().length;
+  $('inv-picked').textContent = 'เลือกไว้ ' + n + ' รายการ';
+  $('inv-batch-v').disabled = !n;
+  $('inv-batch-nv').disabled = !n;
+}
+
+$('inv-all').addEventListener('change', function(){
+  var on = $('inv-all').checked;
+  Array.prototype.forEach.call($('inv-src-body').querySelectorAll('.inv-pick'), function(cb){ cb.checked = on; });
+  updateInvoicePicked();
+});
+
+function runInvoiceBatch(kind){
+  var picked = pickedInvoiceRows();
+  if(!picked.length) return;
+  var already = picked.filter(function(r){ return r.issued && r.issued[kind]; });
+  var warn = already.length ? ('\n\nมี ' + already.length + ' รายการที่ออกใบ ' + kind + ' ไปแล้ว จะได้ใบใหม่เพิ่มอีกใบ') : '';
+  if(!confirm('ออกใบแจ้งหนี้แบบ ' + kind + ' จำนวน ' + picked.length + ' ใบ?' + warn)) return;
+
+  var btn = $(kind === 'V' ? 'inv-batch-v' : 'inv-batch-nv');
+  btn.disabled = true; btn.textContent = 'กำลังออกใบ…';
+  api({
+    action:'saveInvoiceBatch', token:state.token, kind:kind,
+    issueDate: new Date().toISOString().slice(0,10),
+    targets: picked.map(function(r){ return { settlementId:r.settlementId, bl:r.bl }; })
+  }).then(function(res){
+    btn.textContent = kind === 'V' ? 'ออกใบ V ที่เลือก' : 'ออกใบ NV ที่เลือก';
+    if(!res.ok){
+      var why = res.error === 'no_items'
+        ? (kind === 'NV' ? 'ไม่มีรายการไหนมีค่าแลก DO ในชีตงานขนส่ง' : 'ไม่มีรายการไหนมีค่าใช้จ่ายที่เข้าเงื่อนไข')
+        : res.error;
+      alert('ออกใบไม่สำเร็จ: ' + why);
+      updateInvoicePicked();
+      return;
+    }
+    var msg = 'ออกใบแล้ว ' + res.count + ' ใบ\n' + res.created.map(function(c){ return c.number + '  ' + c.bl; }).join('\n');
+    if(res.skipped && res.skipped.length){
+      msg += '\n\nข้าม ' + res.skipped.length + ' รายการ:\n'
+        + res.skipped.map(function(s){
+            return s.bl + ' — ' + (s.reason === 'no_items' ? 'ไม่มียอดให้ออกใบ' : s.reason);
+          }).join('\n');
+    }
+    alert(msg);
+    api({ action:'invoiceConfig', token:state.token }).then(function(cfg){ if(cfg.ok) invState.cfg = cfg; });
+    loadInvoiceSources();
+    loadInvoiceList();
+  });
+}
+$('inv-batch-v').addEventListener('click', function(){ runInvoiceBatch('V'); });
+$('inv-batch-nv').addEventListener('click', function(){ runInvoiceBatch('NV'); });
 
 function openInvoiceForm(src, kind){
   invState.editing = { src:src, kind:kind };
