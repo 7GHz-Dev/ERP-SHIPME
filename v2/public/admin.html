@@ -2712,9 +2712,11 @@ function openInvoiceForm(src, kind){
   $('inv-kind').value = kind;
   $('inv-date').value = new Date().toISOString().slice(0,10);
   $('inv-bl').value = src.bl || '';
-  $('inv-cust').value = src.customer || '';
-  $('inv-addr').value = '';
-  $('inv-tax').value = '';
+  // ลูกค้าประจำ — เติมให้ทุกใบตั้งแต่เปิดฟอร์ม (แก้รายใบได้ถ้าต้องออกให้เจ้าอื่น)
+  var cu = (invState.cfg && invState.cfg.customer) || {};
+  $('inv-cust').value = cu.name || '';
+  $('inv-addr').value = cu.address || '';
+  $('inv-tax').value = cu.taxId || '';
   $('inv-no').value = invState.cfg && invState.cfg.next ? invState.cfg.next[kind] : '(ออกให้ตอนบันทึก)';
   $('inv-msg').textContent = 'กำลังดึงรายการ…';
   $('inv-items-body').innerHTML = '';
@@ -2938,6 +2940,17 @@ function printInvoice(saved){
       + '<td>'+(it?esc(it.note||''):'')+'</td></tr>';
   }
 
+  // แถวสรุปท้ายตาราง — ทำเป็นแถวในตารางเดียวกับรายการ ยอดจะได้ตรงคอลัมน์ "จำนวนเงิน" พอดี
+  // (ของเดิมแยกเป็นอีกตารางหนึ่ง ความกว้างคอลัมน์เลยไม่ตรงกัน)
+  var sumRow = function(label, value, bold){
+    var b0 = bold ? '<b>' : '', b1 = bold ? '</b>' : '';
+    return '<tr>'
+      + '<td class="nb"></td><td class="nb"></td><td class="nb"></td>'
+      + '<td class="sl">'+b0+label+b1+'</td>'
+      + '<td class="r sv">'+b0+value+b1+'</td>'
+      + '<td class="nb"></td></tr>';
+  };
+
   var html = '<!doctype html><html lang="th"><head><meta charset="utf-8">'
     + '<title>'+esc(number)+'</title><style>'
     + 'body{font-family:"Sarabun","Leelawadee UI","Tahoma",sans-serif;font-size:13px;color:#111;margin:24px;}'
@@ -2947,32 +2960,37 @@ function printInvoice(saved){
     + '.noborder,.noborder td{border:0;padding:2px 0;}'
     + 'h1{font-size:19px;text-align:center;margin:14px 0;letter-spacing:1px}'
     + '.head{font-weight:700;font-size:15px}'
-    + '.sum td{border:0;padding:3px 7px}'
-    + '.sum .lbl{text-align:right}.sum .val{text-align:right;width:130px;border-bottom:1px solid #333}'
+    + '.co{text-align:center;margin-bottom:6px}'
+    + '.logo{display:block;margin:0 auto 6px;max-height:78px}'
+    + '.nb{border:0}'                              // ช่องว่างซ้ายของแถวสรุป ไม่เอาเส้น
+    + '.sl{text-align:right;border:0;font-weight:600}'
+    + '.sv{border:0;border-bottom:1px solid #333}'
     + '@media print{body{margin:10mm}}'
     + '</style></head><body>'
-    + '<table class="noborder"><tr><td>'
+    + '<div class="co">'
+    +   (co.logoUrl ? '<img class="logo" src="'+esc(co.logoUrl)+'" alt="" onerror="this.style.display=\'none\'">' : '')
     +   '<div class="head">'+esc(co.name||'')+'</div>'
     +   '<div>'+esc(co.address||'')+'</div>'
     +   '<div>เลขประจำตัวผู้เสียภาษี '+esc(co.taxId||'')+'</div>'
-    + '</td></tr></table>'
+    + '</div>'
     + '<h1>ใบแจ้งหนี้ / INVOICE</h1>'
     + '<table class="noborder"><tr>'
     +   '<td style="width:62%">ชื่อลูกค้า : '+esc(cust||'')+'</td>'
-    +   '<td class="r" style="width:16%">วันที่</td><td style="width:22%">'+esc(thDate||'')+'</td></tr>'
+    +   '<td class="r" style="width:16%">วันที่ &nbsp;</td><td style="width:22%">'+esc(thDate||'')+'</td></tr>'
     + '<tr><td>ที่อยู่ : '+esc(addr||'')+'</td>'
-    +   '<td class="r">ใบแจ้งหนี้เลขที่</td><td><b>'+esc(number||'')+'</b></td></tr>'
+    +   '<td class="r">ใบแจ้งหนี้เลขที่ &nbsp;</td><td><b>'+esc(number||'')+'</b></td></tr>'
     + '<tr><td>เลขประจำตัวผู้เสียภาษี : '+esc(tax||'')+'</td>'
-    +   '<td class="r">B/L</td><td>'+esc(bl||'')+'</td></tr></table><br>'
+    +   '<td class="r">B/L &nbsp;</td><td>'+esc(bl||'')+'</td></tr></table><br>'
     + '<table><thead><tr>'
     +   '<th style="width:50px">ลำดับ</th><th>รายการ</th><th style="width:60px">จำนวน</th>'
     +   '<th style="width:90px">ราคา/หน่วย</th><th style="width:110px">จำนวนเงิน</th><th style="width:110px">หมายเหตุ</th>'
-    + '</tr></thead><tbody>'+lines+'</tbody></table>'
-    + '<table class="sum"><tr><td class="lbl">ค่าบริการรวม</td><td class="val">'+baht(subtotal)+'</td></tr>'
-    +   '<tr><td class="lbl">ภาษีมูลค่าเพิ่ม 7%</td><td class="val">'+(kind==='V'?baht(vat):'')+'</td></tr>'
-    +   '<tr><td class="lbl"><b>รวมเงินทั้งสิ้น</b></td><td class="val"><b>'+baht(total)+'</b></td></tr>'
-    +   '<tr><td class="lbl">หักภาษี ณ ที่จ่าย 3%</td><td class="val">-</td></tr>'
-    +   '<tr><td class="lbl"><b>รวมเงินที่ต้องชำระ</b></td><td class="val"><b>'+baht(total)+'</b></td></tr></table>'
+    + '</tr></thead><tbody>'+lines
+    +   sumRow('ค่าบริการรวม', baht(subtotal), false)
+    +   sumRow('ภาษีมูลค่าเพิ่ม 7%', (kind==='V'?baht(vat):''), false)
+    +   sumRow('รวมเงินทั้งสิ้น', baht(total), true)
+    +   sumRow('หักภาษี ณ ที่จ่าย 3%', '-', false)
+    +   sumRow('รวมเงินที่ต้องชำระ', baht(total), true)
+    + '</tbody></table>'
     + '<br><table class="noborder"><tr><td>'
     +   '<div><b>ช่องทางการชำระเงิน</b></div>'
     +   '<div>ชื่อบัญชี : '+esc(co.bankAccountName||'')+'</div>'

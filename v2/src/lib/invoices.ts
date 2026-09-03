@@ -1,7 +1,9 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { invoices, settlements, transportJobs } from '@/db/schema';
-import { INVOICE_COMPANY, INVOICE_VAT_ITEMS, INVOICE_DIVISOR, VAT_RATE } from './constants';
+import {
+  INVOICE_COMPANY, INVOICE_CUSTOMER, INVOICE_VAT_ITEMS, INVOICE_DIVISOR, VAT_RATE
+} from './constants';
 import { id, nowIso, validYmd, ymd } from './utils';
 import type { ApiBody, ApiResult } from './types';
 
@@ -115,6 +117,7 @@ export async function invoiceConfig(): Promise<ApiResult> {
   return {
     ok: true,
     company: INVOICE_COMPANY,
+    customer: INVOICE_CUSTOMER,
     vatRate: VAT_RATE,
     divisor: INVOICE_DIVISOR,
     vatItems: INVOICE_VAT_ITEMS,
@@ -241,9 +244,9 @@ export async function saveInvoice(body: ApiBody, actor: { username: string; name
 
     await tx.insert(invoices).values({
       number, kind, period, seq, issueDate,
-      customerName: text(body.customerName, 300),
-      customerAddress: text(body.customerAddress, 500),
-      customerTaxId: text(body.customerTaxId, 40),
+      customerName: text(body.customerName, 300) || INVOICE_CUSTOMER.name,
+      customerAddress: text(body.customerAddress, 500) || INVOICE_CUSTOMER.address,
+      customerTaxId: text(body.customerTaxId, 40) || INVOICE_CUSTOMER.taxId,
       bl: text(body.bl, 120),
       itemsJson: JSON.stringify(items),
       subtotal: totals.subtotal, vat: totals.vat, total: totals.total,
@@ -356,8 +359,9 @@ export async function saveInvoiceBatch(body: ApiBody, actor: { username: string;
       const totals = invoiceTotals(entry.items, kind);
       await tx.insert(invoices).values({
         number, kind, period, seq, issueDate,
-        customerName: entry.customer,
-        customerAddress: '', customerTaxId: '',
+        customerName: INVOICE_CUSTOMER.name,
+        customerAddress: INVOICE_CUSTOMER.address,
+        customerTaxId: INVOICE_CUSTOMER.taxId,
         bl: entry.bl,
         itemsJson: JSON.stringify(entry.items),
         subtotal: totals.subtotal, vat: totals.vat, total: totals.total,
