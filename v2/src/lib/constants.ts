@@ -104,13 +104,20 @@ export const INVOICE_DIVISOR = 1.04;
 
 /**
  * ค่าใช้จ่ายที่ขึ้นใบแจ้งหนี้แบบมี VAT — คีย์ต้องตรงกับ costs ใน settlements.rows_json
- * ค่าแลก DO ไม่อยู่ในนี้เพราะเป็นฝั่ง No VAT และดึงจากชีตงานขนส่งคนละที่กัน
+ * หัวข้อที่ยังไม่มีช่องในใบปิดบัญชีให้เลือกและกรอกยอดในฟอร์มใบแจ้งหนี้ได้
  */
 export const INVOICE_VAT_ITEMS = [
-  { key: 'lift_on', label: 'ADV - ค่า LIFT ON' },
-  { key: 'lift_off', label: 'ADV - ค่า LIFT OFF' },
-  { key: 'storage', label: 'ADV - ค่า STORAGE' },
-  { key: 'extra_movement', label: 'ADV - ค่า EXTRA MOVEMENT' }
+  { key: 'do_non_vat', code: 'Dnv', label: 'ADV - ค่าแลก DO (NON VAT)' },
+  { key: 'do_vat', code: 'Dv', label: 'ADV - ค่าแลก DO (VAT)' },
+  { key: 'lift_on', code: 'Lo', label: 'ADV - ค่า LIFT ON' },
+  { key: 'extra_movement', code: 'Em', label: 'ADV - ค่า EXTRA MOVEMENT' },
+  { key: 'storage', code: 'St', label: 'ADV - ค่า STORAGE' },
+  { key: 'insurance', code: 'Ins', label: 'ADV - ค่าพรบ.' }
+] as const;
+
+export const INVOICE_NO_VAT_ITEMS = [
+  { key: 'do_fee', code: 'Dv', label: 'ADV - ค่าแลก DO' },
+  { key: 'order_form', code: 'Of', label: 'ADV - ค่า ORDER FORM' }
 ] as const;
 
 /** หัวกระดาษ/ท้ายกระดาษของใบแจ้งหนี้ — ลอกจากชีตต้นฉบับ แก้ที่เดียวแล้วเปลี่ยนทุกใบ */

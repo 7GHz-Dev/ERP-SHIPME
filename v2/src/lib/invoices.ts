@@ -1,8 +1,8 @@
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { invoices, settlements, transportJobs } from '@/db/schema';
 import {
-  INVOICE_COMPANY, INVOICE_CUSTOMER, INVOICE_VAT_ITEMS, INVOICE_DIVISOR, VAT_RATE
+  INVOICE_COMPANY, INVOICE_CUSTOMER, INVOICE_NO_VAT_ITEMS, INVOICE_VAT_ITEMS, INVOICE_DIVISOR, VAT_RATE
 } from './constants';
 import { id, nowIso, validYmd, ymd } from './utils';
 import type { ApiBody, ApiResult } from './types';
@@ -11,8 +11,8 @@ import type { ApiBody, ApiResult } from './types';
  * ใบแจ้งหนี้ที่ฝ่ายบัญชีออกจากใบปิดบัญชีของพนักงานชิปปิ้ง
  *
  * มี 2 แบบตามชีตต้นฉบับ ซึ่งต่างกันที่ "ที่มาของยอด" ไม่ใช่แค่คิด VAT หรือไม่:
- *   V  (มี VAT)    — ค่า LIFT ON / LIFT OFF / STORAGE / EXTRA MOVEMENT จาก **ใบปิดบัญชี**
- *   NV (ไม่มี VAT) — ค่าแลก DO จาก **ชีตงานขนส่ง** (คนละที่มากัน)
+ *   V  (มี VAT)    — หัวข้อ VAT จาก **ใบปิดบัญชี**
+ *   NV (ไม่มี VAT) — ค่าแลก DO / ORDER FORM จากใบปิดบัญชี (DO ใช้งานขนส่งเป็นข้อมูลสำรอง)
  *
  * ยอดฝั่ง V หาร 1.04 เพื่อถอดค่าบริการ 4% ที่ใบปิดบัญชีบวกมาแล้ว ก่อนคิด VAT 7%
  * ส่วน NV เป็นเงินที่ออกแทนลูกค้าตรง ๆ จึงไม่ถอดอะไรและไม่มี VAT
@@ -63,7 +63,7 @@ export function invoiceTotals(items: InvoiceItem[], kind: string) {
 
 /**
  * ทำรายการใบแจ้งหนี้จากใบปิดบัญชี 1 ใบ เลือกเฉพาะ BL ที่ต้องการ
- * ฝั่ง V เอาค่า 4 ตัวจาก costs ของแต่ละแถว ฝั่ง NV เอาค่าแลก DO จากชีตงานขนส่ง
+ * รวม costs ตามหัวข้อของประเภทใบ และใช้ค่าแลก DO จากงานขนส่งเป็นข้อมูลสำรอง
  */
 type BuildResult =
   | { ok: false; error: ApiResult }
@@ -81,23 +81,18 @@ export async function buildItems(kind: string, settlementId: string, bl: string)
 
   const items: InvoiceItem[] = [];
 
-  if (kind === 'V') {
-    // รวมยอดข้าม BL เดียวกันที่แตกเป็นหลายแถว (1 BL หลายตู้) ให้เหลือบรรทัดละประเภทค่าใช้จ่าย
-    for (const item of INVOICE_VAT_ITEMS) {
-      const raw = picked.reduce((sum, row) => sum + (Number(row?.costs?.[item.key]) || 0), 0);
-      if (raw <= 0) continue;
-      const amount = money(raw / INVOICE_DIVISOR);
-      items.push({ no: items.length + 1, label: item.label, qty: 0, unitPrice: 0, amount, note: '' });
+  const catalog = kind === 'V' ? INVOICE_VAT_ITEMS : INVOICE_NO_VAT_ITEMS;
+  for (const item of catalog) {
+    let raw = picked.reduce((sum, row) => sum + (Number(row?.costs?.[item.key]) || 0), 0);
+    // Prefer settlement amounts; retain transport DO fallback for older settlements.
+    if (kind === 'NV' && item.key === 'do_fee' && raw <= 0) {
+      const jobs = await db.select({ doFee: transportJobs.doFee }).from(transportJobs)
+        .where(eq(sql`upper(${transportJobs.bl})`, wanted));
+      raw = jobs.reduce((sum, job) => sum + (Number(job.doFee) || 0), 0);
     }
-  } else {
-    // ค่าแลก DO ไม่ได้อยู่ในใบปิดบัญชี ต้องไปเอาจากชีตงานขนส่งด้วยเลข BL
-    const jobs = await db.select({ doFee: transportJobs.doFee })
-      .from(transportJobs)
-      .where(eq(sql`upper(${transportJobs.bl})`, wanted));
-    const raw = jobs.reduce((sum, job) => sum + (Number(job.doFee) || 0), 0);
-    if (raw > 0) {
-      items.push({ no: 1, label: 'ADV - ค่าแลก DO', qty: 0, unitPrice: 0, amount: money(raw), note: '' });
-    }
+    if (raw <= 0) continue;
+    const amount = money(kind === 'V' ? raw / INVOICE_DIVISOR : raw);
+    items.push({ no: items.length + 1, label: item.label, qty: 0, unitPrice: 0, amount, note: '' });
   }
 
   const first = picked[0] || {};
@@ -121,6 +116,7 @@ export async function invoiceConfig(): Promise<ApiResult> {
     vatRate: VAT_RATE,
     divisor: INVOICE_DIVISOR,
     vatItems: INVOICE_VAT_ITEMS,
+    noVatItems: INVOICE_NO_VAT_ITEMS,
     period,
     next: {
       V: invoiceNumber('V', period, nextV),
@@ -147,7 +143,7 @@ export async function invoiceSources(body: ApiBody): Promise<ApiResult> {
   if (to) clauses.push(sql`${settlements.inspectDate} <= ${to}`);
   if (clauses.length) query = query.where(and(...clauses));
 
-  const rows = await query.orderBy(desc(settlements.inspectDate)).limit(300);
+  const rows = await query.orderBy(asc(settlements.inspectDate), asc(settlements.id)).limit(300);
 
   const issued = await db.select({ bl: invoices.bl, kind: invoices.kind, number: invoices.number })
     .from(invoices).where(sql`${invoices.status} <> 'cancelled'`);
@@ -170,9 +166,12 @@ export async function invoiceSources(body: ApiBody): Promise<ApiResult> {
       if (!key) continue;
       const group = byBl.get(key) || {
         bl: String(row.bl), customer: String(row.customer || ''), port: String(row.port || ''),
-        containers: 0, vatBase: 0
+        containers: 0, vatBase: 0, costs: {}
       };
       group.containers += Number(row?.containers) || 0;
+      for (const item of [...INVOICE_VAT_ITEMS, ...INVOICE_NO_VAT_ITEMS]) {
+        group.costs[item.key] = (group.costs[item.key] || 0) + (Number(row?.costs?.[item.key]) || 0);
+      }
       for (const item of INVOICE_VAT_ITEMS) group.vatBase += Number(row?.costs?.[item.key]) || 0;
       if (!group.customer && row?.customer) group.customer = String(row.customer);
       byBl.set(key, group);
@@ -187,6 +186,7 @@ export async function invoiceSources(body: ApiBody): Promise<ApiResult> {
         customer: group.customer,
         port: group.port,
         containers: group.containers,
+        costs: group.costs,
         vatBase: money(group.vatBase),
         vatAmount: money(group.vatBase / INVOICE_DIVISOR),
         issued: issuedMap.get(key) || {}
@@ -194,6 +194,27 @@ export async function invoiceSources(body: ApiBody): Promise<ApiResult> {
     }
   }
 
+  const bls = [...new Set(out.map(row => String(row.bl).toUpperCase()))];
+  const jobs = bls.length ? await db.select({ bl: transportJobs.bl, doFee: transportJobs.doFee })
+    .from(transportJobs).where(inArray(sql`upper(${transportJobs.bl})`, bls)) : [];
+  const doFees = new Map<string, number>();
+  for (const job of jobs) {
+    const key = String(job.bl).toUpperCase();
+    doFees.set(key, (doFees.get(key) || 0) + (Number(job.doFee) || 0));
+  }
+  for (const row of out) {
+    row.invoiceItems = {};
+    for (const kind of ['V', 'NV']) {
+      const catalog = kind === 'V' ? INVOICE_VAT_ITEMS : INVOICE_NO_VAT_ITEMS;
+      row.invoiceItems[kind] = catalog.map(item => {
+        let raw = row.costs[item.key] || 0;
+        if (kind === 'NV' && item.key === 'do_fee' && raw <= 0) raw = doFees.get(String(row.bl).toUpperCase()) || 0;
+        return { label: item.label, code: item.code, selected: raw > 0,
+          amount: money(kind === 'V' ? raw / INVOICE_DIVISOR : raw) };
+      });
+    }
+    delete row.costs;
+  }
   return { ok: true, rows: out };
 }
 
@@ -203,7 +224,7 @@ export async function invoicePreview(body: ApiBody): Promise<ApiResult> {
   const built = await buildItems(kind, text(body.settlementId, 60), text(body.bl, 120));
   if (!built.ok) return built.error;
   const totals = invoiceTotals(built.items, kind);
-  return { ok: true, kind, bl: built.bl, customer: built.customer, items: built.items, ...totals };
+  return { ok: true, kind, bl: built.bl, customer: built.customer, items: built.items, catalog: kind === 'V' ? INVOICE_VAT_ITEMS : INVOICE_NO_VAT_ITEMS, ...totals };
 }
 
 /**
@@ -225,7 +246,7 @@ export async function saveInvoice(body: ApiBody, actor: { username: string; name
   })).filter((item: InvoiceItem) => item.label || item.amount) : [];
 
   // ไม่ได้ส่งรายการมา = ให้ระบบสร้างจากใบปิดบัญชีให้ (ทางลัดของหน้าเว็บ)
-  if (!items.length) {
+  if (!Array.isArray(body.items)) {
     const built = await buildItems(kind, text(body.settlementId, 60), text(body.bl, 120));
     if (!built.ok) return built.error;
     items = built.items;
@@ -334,6 +355,12 @@ export async function saveInvoiceBatch(body: ApiBody, actor: { username: string;
     if (!built.ok) {
       skipped.push({ bl, reason: String(built.error.error || 'error') });
       continue;
+    }
+    if (Array.isArray(target?.items)) {
+      built.items = target.items.map((item: any, index: number) => ({
+        no: index + 1, label: text(item?.label, 200), qty: Number(item?.qty) || 0,
+        unitPrice: money(item?.unitPrice), amount: money(item?.amount), note: text(item?.note, 200)
+      })).filter((item: InvoiceItem) => item.label || item.amount);
     }
     if (!built.items.length) {
       // ฝั่ง NV เจอบ่อย เพราะ BL นั้นยังไม่มีค่าแลก DO ในชีตงานขนส่ง

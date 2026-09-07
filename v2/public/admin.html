@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Admin — ระบบเช็คชื่อเข้างาน</title>
 <style>
+@font-face{font-family:Sarabun;font-style:normal;font-weight:400;src:url("/fonts/Sarabun-Regular.ttf") format("truetype");font-display:swap}@font-face{font-family:Sarabun;font-style:normal;font-weight:600;src:url("/fonts/Sarabun-SemiBold.ttf") format("truetype");font-display:swap}@font-face{font-family:Sarabun;font-style:normal;font-weight:700;src:url("/fonts/Sarabun-Bold.ttf") format("truetype");font-display:swap}@font-face{font-family:Sarabun;font-style:normal;font-weight:800;src:url("/fonts/Sarabun-ExtraBold.ttf") format("truetype");font-display:swap}
+#tab-invoice,#tab-invoice input,#tab-invoice button,#tab-invoice select{font-family:Sarabun,sans-serif}
+
   :root { --blue:#1e40af; --blue2:#2563eb; --bg:#f5f7fa; --card:#fff; --muted:#64748b; --line:#e2e8f0; --gridline:#dfe3e8; }
   * { box-sizing:border-box; }
   body { margin:0; font-family:-apple-system,'Segoe UI',Roboto,'Noto Sans Thai',sans-serif; background:var(--bg); color:#0f172a; }
@@ -159,6 +162,24 @@
     .toolbar > * { flex:1 1 100%; }
   }
 </style>
+<style>
+.inv-number-toolbar{display:flex;align-items:end;gap:16px;flex-wrap:wrap;padding:16px;background:#f1f5f9;border-radius:10px;margin-bottom:14px}
+.inv-number-toolbar label{display:grid;gap:6px;margin:0;font-weight:600}.inv-number-toolbar input{width:190px}
+.wrap:has(#tab-invoice:not(.hidden)){max-width:1780px}
+#inv-pane-new .tablewrap{overflow-x:auto}
+.inv-source-table th{padding:12px 10px}.inv-source-table button:disabled{opacity:.5;cursor:default}
+.inv-source-table th,.inv-source-table td:nth-child(2),.inv-source-table td:nth-child(4){white-space:nowrap}
+.inv-source-table{min-width:1450px;width:100%;border-collapse:collapse}.inv-source-table td{vertical-align:top;padding:14px 10px;border-bottom:1px solid #dbe3ed}.inv-source-table th{text-align:left;background:#edf2f7}
+.inv-cost-heading{width:31%}.inv-cost-list{display:grid;gap:7px;min-width:310px}
+.inv-cost-row{display:grid;grid-template-columns:20px minmax(160px,1fr) 100px;align-items:center;gap:7px}
+.inv-cost-row input[type=checkbox]{width:16px;height:16px;margin:0}.inv-cost-row input[type=number]{width:100%;min-width:0;text-align:right;padding:7px}
+.inv-cost-row label{margin:0;font-size:12px;line-height:1.4;font-weight:500}.inv-cost-row input[type=text]{min-width:0;width:100%;padding:7px;font-size:12px}
+.inv-row-number{display:block;background:#e9efff;color:#254bb4;padding:7px 10px;margin-bottom:12px;border-radius:5px;font-size:13px}
+.inv-cost-total{display:flex;justify-content:space-between;gap:10px;margin-top:12px;padding-top:9px;border-top:1px solid #dbe3ed;font-size:12px}
+.inv-row-actions{display:grid;gap:8px;min-width:112px}.inv-source-table .pill{display:block;margin-bottom:5px}
+</style>
+<script src="/invoice-pdf.js"></script>
+<script src="/invoice-workspace.js"></script>
 </head>
 <body>
 
@@ -489,8 +510,8 @@
       <h3 class="sec">ใบแจ้งหนี้</h3>
       <p class="muted" style="margin:0 0 14px">
         เลือกงานจากใบปิดบัญชีของพนักงานชิปปิ้งมาออกใบแจ้งหนี้ —
-        <b>V</b> = มี VAT (ค่า LIFT ON/OFF, STORAGE, EXTRA MOVEMENT จากใบปิดบัญชี <b>หาร 1.04</b> เพื่อถอดค่าบริการ 4% แล้วบวก VAT 7%),
-        <b>NV</b> = ไม่มี VAT (ค่าแลก DO จากชีตงานขนส่ง)
+        <b>V</b> = มี VAT (หัวข้อตามรายการ VAT จากใบปิดบัญชี <b>หาร 1.04</b> เพื่อถอดค่าบริการ 4% แล้วบวก VAT 7%),
+        <b>NV</b> = ไม่มี VAT (ค่าแลก DO และค่า ORDER FORM)
       </p>
 
       <div class="subnav">
@@ -500,8 +521,10 @@
 
       <!-- ---------- ออกใบใหม่ ---------- -->
       <div id="inv-pane-new">
+        <p class="muted">เลือกรายการและกรอกยอดก่อน VAT — Preview และสร้าง PDF รวม VAT / NON VAT ในไฟล์เดียว</p>
+        <div id="inv-inline-msg" role="status" style="white-space:pre-line;margin-bottom:10px"></div>
         <div class="toolbar">
-          <input id="inv-search" type="text" placeholder="ค้นหา เลข BL / ลูกค้า / ชื่อพนักงาน" class="grow">
+          <input id="inv-search" type="text" placeholder="ค้นหา เลข BL / ชื่อพนักงาน" class="grow">
           <input id="inv-from" type="date" title="วันที่ตรวจปล่อย ตั้งแต่">
           <input id="inv-to" type="date" title="วันที่ตรวจปล่อย ถึง">
           <select id="inv-filter">
@@ -511,18 +534,23 @@
           </select>
           <button id="inv-reload" class="btn btn-ghost btn-sm">โหลดใหม่</button>
         </div>
-        <div class="toolbar" style="margin-top:-6px">
-          <span id="inv-picked" class="muted">เลือกไว้ 0 รายการ</span>
-          <span class="grow"></span>
-          <button id="inv-batch-v" class="btn btn-primary btn-sm" disabled>ออกใบ V ที่เลือก</button>
-          <button id="inv-batch-nv" class="btn btn-ghost btn-sm" disabled>ออกใบ NV ที่เลือก</button>
+        <div class="inv-number-toolbar">
+          <label>วันที่ออกใบแจ้งหนี้<input id="inv-issue-date" type="date"></label>
+          <label>เลขเริ่มต้น V<input id="inv-start-v" type="text" placeholder="เช่น V20260901 หรือ 1"></label>
+          <label>เลขเริ่มต้น NV<input id="inv-start-nv" type="text" placeholder="เช่น NV20260901 หรือ 1"></label>
+          <span class="muted">เลขจะเรียงตามวันที่ตรวจปล่อยของรายการที่แสดง</span>
+        </div>
+        <div class="toolbar">
+          <span id="inv-picked" class="muted">เลือกไว้ 0 รายการ</span><span class="grow"></span>
+          <button id="inv-preview-picked" class="btn btn-ghost btn-sm" disabled>Preview ที่เลือก</button>
+          <button id="inv-create-picked" class="btn btn-primary btn-sm" disabled>สร้างใบแจ้งหนี้ที่เลือก (V + NV)</button>
         </div>
         <div class="tablewrap">
-          <table>
+          <table class="inv-source-table">
             <thead><tr>
               <th style="width:34px"><input type="checkbox" id="inv-all" title="เลือกทั้งหมดที่เห็น"></th>
-              <th>วันที่ตรวจปล่อย</th><th>พนักงาน</th><th>เลข BL</th><th>ลูกค้า</th>
-              <th class="right">ตู้</th><th class="right">ยอดก่อน VAT</th><th>ออกใบแล้ว</th><th></th>
+              <th>วันที่ตรวจปล่อย</th><th>พนักงาน</th><th>เลข BL</th>
+              <th class="right">ตู้</th><th class="inv-cost-heading">VAT</th><th class="inv-cost-heading">NON VAT</th><th>ออกใบแล้ว</th><th>เอกสาร</th>
             </tr></thead>
             <tbody id="inv-src-body"><tr><td colspan="9" class="muted">กำลังโหลด…</td></tr></tbody>
           </table>
@@ -688,14 +716,14 @@
       <label>เลขประจำตัวผู้เสียภาษีลูกค้า</label>
       <input id="inv-tax" type="text" inputmode="numeric" placeholder="13 หลัก">
 
-      <label style="margin-top:14px">รายการ</label>
+      <label style="margin-top:14px">รายการ — ติ๊กหัวข้อที่ต้องการออกใบ และกรอกยอดก่อน VAT หลังตัวย่อ</label>
       <div class="tablewrap" style="margin-bottom:8px">
         <table id="inv-items">
           <thead><tr>
-            <th style="width:44px">ลำดับ</th><th>รายการ</th>
+            <th style="width:44px">เลือก</th><th>รายการ</th>
             <th style="width:80px" class="right">จำนวน</th>
             <th style="width:110px" class="right">ราคา/หน่วย</th>
-            <th style="width:120px" class="right">จำนวนเงิน</th>
+            <th style="width:170px" class="right">ตัวย่อ / ยอดก่อน VAT</th>
             <th style="width:120px">หมายเหตุ</th><th style="width:40px"></th>
           </tr></thead>
           <tbody id="inv-items-body"></tbody>
@@ -2560,7 +2588,7 @@ function renderSheetPreview(){
 
 
 // ---------- ใบแจ้งหนี้ ----------
-// V  = มี VAT   → ค่า LIFT ON/OFF, STORAGE, EXTRA MOVEMENT จากใบปิดบัญชี ÷ 1.04 แล้วบวก VAT 7%
+// V  = มี VAT   → หัวข้อตามรายการ VAT จากใบปิดบัญชี ÷ 1.04 แล้วบวก VAT 7%
 // NV = ไม่มี VAT → ค่าแลก DO จากชีตงานขนส่ง (คนละที่มากับฝั่ง V)
 var invState = { cfg:null, sources:[], visible:[], list:[], editing:null, loaded:false, canApprove:false };
 
@@ -2570,10 +2598,11 @@ function baht(n){
 }
 
 function initInvoiceTab(){
+  initInvoiceWorkspace();
   if(invState.loaded) return;
   invState.loaded = true;
   api({ action:'invoiceConfig', token:state.token }).then(function(res){
-    if(res.ok) invState.cfg = res;
+    if(res.ok){ invState.cfg = res; fillInvoiceStarts(); assignInvoiceNumbers(); }
   });
   loadInvoiceSources();
   loadInvoiceList();
@@ -2594,120 +2623,9 @@ $('inv-search').addEventListener('input', renderInvoiceSources);
 $('inv-filter').addEventListener('change', renderInvoiceSources);
 $('invl-search').addEventListener('input', renderInvoiceList);
 
-function loadInvoiceSources(){
-  $('inv-src-body').innerHTML = '<tr><td colspan="9" class="muted">กำลังโหลด…</td></tr>';
-  api({ action:'invoiceSources', token:state.token, from:$('inv-from').value, to:$('inv-to').value })
-    .then(function(res){
-      if(!res.ok){ $('inv-src-body').innerHTML = '<tr><td colspan="9" class="muted">โหลดไม่สำเร็จ: '+esc(res.error)+'</td></tr>'; return; }
-      invState.sources = res.rows || [];
-      renderInvoiceSources();
-    });
-}
-
-function renderInvoiceSources(){
-  var q = $('inv-search').value.trim().toLowerCase();
-  var mode = $('inv-filter').value;
-  var rows = invState.sources.filter(function(r){
-    var done = !!(r.issued && (r.issued.V || r.issued.NV));
-    if(mode==='open' && done) return false;
-    if(mode==='done' && !done) return false;
-    if(!q) return true;
-    return [r.bl, r.customer, r.name, r.username].join(' ').toLowerCase().indexOf(q) >= 0;
-  });
-  if(!rows.length){ $('inv-src-body').innerHTML = '<tr><td colspan="9" class="muted">ไม่มีรายการ</td></tr>'; return; }
-  invState.visible = rows;
-  $('inv-src-body').innerHTML = rows.map(function(r, i){
-    var tags = [];
-    if(r.issued && r.issued.V) tags.push('<span class="pill approved">'+esc(r.issued.V)+'</span>');
-    if(r.issued && r.issued.NV) tags.push('<span class="pill approved">'+esc(r.issued.NV)+'</span>');
-    return '<tr>'
-      + '<td><input type="checkbox" class="inv-pick" data-i="'+i+'"></td>'
-      + '<td>'+esc(r.inspectDate)+'</td>'
-      + '<td>'+esc(r.name||r.username)+'</td>'
-      + '<td><b>'+esc(r.bl)+'</b></td>'
-      + '<td>'+esc(r.customer||'—')+'</td>'
-      + '<td class="right">'+(r.containers||0)+'</td>'
-      + '<td class="right">'+baht(r.vatAmount)+'</td>'
-      + '<td>'+(tags.join(' ')||'<span class="muted">ยังไม่ออก</span>')+'</td>'
-      + '<td class="right" style="white-space:nowrap">'
-      +   '<button class="btn btn-primary btn-sm inv-make" data-i="'+i+'" data-kind="V">V</button> '
-      +   '<button class="btn btn-ghost btn-sm inv-make" data-i="'+i+'" data-kind="NV">NV</button>'
-      + '</td></tr>';
-  }).join('');
-  Array.prototype.forEach.call($('inv-src-body').querySelectorAll('.inv-make'), function(btn){
-    btn.addEventListener('click', function(){
-      openInvoiceForm(rows[Number(btn.getAttribute('data-i'))], btn.getAttribute('data-kind'));
-    });
-  });
-  Array.prototype.forEach.call($('inv-src-body').querySelectorAll('.inv-pick'), function(cb){
-    cb.addEventListener('change', updateInvoicePicked);
-  });
-  $('inv-all').checked = false;
-  updateInvoicePicked();
-}
-
-/** รายการที่ติ๊กไว้ตอนนี้ — อ่านจาก DOM ตรง ๆ จะได้ไม่ต้องเก็บ state ซ้อนให้หลุดกัน */
-function pickedInvoiceRows(){
-  var rows = invState.visible || [];
-  return Array.prototype.map.call($('inv-src-body').querySelectorAll('.inv-pick:checked'), function(cb){
-    return rows[Number(cb.getAttribute('data-i'))];
-  }).filter(Boolean);
-}
-
-function updateInvoicePicked(){
-  var n = pickedInvoiceRows().length;
-  $('inv-picked').textContent = 'เลือกไว้ ' + n + ' รายการ';
-  $('inv-batch-v').disabled = !n;
-  $('inv-batch-nv').disabled = !n;
-}
-
-$('inv-all').addEventListener('change', function(){
-  var on = $('inv-all').checked;
-  Array.prototype.forEach.call($('inv-src-body').querySelectorAll('.inv-pick'), function(cb){ cb.checked = on; });
-  updateInvoicePicked();
-});
-
-function runInvoiceBatch(kind){
-  var picked = pickedInvoiceRows();
-  if(!picked.length) return;
-  var already = picked.filter(function(r){ return r.issued && r.issued[kind]; });
-  var warn = already.length ? ('\n\nมี ' + already.length + ' รายการที่ออกใบ ' + kind + ' ไปแล้ว จะได้ใบใหม่เพิ่มอีกใบ') : '';
-  if(!confirm('ออกใบแจ้งหนี้แบบ ' + kind + ' จำนวน ' + picked.length + ' ใบ?' + warn)) return;
-
-  var btn = $(kind === 'V' ? 'inv-batch-v' : 'inv-batch-nv');
-  btn.disabled = true; btn.textContent = 'กำลังออกใบ…';
-  api({
-    action:'saveInvoiceBatch', token:state.token, kind:kind,
-    issueDate: new Date().toISOString().slice(0,10),
-    targets: picked.map(function(r){ return { settlementId:r.settlementId, bl:r.bl }; })
-  }).then(function(res){
-    btn.textContent = kind === 'V' ? 'ออกใบ V ที่เลือก' : 'ออกใบ NV ที่เลือก';
-    if(!res.ok){
-      var why = res.error === 'no_items'
-        ? (kind === 'NV' ? 'ไม่มีรายการไหนมีค่าแลก DO ในชีตงานขนส่ง' : 'ไม่มีรายการไหนมีค่าใช้จ่ายที่เข้าเงื่อนไข')
-        : res.error;
-      alert('ออกใบไม่สำเร็จ: ' + why);
-      updateInvoicePicked();
-      return;
-    }
-    var msg = 'ออกใบแล้ว ' + res.count + ' ใบ\n' + res.created.map(function(c){ return c.number + '  ' + c.bl; }).join('\n');
-    if(res.skipped && res.skipped.length){
-      msg += '\n\nข้าม ' + res.skipped.length + ' รายการ:\n'
-        + res.skipped.map(function(s){
-            return s.bl + ' — ' + (s.reason === 'no_items' ? 'ไม่มียอดให้ออกใบ' : s.reason);
-          }).join('\n');
-    }
-    alert(msg);
-    api({ action:'invoiceConfig', token:state.token }).then(function(cfg){ if(cfg.ok) invState.cfg = cfg; });
-    loadInvoiceSources();
-    loadInvoiceList();
-  });
-}
-$('inv-batch-v').addEventListener('click', function(){ runInvoiceBatch('V'); });
-$('inv-batch-nv').addEventListener('click', function(){ runInvoiceBatch('NV'); });
-
 function openInvoiceForm(src, kind){
   invState.editing = { src:src, kind:kind };
+  var request = invState.editing;
   $('inv-title').textContent = 'ออกใบแจ้งหนี้ — ' + (kind==='V' ? 'มี VAT' : 'ไม่มี VAT');
   $('inv-kind').value = kind;
   $('inv-date').value = new Date().toISOString().slice(0,10);
@@ -2720,10 +2638,12 @@ function openInvoiceForm(src, kind){
   $('inv-no').value = invState.cfg && invState.cfg.next ? invState.cfg.next[kind] : '(ออกให้ตอนบันทึก)';
   $('inv-msg').textContent = 'กำลังดึงรายการ…';
   $('inv-items-body').innerHTML = '';
+  recalcInvoice();
   $('inv-modal').classList.remove('hidden');
 
   api({ action:'invoicePreview', token:state.token, kind:kind, settlementId:src.settlementId, bl:src.bl })
     .then(function(res){
+      if(invState.editing !== request) return;
       if(!res.ok){
         $('inv-msg').textContent = res.error==='bl_not_found' ? 'ไม่พบเลข BL นี้ในใบปิดบัญชี'
           : (res.error==='settlement_not_found' ? 'ไม่พบใบปิดบัญชี' : 'ดึงรายการไม่สำเร็จ: '+res.error);
@@ -2731,8 +2651,12 @@ function openInvoiceForm(src, kind){
         return;
       }
       $('inv-msg').textContent = res.items.length ? '' :
-        (kind==='NV' ? 'ไม่พบค่าแลก DO ของ BL นี้ในชีตงานขนส่ง — เพิ่มรายการเองได้' : 'ไม่มีค่าใช้จ่ายที่เข้าเงื่อนไข — เพิ่มรายการเองได้');
-      renderInvoiceItems(res.items);
+        'ไม่มีค่าใช้จ่ายที่เข้าเงื่อนไข — ติ๊กหัวข้อและกรอกยอดก่อน VAT ได้';
+      invState.catalog = res.catalog || [];
+      renderInvoiceItems(invState.catalog.map(function(def){
+        var found = res.items.find(function(it){ return it.label === def.label; });
+        return Object.assign({ label:def.label, amount:0 }, found || {}, { code:def.code, selected:!!found });
+      }));
     });
 }
 
@@ -2740,11 +2664,11 @@ function renderInvoiceItems(items){
   var body = $('inv-items-body');
   body.innerHTML = (items||[]).map(function(it, i){
     return '<tr>'
-      + '<td class="right">'+(i+1)+'</td>'
+      + '<td><input type="checkbox" class="ii-selected" '+(it.selected!==false?'checked':'')+' aria-label="เลือกออกใบ"></td>'
       + '<td><input type="text" class="ii-label" value="'+esc(it.label)+'"></td>'
       + '<td><input type="number" step="any" class="ii-qty right" value="'+(it.qty||'')+'"></td>'
       + '<td><input type="number" step="any" class="ii-price right" value="'+(it.unitPrice||'')+'"></td>'
-      + '<td><input type="number" step="0.01" class="ii-amount right" value="'+(it.amount||0)+'"></td>'
+      + '<td><div style="display:flex;align-items:center;gap:8px"><b>'+esc(it.code||'')+'</b><input type="number" step="0.01" class="ii-amount right" aria-label="ยอดก่อน VAT" value="'+(it.amount||0)+'"></div></td>'
       + '<td><input type="text" class="ii-note" value="'+esc(it.note||'')+'"></td>'
       + '<td><button type="button" class="btn btn-ghost btn-sm ii-del">✕</button></td>'
       + '</tr>';
@@ -2768,6 +2692,7 @@ function bindInvoiceItemEvents(){
       recalcInvoice();
     });
   });
+  Array.prototype.forEach.call(body.querySelectorAll('.ii-selected'), function(cb){ cb.onchange = recalcInvoice; });
   Array.prototype.forEach.call(body.querySelectorAll('.ii-amount'), function(inp){
     inp.addEventListener('input', recalcInvoice);
   });
@@ -2775,13 +2700,14 @@ function bindInvoiceItemEvents(){
 
 function renumberInvoiceItems(){
   Array.prototype.forEach.call($('inv-items-body').querySelectorAll('tr'), function(tr, i){
-    tr.cells[0].textContent = i + 1;
+    if(!tr.querySelector('.ii-selected')) tr.cells[0].textContent = i + 1;
   });
 }
 
 function readInvoiceItems(){
   return Array.prototype.map.call($('inv-items-body').querySelectorAll('tr'), function(tr, i){
     return {
+      selected: !tr.querySelector('.ii-selected') || tr.querySelector('.ii-selected').checked,
       no: i + 1,
       label: tr.querySelector('.ii-label').value.trim(),
       qty: Number(tr.querySelector('.ii-qty').value) || 0,
@@ -2789,7 +2715,7 @@ function readInvoiceItems(){
       amount: Number(tr.querySelector('.ii-amount').value) || 0,
       note: tr.querySelector('.ii-note').value.trim()
     };
-  }).filter(function(it){ return it.label || it.amount; });
+  }).filter(function(it){ return it.selected && (it.label || it.amount); }).map(function(it, i){ it.no = i + 1; delete it.selected; return it; });
 }
 
 function recalcInvoice(){
@@ -2807,13 +2733,11 @@ function recalcInvoice(){
 }
 
 $('inv-kind').addEventListener('change', function(){
-  var kind = $('inv-kind').value;
-  if(invState.cfg && invState.cfg.next) $('inv-no').value = invState.cfg.next[kind];
-  recalcInvoice();
+  if(invState.editing) openInvoiceForm(invState.editing.src, $('inv-kind').value);
 });
 $('inv-add').addEventListener('click', function(){
   var tr = document.createElement('tr');
-  tr.innerHTML = '<td class="right"></td>'
+  tr.innerHTML = '<td><input type="checkbox" class="ii-selected" checked aria-label="เลือกออกใบ"></td>'
     + '<td><input type="text" class="ii-label"></td>'
     + '<td><input type="number" step="any" class="ii-qty right"></td>'
     + '<td><input type="number" step="any" class="ii-price right"></td>'
@@ -2953,6 +2877,7 @@ function printInvoice(saved){
 
   var html = '<!doctype html><html lang="th"><head><meta charset="utf-8">'
     + '<title>'+esc(number)+'</title><style>'
+    + '@font-face{font-family:Sarabun;font-style:normal;font-weight:400;src:url(\"/fonts/Sarabun-Regular.ttf\") format(\"truetype\");font-display:swap}@font-face{font-family:Sarabun;font-style:normal;font-weight:600;src:url(\"/fonts/Sarabun-SemiBold.ttf\") format(\"truetype\");font-display:swap}@font-face{font-family:Sarabun;font-style:normal;font-weight:700;src:url(\"/fonts/Sarabun-Bold.ttf\") format(\"truetype\");font-display:swap}@font-face{font-family:Sarabun;font-style:normal;font-weight:800;src:url(\"/fonts/Sarabun-ExtraBold.ttf\") format(\"truetype\");font-display:swap}@page{size:Letter;margin:0}'
     + 'body{font-family:"Sarabun","Leelawadee UI","Tahoma",sans-serif;font-size:13px;color:#111;margin:24px;}'
     + 'table{border-collapse:collapse;width:100%;}'
     + 'th,td{border:1px solid #333;padding:5px 7px;}'
@@ -2967,7 +2892,7 @@ function printInvoice(saved){
     + '.sl{text-align:right;font-weight:600}'
     + '.sv{text-align:right}'
     + '.foot{position:relative}'
-    + '.stamp{position:absolute;right:6px;bottom:38px;max-height:116px;max-width:177px}'  // ยกขึ้นพ้นบรรทัด "ผู้จัดทำใบแจ้งหนี้"
+    + '.stamp{position:absolute;right:6px;bottom:38px;max-height:116px;max-width:177px;transform:rotate(-10deg) scale(1.05);transform-origin:center}'  // ยกขึ้นพ้นบรรทัด "ผู้จัดทำใบแจ้งหนี้"
     + '@media print{body{margin:10mm}'
     +   'thead th,.sumrow td{-webkit-print-color-adjust:exact;print-color-adjust:exact}}'
     + '</style></head><body>'
@@ -3013,7 +2938,7 @@ function printInvoice(saved){
   w.document.write(html);
   w.document.close();
   w.focus();
-  setTimeout(function(){ w.print(); }, 300);
+  Promise.all([400,600,700,800].map(function(weight){return w.document.fonts.load(weight+' 13px Sarabun');})).then(function(){ w.print(); }).catch(function(){ w.document.body.insertAdjacentHTML('afterbegin','<p>โหลดฟอนต์ Sarabun ไม่สำเร็จ กรุณาเปิดเอกสารใหม่</p>'); });
 }
 
 // ---------- INIT ----------

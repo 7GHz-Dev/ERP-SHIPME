@@ -1,3 +1,4 @@
+import { saveInvoicePairs } from './invoice-pairs';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { checkins, geocodeCache, settlements, users } from '@/db/schema';
@@ -382,7 +383,7 @@ const handlers: Record<string, Handler> = {
   },
   saveInvoiceBatch: async (body) => {
     const session = await guard(body, ACCOUNT_ROLES);
-    return session.error || saveInvoiceBatch(body, session.user);
+    return session.error || (body.kind === 'BOTH' ? saveInvoicePairs(body, session.user) : saveInvoiceBatch(body, session.user));
   },
   listInvoices: async (body) => {
     const session = await guard(body, ACCOUNT_ROLES);
