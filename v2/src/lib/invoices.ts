@@ -42,13 +42,23 @@ export function invoiceNumber(kind: string, period: string, seq: number) {
 }
 
 /**
- * เลขรันถัดไปของเดือนนั้น — นับแยกกันระหว่าง V กับ NV และรีเซ็ตเป็น 01 เมื่อขึ้นเดือนใหม่
- * (เดือนใหม่ = period เปลี่ยน จึงไม่เจอแถวเดิม max ออกมาเป็น null แล้วเริ่ม 1 เอง)
+ * เลขรันถัดไปของเดือนนั้น — **นับรวมกันทั้ง V และ NV ไม่ได้แยกกัน**
+ *
+ * V เป็นตัวเดินเลข ส่วน NV ยืมเลขชุดเดียวกับ V ที่ออกคู่กัน:
+ *   V20260905 + NV20260905   (ชุดนี้มีทั้งสองแบบ)
+ *   V20260906                (ชุดนี้ไม่มี Non VAT → ข้าม NV20260906 ไปเลย)
+ *   V20260907 + NV20260907
+ * เลข NV จึงมีเว้นช่วงได้ แต่เลข V ต้องเรียงต่อกันเสมอ
+ *
+ * ถ้านับแยกกันแบบเดิม NV จะไหลไปคนละจังหวะกับ V แล้วใบคู่กันจะได้คนละเลข
+ * (ของจริงเคยเป็นแบบนั้น: NV20260901 คู่กับ BL คนละใบกับ V20260901)
+ *
+ * รีเซ็ตเป็น 01 เมื่อขึ้นเดือนใหม่ — period เปลี่ยนจึงไม่เจอแถวเดิม max เป็น null แล้วเริ่ม 1
  */
-export async function nextSeq(kind: string, period: string) {
+export async function nextSeq(_kind: string, period: string) {
   const [row] = await db.select({ maxSeq: sql<number | null>`max(${invoices.seq})` })
     .from(invoices)
-    .where(and(eq(invoices.kind, kind), eq(invoices.period, period)));
+    .where(eq(invoices.period, period));
   return Number(row?.maxSeq ?? 0) + 1;
 }
 
@@ -108,7 +118,8 @@ export async function buildItems(kind: string, settlementId: string, bl: string)
 /** หน้าออกใบแจ้งหนี้เปิดมา — ส่งค่าตั้งต้นทั้งหมดที่ฟอร์มต้องใช้ */
 export async function invoiceConfig(): Promise<ApiResult> {
   const period = ymd().slice(0, 7).replace('-', '');
-  const [nextV, nextNv] = await Promise.all([nextSeq('V', period), nextSeq('NV', period)]);
+  // เลขเดียวกันทั้งคู่ — NV ใช้เลขชุดเดียวกับ V ที่ออกพร้อมกัน
+  const seq = await nextSeq('V', period);
   return {
     ok: true,
     company: INVOICE_COMPANY,
@@ -119,8 +130,8 @@ export async function invoiceConfig(): Promise<ApiResult> {
     noVatItems: INVOICE_NO_VAT_ITEMS,
     period,
     next: {
-      V: invoiceNumber('V', period, nextV),
-      NV: invoiceNumber('NV', period, nextNv)
+      V: invoiceNumber('V', period, seq),
+      NV: invoiceNumber('NV', period, seq)
     }
   };
 }
@@ -257,8 +268,9 @@ export async function saveInvoice(body: ApiBody, actor: { username: string; name
   const now = nowIso();
 
   const saved = await db.transaction(async (tx) => {
+    // นับรวมทั้ง V และ NV — ดู nextSeq ว่าทำไมถึงไม่แยก kind
     const [row] = await tx.select({ maxSeq: sql<number | null>`max(${invoices.seq})` })
-      .from(invoices).where(and(eq(invoices.kind, kind), eq(invoices.period, period)));
+      .from(invoices).where(eq(invoices.period, period));
     const seq = Number(row?.maxSeq ?? 0) + 1;
     if (seq > 99) throw new Error('seq_overflow');
     const number = invoiceNumber(kind, period, seq);
@@ -375,7 +387,7 @@ export async function saveInvoiceBatch(body: ApiBody, actor: { username: string;
   const now = nowIso();
   const created = await db.transaction(async (tx) => {
     const [row] = await tx.select({ maxSeq: sql<number | null>`max(${invoices.seq})` })
-      .from(invoices).where(and(eq(invoices.kind, kind), eq(invoices.period, period)));
+      .from(invoices).where(eq(invoices.period, period));
     let seq = Number(row?.maxSeq ?? 0);
     const out: ApiResult[] = [];
 

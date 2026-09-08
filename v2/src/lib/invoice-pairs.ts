@@ -19,6 +19,9 @@ export async function saveInvoicePairs(body: ApiBody, actor: { username: string;
   const seen = new Set<string>();
   for (const target of body.targets) {
     const settlementId = clean(target.settlementId, 60), bl = clean(target.bl, 120);
+    // ใบคู่ต้องใช้เลขรันเดียวกัน — V20260905 คู่กับ NV20260905 เท่านั้น
+    // เก็บ seq ของ V ไว้แล้วบังคับให้ NV ตรงกัน ไม่งั้นคู่ที่ออกพร้อมกันจะได้คนละเลข
+    let pairSeq = 0;
     for (const kind of ['V', 'NV']) {
       const number = clean(target.numbers?.[kind], 40);
       const match = number.match(new RegExp('^' + kind + period + '([0-9]{2,6})$'));
@@ -26,6 +29,8 @@ export async function saveInvoicePairs(body: ApiBody, actor: { username: string;
       if (!seq || number !== kind + period + String(seq).padStart(2, '0') || seen.has(number)) {
         return { ok: false, error: 'bad_invoice_number', number };
       }
+      if (kind === 'V') pairSeq = seq;
+      else if (seq !== pairSeq) return { ok: false, error: 'pair_seq_mismatch', number };
       seen.add(number);
       const input = target.items?.[kind];
       if (!Array.isArray(input) || !input.length || input.length > 100) {
