@@ -119,10 +119,19 @@ push ขึ้น `main` แล้ว Vercel จะ build + deploy ให้เ�
 
 **ฟรี ไม่ต้องเปิด billing** — Drive API เป็น Workspace API คนละระบบคิดเงินกับ Cloud Vision
 
-### วิธีที่ 1: service account (แนะนำ — ตั้งครั้งเดียวจบ)
+### วิธีที่ 1: service account (ต้องมี Google Workspace)
 
 ไม่มี refresh token จึง **ไม่มีอะไรหมดอายุ** ไม่ต้อง publish app ไม่ต้องผ่าน verification
 และไม่ผูกกับบัญชี Google ส่วนตัวของใครคนหนึ่ง
+
+> ⚠️ **ใช้ได้เฉพาะบัญชี Google Workspace ที่สร้าง Shared Drive ได้**
+>
+> service account ไม่มีพื้นที่เก็บไฟล์ของตัวเอง (Google เลิกให้โควตาแล้ว) และบน Drive
+> ส่วนตัว ไฟล์ที่อัปเป็นของ "คนที่อัป" เสมอ ต่อให้วางในโฟลเดอร์ที่คนอื่นแชร์ให้ก็ตาม
+> จึงล้มด้วย `The user's Drive storage quota has been exceeded` ตั้งแต่สลิปใบแรก
+>
+> มีแต่ Shared Drive เท่านั้นที่ไฟล์เป็นขององค์กรไม่ใช่ของคนอัป ซึ่งบัญชี gmail.com
+> สร้างไม่ได้ — **ถ้าใช้บัญชีทั่วไป ให้ข้ามไปวิธีที่ 2**
 
 1. [console.cloud.google.com](https://console.cloud.google.com) → เลือกหรือสร้างโปรเจกต์
 2. เปิดใช้ **Google Drive API** (ค้นใน API Library) — ไม่ต้องผูกบัตร
@@ -130,14 +139,15 @@ push ขึ้น `main` แล้ว Vercel จะ build + deploy ให้เ�
    → ตั้งชื่อเช่น `slip-ocr` → กด Done (ไม่ต้องให้ role อะไร)
 4. คลิกที่ service account ที่เพิ่งสร้าง → แท็บ **Keys → Add key → Create new key → JSON**
    → ได้ไฟล์ `.json` มา **เก็บเป็นความลับเหมือนรหัสผ่าน**
-5. **สร้างโฟลเดอร์ใน Google Drive ของบัญชีคนจริง** (เช่นบัญชีบริษัท) ตั้งชื่อเช่น `slip-ocr-temp`
-   → คลิกขวา **Share** → ใส่อีเมล service account (`client_email`) → ให้สิทธิ์ **Editor** → Send
-   → เปิดโฟลเดอร์แล้วดู URL จะได้ไอดีท้ายลิงก์:
+5. **สร้าง Shared Drive** (ไดรฟ์ที่แชร์ / Shared drive — ไม่ใช่โฟลเดอร์ธรรมดาในไดรฟ์ของฉัน)
+   → ตั้งชื่อเช่น `slip-ocr-temp` → กด **Manage members** ใส่อีเมล service account
+   (`client_email`) ให้สิทธิ์ **Content manager** ขึ้นไป
+   → เปิดไดรฟ์นั้นแล้วดู URL จะได้ไอดีท้ายลิงก์:
    `https://drive.google.com/drive/folders/`**`1AbCdEfGhIjKlMnOp`** ← เอาส่วนนี้
 
-   > จำเป็นเพราะ service account **ไม่มีพื้นที่ Drive ของตัวเอง** (Google เลิกให้โควตาแล้ว)
-   > ถ้าไม่ตั้งจะขึ้น `The user's Drive storage quota has been exceeded` ตั้งแต่ไฟล์แรก
-   > ไฟล์ถูกลบทันทีหลังอ่านเสร็จ โฟลเดอร์นี้จึงว่างตลอดและแทบไม่กินพื้นที่
+   > ต้องเป็น Shared Drive เท่านั้น เพราะไฟล์ในนั้นเป็นขององค์กร ไม่ใช่ของ service account
+   > ที่อัป — โฟลเดอร์ธรรมดาที่แชร์ให้ยังนับพื้นที่กับ service account อยู่ดี แล้วล้ม
+   > ไฟล์ถูกลบทันทีหลังอ่านเสร็จ ไดรฟ์นี้จึงว่างตลอดและแทบไม่กินพื้นที่
 
 6. เอา 3 ค่าไปใส่ใน Vercel แล้ว **Redeploy**:
 
@@ -157,26 +167,47 @@ push ขึ้น `main` แล้ว Vercel จะ build + deploy ให้เ�
 
 ---
 
-### วิธีที่ 2: OAuth ของบัญชีผู้ใช้ (ของเดิม)
+### วิธีที่ 2: OAuth ของบัญชีผู้ใช้ (ใช้ได้กับบัญชี Google ทั่วไป)
+
+ใช้ได้กับบัญชี gmail.com ธรรมดา ไม่ต้องมี Workspace
 
 ⚠️ **refresh token หมดอายุใน 7 วัน** ถ้า OAuth consent screen ยังเป็น *Testing*
-(Google บังคับ ไม่ใช่บั๊ก) ต้องกด **Publish app** ให้เป็น *In production* ถึงจะอยู่ได้นาน
-และถึงอย่างนั้นก็ยังตายได้ถ้าเปลี่ยนรหัสผ่าน Google หรือถอนสิทธิ์แอป
-
-ใช้ต่อได้ถ้าตั้งไว้แล้ว แต่ของใหม่แนะนำวิธีที่ 1
+(Google บังคับ ไม่ใช่บั๊ก) — **ต้องกด Publish app ให้เป็น *In production*** ในข้อ 5
+ถึงจะใช้ได้ยาว ๆ ไม่ต้องมาขอโทเคนใหม่ทุกสัปดาห์
 
 1. เปิดใช้ **Google Drive API** เหมือนข้างบน
-2. **APIs & Services → OAuth consent screen** → External → กรอกชื่อแอปกับอีเมล
-   → ที่ **Test users** ใส่อีเมล Google ที่จะใช้เก็บไฟล์ชั่วคราว
-3. **Credentials → Create credentials → OAuth client ID → Desktop app**
-4. รันคำสั่งนี้บนเครื่อง แล้วทำตามที่มันบอก (เปิดลิงก์ → อนุญาต):
+2. **Google Auth Platform → Branding** → กรอก App name, User support email,
+   Developer contact — และกรอก 2 ช่องนี้ด้วย **ถึงจะไม่มีเครื่องหมาย `*`** เพราะบังคับตอน publish:
+
+   | ช่อง | ใส่ |
+   |---|---|
+   | Application home page | โดเมนของแอป เช่น `https://xxxx.vercel.app` |
+   | Application privacy policy link | ใส่ URL เดียวกันได้ |
+   | Authorized domains → Add domain | **โดเมนเต็ม** เช่น `xxxx.vercel.app` |
+
+   > `vercel.app` เฉย ๆ ใช้ไม่ได้ Google จะบอก *"must be a top private domain"*
+   > เพราะเป็นโดเมนที่คนทั่วไปสมัคร subdomain ได้ ต้องใส่โดเมนเต็มของแอปเรา
+
+3. **Data Access → Add or remove scopes** → เพิ่ม `.../auth/drive.file` → Update → **Save**
+4. **Audience → Publish app** → ยืนยัน — สถานะต้องเปลี่ยนเป็น **In production**
+
+   > ปุ่มเทากดไม่ได้ = ยังกรอกข้อ 2 ไม่ครบ เอาเมาส์ชี้ที่ปุ่มจะมี tooltip บอกว่าขาดอะไร
+   > ไม่ต้องส่ง verification เพราะ `drive.file` เป็น non-sensitive scope
+
+5. **Clients → Create client → Desktop app** (ถ้ายังไม่มี) แล้วรันคำสั่งนี้ **หลัง publish แล้ว**:
 
 ```bash
 cd v2
 npx tsx scripts/google-oauth.mts <CLIENT_ID> <CLIENT_SECRET>
 ```
 
-5. เอา 3 ค่าที่ได้ไปใส่ใน Vercel แล้ว **Redeploy**:
+   > ระหว่างทางจะเจอหน้า *"Google hasn't verified this app"* → **Advanced → Go to ... (unsafe)**
+   > ปกติสำหรับแอปของตัวเองที่ไม่ได้ส่ง verification
+   >
+   > **ต้องขอโทเคนหลัง publish เท่านั้น** — ใบที่ออกตอนยังเป็น Testing จะหมดอายุใน 7 วัน
+   > ต่อให้ publish ทีหลังก็ไม่ต่ออายุให้ใบเก่า
+
+6. เอา 3 ค่าที่ได้ไปใส่ใน Vercel แล้ว **Redeploy**:
 
 ```
 GOOGLE_OAUTH_CLIENT_ID=...
@@ -188,7 +219,13 @@ GOOGLE_OAUTH_REFRESH_TOKEN=...
 > สลิปถูกอัปเป็นไฟล์ชั่วคราวแล้วลบทิ้งทันทีหลังอ่านข้อความเสร็จ
 
 **เจอ `Token has been expired or revoked`?** = refresh token หมดอายุแล้ว
-แก้เฉพาะหน้าด้วยการรัน `google-oauth.mts` ขอใหม่ แต่จะกลับมาเป็นอีก — ย้ายไปวิธีที่ 1 จบกว่า
+
+เช็กที่ **Audience → Publishing status** ก่อน ถ้ายังเป็น *Testing* ให้ทำข้อ 2–4 ให้จบ
+แล้วค่อยขอโทเคนใหม่ ไม่งั้นขอไปก็ตายใน 7 วันเหมือนเดิม
+
+พอเป็น *In production* แล้วโทเคนจะไม่หมดอายุตามรอบ เหลือแค่กรณีที่ถอนสิทธิ์แอปที่
+[myaccount.google.com/permissions](https://myaccount.google.com/permissions)
+หรือเปลี่ยนรหัสผ่านบัญชี Google
 
 ### ถ้าอยากใช้ตัวอื่นแทน
 

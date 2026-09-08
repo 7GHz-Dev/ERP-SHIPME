@@ -418,10 +418,14 @@ export async function ocrDiagnostics() {
   const parsed = { amount: result.amount || 0, date: result.date || '', txn: result.txn || '', bank: result.bank || '' };
   const complete = Boolean(parsed.amount && parsed.date && parsed.txn);
 
-  // อ่านได้ตอนนี้ไม่ได้แปลว่าอ่านได้อาทิตย์หน้า ถ้ายังใช้ refresh token อยู่ให้เตือนไว้ตรงนี้
-  // เพราะหน้านี้คือที่เดียวที่ผู้ดูแลจะมาดูตอนสงสัยว่า OCR ยังปกติดีไหม
+  // refresh token หมดอายุใน 7 วันเฉพาะตอน OAuth consent screen ยังเป็น Testing
+  // ซึ่งดูจากในนี้ไม่ได้ (Google ไม่มี API บอก) จึงเตือนแบบชี้ที่ต้องไปเช็กแทนการฟันธง
+  //
+  // ไม่แนะนำให้ย้ายไป service account ตรงนี้ เพราะใช้ได้เฉพาะบัญชี Google Workspace
+  // ที่มี Shared Drive — บัญชีทั่วไปจะติด storage quota ตั้งแต่สลิปใบแรก
   const warn = driveOcrConfigured() && !driveServiceAccount() && !env.ocrEndpoint
-    ? ' — หมายเหตุ: ยังใช้ refresh token ซึ่งหมดอายุได้ ควรย้ายไป service account (ดู v2/DEPLOY.md ข้อ 6)'
+    ? ' — หมายเหตุ: ใช้ refresh token อยู่ ถ้า OAuth consent screen ยังเป็น Testing' +
+      ' โทเคนจะหมดอายุใน 7 วัน กด Publish app ให้เป็น In production ก่อน (ดู v2/DEPLOY.md ข้อ 6)'
     : '';
 
   return {
