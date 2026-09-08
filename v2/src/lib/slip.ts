@@ -1,7 +1,7 @@
 import { desc, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { slips } from '@/db/schema';
-import { driveOcrConfigured, driveOcrText } from './drive-ocr';
+import { driveOcrConfigured, driveOcrText, driveServiceAccount } from './drive-ocr';
 import { env } from './env';
 import { createSignedUpload, downloadAsDataUrl, fileExists, saveDataImage } from './storage';
 import type { ApiBody, ApiResult } from './types';
@@ -380,7 +380,8 @@ export function checkStoredSlip(info: SlipInfo, expectDate: unknown, expectAmoun
 }
 
 const ocrProvider = () => env.ocrEndpoint ? 'บริการ OCR ของตัวเอง (OCR_ENDPOINT)'
-  : (driveOcrConfigured() ? 'Google Drive OCR'
+  // แยกให้เห็นว่าใช้ทางไหน เพราะแบบ refresh token หมดอายุได้ ส่วน service account ไม่หมด
+  : (driveOcrConfigured() ? `Google Drive OCR (${driveServiceAccount() ? 'service account' : 'refresh token'})`
     : (env.visionApiKey ? 'Google Cloud Vision' : ''));
 
 /**
@@ -389,7 +390,7 @@ const ocrProvider = () => env.ocrEndpoint ? 'บริการ OCR ของต
  */
 export async function ocrDiagnostics() {
   const provider = ocrProvider();
-  const base = { ok: true, driveService: false, v2: false, strict: env.slipStrict, provider };
+  const base = { ok: true, driveService: driveServiceAccount(), v2: false, strict: env.slipStrict, provider };
 
   if (!provider) {
     return {
@@ -417,14 +418,20 @@ export async function ocrDiagnostics() {
   const parsed = { amount: result.amount || 0, date: result.date || '', txn: result.txn || '', bank: result.bank || '' };
   const complete = Boolean(parsed.amount && parsed.date && parsed.txn);
 
+  // อ่านได้ตอนนี้ไม่ได้แปลว่าอ่านได้อาทิตย์หน้า ถ้ายังใช้ refresh token อยู่ให้เตือนไว้ตรงนี้
+  // เพราะหน้านี้คือที่เดียวที่ผู้ดูแลจะมาดูตอนสงสัยว่า OCR ยังปกติดีไหม
+  const warn = driveOcrConfigured() && !driveServiceAccount() && !env.ocrEndpoint
+    ? ' — หมายเหตุ: ยังใช้ refresh token ซึ่งหมดอายุได้ ควรย้ายไป service account (ดู v2/DEPLOY.md ข้อ 6)'
+    : '';
+
   return {
     ...base,
     status: result.ocr === 'ok' ? 'ok' : 'error',
-    message: result.ocr === 'ok'
+    message: (result.ocr === 'ok'
       ? (complete
         ? `${provider} อ่านสลิปใบล่าสุดได้ครบทุกช่อง`
         : `${provider} อ่านได้บางส่วน — ช่องที่ขาดพนักงานต้องกรอกเอง`)
-      : `${provider} อ่านไม่สำเร็จ: ${result.detail || ''}`,
+      : `${provider} อ่านไม่สำเร็จ: ${result.detail || ''}`) + warn,
     parsed,
     sample: result.sample || '',
     file: latest.fileName,

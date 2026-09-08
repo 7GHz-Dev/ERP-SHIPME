@@ -47,6 +47,15 @@ export const env = {
   // endpoint OCR เป็น URL สาธารณะ ถ้าตั้ง token ไว้จะแนบไปกับทุกคำขอ
   ocrToken: process.env.OCR_TOKEN || '',
   // Drive OCR — ตัวเดียวกับที่ระบบเดิมบน Apps Script ใช้ ฟรีและไม่ต้องเปิด billing
+  //
+  // แบบที่ 1 (แนะนำ): service account — เซ็น JWT ขอ access token เอง ไม่มี refresh token
+  // จึงไม่มีอะไรหมดอายุ ตั้งครั้งเดียวจบ ไม่ต้อง publish app ไม่ต้องผ่าน verification
+  googleServiceEmail: (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || '').trim(),
+  // private key ใน JSON ของ Google เก็บการขึ้นบรรทัดใหม่เป็นอักษรสองตัว (\n)
+  // เวลาวางลงช่องค่าของ Vercel จึงได้อักษรสองตัวนั้นมา ไม่ใช่การขึ้นบรรทัดจริง — แปลงกลับให้ตรงนี้
+  googleServiceKey: (process.env.GOOGLE_SERVICE_ACCOUNT_KEY || '').replace(/\\n/g, '\n').trim(),
+  // แบบที่ 2 (เดิม): OAuth ของบัญชีผู้ใช้ — refresh token หมดอายุใน 7 วันถ้า consent screen
+  // ยังเป็น Testing อยู่ เก็บไว้ให้ระบบที่ตั้งค่าแบบนี้ไว้แล้วใช้ต่อได้โดยไม่ต้องรีบย้าย
   googleClientId: process.env.GOOGLE_OAUTH_CLIENT_ID || '',
   googleClientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET || '',
   googleRefreshToken: process.env.GOOGLE_OAUTH_REFRESH_TOKEN || '',

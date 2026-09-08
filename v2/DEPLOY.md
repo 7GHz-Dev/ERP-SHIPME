@@ -51,7 +51,9 @@ Error: No Next.js version detected.
 | `SLIP_STRICT` | | ไม่ตั้ง = false (อ่านสลิปไม่ออกยังบันทึกได้ แต่ติดสถานะรอตรวจ) |
 | `SLIP_AMOUNT_TOLERANCE` | | ไม่ตั้ง = 1 บาท |
 | `GEOCODE_ENDPOINT` | | เว้นว่าง = แสดงพิกัดเป็นตัวเลข ไม่ส่งตำแหน่งออกนอกระบบ |
-| `GOOGLE_OAUTH_CLIENT_ID` | | อ่านสลิปอัตโนมัติด้วย Drive OCR — เว้นว่าง = พนักงานกรอกเอง (ดูข้อ 6) |
+| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | | อ่านสลิปอัตโนมัติด้วย Drive OCR **(แนะนำ)** — เว้นว่าง = พนักงานกรอกเอง (ดูข้อ 6) |
+| `GOOGLE_SERVICE_ACCOUNT_KEY` | | คู่กับตัวบน — private key จากไฟล์ JSON |
+| `GOOGLE_OAUTH_CLIENT_ID` | | แบบเดิม ใช้แทนกันได้ แต่ token หมดอายุ (ดูข้อ 6) |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | | คู่กับตัวบน |
 | `GOOGLE_OAUTH_REFRESH_TOKEN` | | คู่กับตัวบน |
 | `OCR_ENDPOINT` / `OCR_TOKEN` | | ใช้บริการ OCR ของตัวเอง (เช่น PaddleOCR ใน `ocr/`) |
@@ -116,21 +118,57 @@ push ขึ้น `main` แล้ว Vercel จะ build + deploy ให้เ�
 
 **ฟรี ไม่ต้องเปิด billing** — Drive API เป็น Workspace API คนละระบบคิดเงินกับ Cloud Vision
 
-### ตั้งค่าครั้งเดียว
+### วิธีที่ 1: service account (แนะนำ — ตั้งครั้งเดียวจบ)
+
+ไม่มี refresh token จึง **ไม่มีอะไรหมดอายุ** ไม่ต้อง publish app ไม่ต้องผ่าน verification
+และไม่ผูกกับบัญชี Google ส่วนตัวของใครคนหนึ่ง
 
 1. [console.cloud.google.com](https://console.cloud.google.com) → เลือกหรือสร้างโปรเจกต์
 2. เปิดใช้ **Google Drive API** (ค้นใน API Library) — ไม่ต้องผูกบัตร
-3. **APIs & Services → OAuth consent screen** → เลือก External → กรอกชื่อแอปกับอีเมล
+3. **IAM & Admin → Service Accounts → Create service account**
+   → ตั้งชื่อเช่น `slip-ocr` → กด Done (ไม่ต้องให้ role อะไร)
+4. คลิกที่ service account ที่เพิ่งสร้าง → แท็บ **Keys → Add key → Create new key → JSON**
+   → ได้ไฟล์ `.json` มา **เก็บเป็นความลับเหมือนรหัสผ่าน**
+5. เปิดไฟล์นั้น เอา 2 ค่าไปใส่ใน Vercel แล้ว **Redeploy**:
+
+| Key | เอาค่าจากช่องไหนในไฟล์ JSON |
+|---|---|
+| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | `client_email` — ลงท้าย `.iam.gserviceaccount.com` |
+| `GOOGLE_SERVICE_ACCOUNT_KEY` | `private_key` — **ทั้งก้อน** ตั้งแต่ `-----BEGIN PRIVATE KEY-----` ถึง `-----END PRIVATE KEY-----` |
+
+> ค่า `private_key` ในไฟล์ JSON เขียน `\n` เป็นอักษรสองตัว วางแบบนั้นได้เลย ระบบแปลงกลับให้เอง
+> ตอนวางอย่าลืมตัดเครื่องหมายคำพูดหัวท้ายออก และเลือกชนิดเป็น **Sensitive**
+
+ตั้งเสร็จแล้วเช็กที่หน้า admin → **ตรวจ OCR** ต้องขึ้นว่า `Google Drive OCR (service account)`
+
+ถ้าตั้งทั้งสองวิธีไว้พร้อมกัน ระบบจะเลือก service account เสมอ
+พอใช้ได้แล้วลบ `GOOGLE_OAUTH_*` ทั้ง 3 ตัวทิ้งได้
+
+**ข้อควรรู้:** service account มี Drive ของตัวเอง 15GB แยกจากบัญชีคน
+ไฟล์สลิปถูกลบทันทีหลังอ่านเสร็จอยู่แล้ว จึงไม่มีปัญหาพื้นที่เต็ม
+
+---
+
+### วิธีที่ 2: OAuth ของบัญชีผู้ใช้ (ของเดิม)
+
+⚠️ **refresh token หมดอายุใน 7 วัน** ถ้า OAuth consent screen ยังเป็น *Testing*
+(Google บังคับ ไม่ใช่บั๊ก) ต้องกด **Publish app** ให้เป็น *In production* ถึงจะอยู่ได้นาน
+และถึงอย่างนั้นก็ยังตายได้ถ้าเปลี่ยนรหัสผ่าน Google หรือถอนสิทธิ์แอป
+
+ใช้ต่อได้ถ้าตั้งไว้แล้ว แต่ของใหม่แนะนำวิธีที่ 1
+
+1. เปิดใช้ **Google Drive API** เหมือนข้างบน
+2. **APIs & Services → OAuth consent screen** → External → กรอกชื่อแอปกับอีเมล
    → ที่ **Test users** ใส่อีเมล Google ที่จะใช้เก็บไฟล์ชั่วคราว
-4. **Credentials → Create credentials → OAuth client ID → Desktop app** → จด Client ID กับ Client secret
-5. รันคำสั่งนี้บนเครื่อง แล้วทำตามที่มันบอก (เปิดลิงก์ → อนุญาต → วางรหัสกลับมา):
+3. **Credentials → Create credentials → OAuth client ID → Desktop app**
+4. รันคำสั่งนี้บนเครื่อง แล้วทำตามที่มันบอก (เปิดลิงก์ → อนุญาต):
 
 ```bash
 cd v2
 npx tsx scripts/google-oauth.mts <CLIENT_ID> <CLIENT_SECRET>
 ```
 
-6. เอา 3 ค่าที่ได้ไปใส่ใน Vercel แล้ว **Redeploy**:
+5. เอา 3 ค่าที่ได้ไปใส่ใน Vercel แล้ว **Redeploy**:
 
 ```
 GOOGLE_OAUTH_CLIENT_ID=...
@@ -140,6 +178,9 @@ GOOGLE_OAUTH_REFRESH_TOKEN=...
 
 > ขอสิทธิ์แค่ `drive.file` = เห็นเฉพาะไฟล์ที่แอปนี้สร้างเอง ไม่ใช่ Drive ทั้งบัญชี
 > สลิปถูกอัปเป็นไฟล์ชั่วคราวแล้วลบทิ้งทันทีหลังอ่านข้อความเสร็จ
+
+**เจอ `Token has been expired or revoked`?** = refresh token หมดอายุแล้ว
+แก้เฉพาะหน้าด้วยการรัน `google-oauth.mts` ขอใหม่ แต่จะกลับมาเป็นอีก — ย้ายไปวิธีที่ 1 จบกว่า
 
 ### ถ้าอยากใช้ตัวอื่นแทน
 

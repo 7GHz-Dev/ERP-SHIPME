@@ -1,3 +1,4 @@
+import { createSign } from 'node:crypto';
 import { env } from './env';
 
 /**
@@ -9,21 +10,80 @@ import { env } from './env';
  *
  * Drive API เป็น Workspace API จึง **ฟรีและไม่ต้องเปิด billing** ต่างจาก Cloud Vision
  * ที่ Apps Script ทำได้เลยเพราะมี ScriptApp.getOAuthToken() ให้ ส่วนที่นี่ต้องขอโทเคนเอง
- * จาก refresh token ของบัญชี Google ที่เป็นเจ้าของ Drive
+ *
+ * ขอโทเคนได้ 2 ทาง เลือก service account ก่อนถ้าตั้งไว้:
+ *
+ *   1. service account — เซ็น JWT ด้วย private key ที่เราถือเอง ไม่มีอะไรหมดอายุ
+ *   2. refresh token ของบัญชีผู้ใช้ — ใช้ได้ แต่หมดอายุใน 7 วันถ้า consent screen
+ *      ยังเป็น Testing (Google บังคับ) ต้องมาขอใหม่เรื่อย ๆ
  */
 
+/** ใช้ service account ได้ = ตั้งครบทั้งอีเมลและ private key */
+export const driveServiceAccount = () =>
+  Boolean(env.googleServiceEmail && env.googleServiceKey);
+
 export const driveOcrConfigured = () =>
+  driveServiceAccount() ||
   Boolean(env.googleClientId && env.googleClientSecret && env.googleRefreshToken);
 
 const DOC_MIME = 'application/vnd.google-apps.document';
+const SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 
 // access token อายุราว 1 ชั่วโมง — เก็บไว้ใช้ซ้ำ ไม่ต้องขอใหม่ทุกใบ
 let cached: { token: string; expiresAt: number } | null = null;
 
-async function accessToken(): Promise<string> {
-  if (cached && cached.expiresAt > Date.now() + 60_000) return cached.token;
+const base64url = (input: Buffer | string) =>
+  Buffer.from(input).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
-  const response = await fetch('https://oauth2.googleapis.com/token', {
+/**
+ * เซ็น JWT ด้วย private key ของ service account แล้วเอาไปแลก access token
+ *
+ * ต่างจาก refresh token ตรงที่ไม่มี "ใบอนุญาต" ที่ Google ออกให้แล้วหมดอายุได้
+ * เราถือกุญแจเซ็นเองทุกครั้ง จึงไม่มีอะไรให้หมดอายุหรือถูกเพิกถอนตามรอบ
+ */
+async function serviceAccountToken(): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  const claim = {
+    iss: env.googleServiceEmail,
+    scope: SCOPE,
+    aud: TOKEN_URL,
+    iat: now,
+    exp: now + 3600
+  };
+  const unsigned = `${base64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))}.${base64url(JSON.stringify(claim))}`;
+
+  let signature: string;
+  try {
+    signature = base64url(createSign('RSA-SHA256').update(unsigned).sign(env.googleServiceKey));
+  } catch (error) {
+    // key ผิดรูปแบบเป็นสาเหตุที่เจอบ่อยสุด บอกให้ชัดว่าต้องวางอะไร ไม่งั้นได้แค่ error ของ OpenSSL
+    throw new Error(
+      'เซ็น JWT ด้วย GOOGLE_SERVICE_ACCOUNT_KEY ไม่สำเร็จ — ต้องวางค่า private_key จากไฟล์ JSON ' +
+      `ทั้งก้อนตั้งแต่ -----BEGIN PRIVATE KEY----- ถึง -----END PRIVATE KEY----- (${(error as Error).message})`
+    );
+  }
+
+  const response = await fetch(TOKEN_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion: `${unsigned}.${signature}`
+    }),
+    signal: AbortSignal.timeout(15000)
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok || !body?.access_token) {
+    const reason = body?.error_description || body?.error || `HTTP ${response.status}`;
+    throw new Error(`ขอ access token ด้วย service account ไม่สำเร็จ: ${reason}`);
+  }
+  return body.access_token;
+}
+
+/** OAuth ของบัญชีผู้ใช้ — refresh token หมดอายุได้ (ดูหมายเหตุใน env.ts) */
+async function refreshTokenGrant(): Promise<string> {
+  const response = await fetch(TOKEN_URL, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -37,10 +97,22 @@ async function accessToken(): Promise<string> {
   const body = await response.json().catch(() => null);
   if (!response.ok || !body?.access_token) {
     const reason = body?.error_description || body?.error || `HTTP ${response.status}`;
-    throw new Error(`ขอ access token จาก Google ไม่สำเร็จ: ${reason}`);
+    // สาเหตุนี้แก้ด้วยการขอ token ใหม่อย่างเดียว บอกทางออกไปเลยจะได้ไม่ต้องมานั่งไล่หา
+    const hint = /expired or revoked|invalid_grant/i.test(String(reason))
+      ? ' — refresh token หมดอายุแล้ว ย้ายไปใช้ service account เพื่อไม่ให้เกิดซ้ำ (ดู v2/DEPLOY.md ข้อ 6)'
+      : '';
+    throw new Error(`ขอ access token จาก Google ไม่สำเร็จ: ${reason}${hint}`);
   }
-  cached = { token: body.access_token, expiresAt: Date.now() + (Number(body.expires_in) || 3600) * 1000 };
-  return cached.token;
+  return body.access_token;
+}
+
+async function accessToken(): Promise<string> {
+  if (cached && cached.expiresAt > Date.now() + 60_000) return cached.token;
+
+  // service account มาก่อนเสมอ เพราะไม่มีวันหมดอายุ
+  const token = driveServiceAccount() ? await serviceAccountToken() : await refreshTokenGrant();
+  cached = { token, expiresAt: Date.now() + 3600 * 1000 };
+  return token;
 }
 
 function decode(dataUrl: string) {
