@@ -35,6 +35,12 @@ export function requireUrl(name: string, hint = ''): string {
   return value.replace(/\/+$/, '');            // ตัด / ท้ายออก กัน //auth/v1 ซ้อน
 }
 
+/** ดึงไอดีโฟลเดอร์ออกจากค่าที่ผู้ใช้วางมา — รับได้ทั้งไอดีล้วนและลิงก์เต็ม */
+const folderId = (value: string | undefined) => {
+  const raw = String(value ?? '').trim().replace(/^['"]|['"]$/g, '');
+  return (/\/folders\/([^/?#]+)/.exec(raw)?.[1] ?? raw.split(/[?#]/)[0]).trim();
+};
+
 export const env = {
   sessionHours: number(process.env.SESSION_HOURS, 12),
   maxAccuracy: number(process.env.MAX_ACCURACY_METERS, 200),
@@ -53,7 +59,10 @@ export const env = {
   googleServiceEmail: (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || '').trim(),
   // service account ไม่มีพื้นที่ Drive ของตัวเอง (Google เลิกให้โควตาแล้ว)
   // จึงต้องอัปไฟล์ชั่วคราวลงโฟลเดอร์ของบัญชีคนจริงที่แชร์สิทธิ์แก้ไขไว้ให้
-  googleDriveFolderId: (process.env.GOOGLE_DRIVE_FOLDER_ID || '').trim(),
+  //
+  // รับได้ทั้งไอดีล้วนและลิงก์ที่ก๊อปจากแถบที่อยู่ เพราะการวางทั้งลิงก์เป็นเรื่องปกติ
+  // ถ้าไม่ตัดให้ Drive จะตอบ "File not found: <ทั้งลิงก์>" ซึ่งดูไม่ออกว่าผิดตรงไหน
+  googleDriveFolderId: folderId(process.env.GOOGLE_DRIVE_FOLDER_ID),
   // private key ใน JSON ของ Google เก็บการขึ้นบรรทัดใหม่เป็นอักษรสองตัว (\n)
   // เวลาวางลงช่องค่าของ Vercel จึงได้อักษรสองตัวนั้นมา ไม่ใช่การขึ้นบรรทัดจริง — แปลงกลับให้ตรงนี้
   googleServiceKey: (process.env.GOOGLE_SERVICE_ACCOUNT_KEY || '').replace(/\\n/g, '\n').trim(),

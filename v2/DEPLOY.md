@@ -145,7 +145,7 @@ push ขึ้น `main` แล้ว Vercel จะ build + deploy ให้เ�
 |---|---|
 | `GOOGLE_SERVICE_ACCOUNT_EMAIL` | ช่อง `client_email` ในไฟล์ JSON — ลงท้าย `.iam.gserviceaccount.com` |
 | `GOOGLE_SERVICE_ACCOUNT_KEY` | ช่อง `private_key` — **ทั้งก้อน** ตั้งแต่ `-----BEGIN PRIVATE KEY-----` ถึง `-----END PRIVATE KEY-----` |
-| `GOOGLE_DRIVE_FOLDER_ID` | ไอดีโฟลเดอร์จากข้อ 5 |
+| `GOOGLE_DRIVE_FOLDER_ID` | ไอดีโฟลเดอร์จากข้อ 5 (วางทั้งลิงก์ก็ได้ ระบบตัดเอาไอดีให้เอง) |
 
 > ค่า `private_key` ในไฟล์ JSON เขียน `\n` เป็นอักษรสองตัว วางแบบนั้นได้เลย ระบบแปลงกลับให้เอง
 > ตอนวางอย่าลืมตัดเครื่องหมายคำพูดหัวท้ายออก และเลือกชนิดเป็น **Sensitive**
