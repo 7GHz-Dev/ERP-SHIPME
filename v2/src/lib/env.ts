@@ -51,6 +51,9 @@ export const env = {
   // แบบที่ 1 (แนะนำ): service account — เซ็น JWT ขอ access token เอง ไม่มี refresh token
   // จึงไม่มีอะไรหมดอายุ ตั้งครั้งเดียวจบ ไม่ต้อง publish app ไม่ต้องผ่าน verification
   googleServiceEmail: (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || '').trim(),
+  // service account ไม่มีพื้นที่ Drive ของตัวเอง (Google เลิกให้โควตาแล้ว)
+  // จึงต้องอัปไฟล์ชั่วคราวลงโฟลเดอร์ของบัญชีคนจริงที่แชร์สิทธิ์แก้ไขไว้ให้
+  googleDriveFolderId: (process.env.GOOGLE_DRIVE_FOLDER_ID || '').trim(),
   // private key ใน JSON ของ Google เก็บการขึ้นบรรทัดใหม่เป็นอักษรสองตัว (\n)
   // เวลาวางลงช่องค่าของ Vercel จึงได้อักษรสองตัวนั้นมา ไม่ใช่การขึ้นบรรทัดจริง — แปลงกลับให้ตรงนี้
   googleServiceKey: (process.env.GOOGLE_SERVICE_ACCOUNT_KEY || '').replace(/\\n/g, '\n').trim(),

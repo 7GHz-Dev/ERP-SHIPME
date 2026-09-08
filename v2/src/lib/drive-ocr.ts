@@ -152,13 +152,18 @@ export async function driveOcrText(dataUrl: string): Promise<string> {
   if (!bytes.length) throw new Error('ไม่มีข้อมูลรูปภาพ');
 
   const { boundary, body } = multipart(
-    { name: `slip_ocr_${Date.now()}`, mimeType: DOC_MIME },   // mimeType ปลายทาง = สั่งให้แปลงเป็น Doc
+    {
+      name: `slip_ocr_${Date.now()}`,
+      mimeType: DOC_MIME,                                     // mimeType ปลายทาง = สั่งให้แปลงเป็น Doc
+      // ไม่ระบุโฟลเดอร์ = ไฟล์ไปกองที่ไดรฟ์ของเจ้าของโทเคน ซึ่ง service account ไม่มี
+      ...(env.googleDriveFolderId ? { parents: [env.googleDriveFolderId] } : {})
+    },
     bytes,
     contentType
   );
 
   const upload = await fetch(
-    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&ocrLanguage=th&fields=id',
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&ocrLanguage=th&fields=id&supportsAllDrives=true',
     {
       method: 'POST',
       headers: { authorization: `Bearer ${token}`, 'content-type': `multipart/related; boundary=${boundary}` },
@@ -169,6 +174,14 @@ export async function driveOcrText(dataUrl: string): Promise<string> {
   const created = await upload.json().catch(() => null);
   if (!upload.ok || !created?.id) {
     const reason = created?.error?.message || `HTTP ${upload.status}`;
+    // service account ไม่มีพื้นที่เก็บของตัวเอง ต้องยืมโฟลเดอร์ของบัญชีคนจริง
+    // อาการนี้รอไปก็ไม่หาย แยกออกจากโควตาเต็มชั่วคราวเพื่อไม่ให้เข้าใจผิด
+    if (/storage quota has been exceeded/i.test(reason) && !env.googleDriveFolderId) {
+      throw new Error(
+        'service account ไม่มีพื้นที่ Drive ของตัวเอง — ต้องสร้างโฟลเดอร์ในไดรฟ์ของบัญชีคนจริง ' +
+        'แชร์ให้ service account เป็น Editor แล้วตั้ง GOOGLE_DRIVE_FOLDER_ID (ดู v2/DEPLOY.md ข้อ 6)'
+      );
+    }
     // โควตา OCR ของ Drive เต็มได้ถ้ายิงถี่ ๆ บอกให้ชัดจะได้รู้ว่ารอแล้วลองใหม่
     if (/rate limit|quota|limit exceeded/i.test(reason)) {
       throw new Error(`Drive OCR ใช้โควตาเกินชั่วคราว — รอสักครู่แล้วกดอ่านใหม่ (${reason})`);

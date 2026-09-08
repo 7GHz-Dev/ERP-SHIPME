@@ -53,6 +53,7 @@ Error: No Next.js version detected.
 | `GEOCODE_ENDPOINT` | | เว้นว่าง = แสดงพิกัดเป็นตัวเลข ไม่ส่งตำแหน่งออกนอกระบบ |
 | `GOOGLE_SERVICE_ACCOUNT_EMAIL` | | อ่านสลิปอัตโนมัติด้วย Drive OCR **(แนะนำ)** — เว้นว่าง = พนักงานกรอกเอง (ดูข้อ 6) |
 | `GOOGLE_SERVICE_ACCOUNT_KEY` | | คู่กับตัวบน — private key จากไฟล์ JSON |
+| `GOOGLE_DRIVE_FOLDER_ID` | | คู่กับตัวบน — โฟลเดอร์ของบัญชีคนจริงที่แชร์ให้ (จำเป็น) |
 | `GOOGLE_OAUTH_CLIENT_ID` | | แบบเดิม ใช้แทนกันได้ แต่ token หมดอายุ (ดูข้อ 6) |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | | คู่กับตัวบน |
 | `GOOGLE_OAUTH_REFRESH_TOKEN` | | คู่กับตัวบน |
@@ -129,12 +130,22 @@ push ขึ้น `main` แล้ว Vercel จะ build + deploy ให้เ�
    → ตั้งชื่อเช่น `slip-ocr` → กด Done (ไม่ต้องให้ role อะไร)
 4. คลิกที่ service account ที่เพิ่งสร้าง → แท็บ **Keys → Add key → Create new key → JSON**
    → ได้ไฟล์ `.json` มา **เก็บเป็นความลับเหมือนรหัสผ่าน**
-5. เปิดไฟล์นั้น เอา 2 ค่าไปใส่ใน Vercel แล้ว **Redeploy**:
+5. **สร้างโฟลเดอร์ใน Google Drive ของบัญชีคนจริง** (เช่นบัญชีบริษัท) ตั้งชื่อเช่น `slip-ocr-temp`
+   → คลิกขวา **Share** → ใส่อีเมล service account (`client_email`) → ให้สิทธิ์ **Editor** → Send
+   → เปิดโฟลเดอร์แล้วดู URL จะได้ไอดีท้ายลิงก์:
+   `https://drive.google.com/drive/folders/`**`1AbCdEfGhIjKlMnOp`** ← เอาส่วนนี้
 
-| Key | เอาค่าจากช่องไหนในไฟล์ JSON |
+   > จำเป็นเพราะ service account **ไม่มีพื้นที่ Drive ของตัวเอง** (Google เลิกให้โควตาแล้ว)
+   > ถ้าไม่ตั้งจะขึ้น `The user's Drive storage quota has been exceeded` ตั้งแต่ไฟล์แรก
+   > ไฟล์ถูกลบทันทีหลังอ่านเสร็จ โฟลเดอร์นี้จึงว่างตลอดและแทบไม่กินพื้นที่
+
+6. เอา 3 ค่าไปใส่ใน Vercel แล้ว **Redeploy**:
+
+| Key | เอาค่าจากไหน |
 |---|---|
-| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | `client_email` — ลงท้าย `.iam.gserviceaccount.com` |
-| `GOOGLE_SERVICE_ACCOUNT_KEY` | `private_key` — **ทั้งก้อน** ตั้งแต่ `-----BEGIN PRIVATE KEY-----` ถึง `-----END PRIVATE KEY-----` |
+| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | ช่อง `client_email` ในไฟล์ JSON — ลงท้าย `.iam.gserviceaccount.com` |
+| `GOOGLE_SERVICE_ACCOUNT_KEY` | ช่อง `private_key` — **ทั้งก้อน** ตั้งแต่ `-----BEGIN PRIVATE KEY-----` ถึง `-----END PRIVATE KEY-----` |
+| `GOOGLE_DRIVE_FOLDER_ID` | ไอดีโฟลเดอร์จากข้อ 5 |
 
 > ค่า `private_key` ในไฟล์ JSON เขียน `\n` เป็นอักษรสองตัว วางแบบนั้นได้เลย ระบบแปลงกลับให้เอง
 > ตอนวางอย่าลืมตัดเครื่องหมายคำพูดหัวท้ายออก และเลือกชนิดเป็น **Sensitive**
@@ -143,9 +154,6 @@ push ขึ้น `main` แล้ว Vercel จะ build + deploy ให้เ�
 
 ถ้าตั้งทั้งสองวิธีไว้พร้อมกัน ระบบจะเลือก service account เสมอ
 พอใช้ได้แล้วลบ `GOOGLE_OAUTH_*` ทั้ง 3 ตัวทิ้งได้
-
-**ข้อควรรู้:** service account มี Drive ของตัวเอง 15GB แยกจากบัญชีคน
-ไฟล์สลิปถูกลบทันทีหลังอ่านเสร็จอยู่แล้ว จึงไม่มีปัญหาพื้นที่เต็ม
 
 ---
 
