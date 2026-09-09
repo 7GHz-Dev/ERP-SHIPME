@@ -416,3 +416,54 @@ export async function saveInvoiceBatch(body: ApiBody, actor: { username: string;
 
   return { ok: true, created, skipped, count: created.length };
 }
+
+/**
+ * แก้ใบแจ้งหนี้ที่ออกไปแล้ว — เลขที่/ชนิด/เดือน เปลี่ยนไม่ได้ แก้ได้แต่เนื้อใบ
+ * เลขใบเป็น primary key และผูกกับลำดับที่ออกไปแล้ว ถ้าให้แก้จะเกิดเลขซ้ำหรือเลขขาดช่วง
+ * ใบที่ยกเลิกแล้วต้องกดคืนเป็นร่างก่อน (decideInvoice → draft)
+ */
+export async function updateInvoice(body: ApiBody, actor: { username: string; name: string }): Promise<ApiResult> {
+  const number = text(body.number, 40);
+  if (!number) return { ok: false, error: 'bad_request' };
+
+  const [existing] = await db.select().from(invoices).where(eq(invoices.number, number)).limit(1);
+  if (!existing) return { ok: false, error: 'invoice_not_found' };
+  if (existing.status === 'cancelled') return { ok: false, error: 'invoice_cancelled' };
+
+  const items: InvoiceItem[] = [];
+  const input = Array.isArray(body.items) ? body.items : [];
+  if (!input.length || input.length > 100) return { ok: false, error: 'no_items' };
+  for (const row of input) {
+    const label = text(row?.label, 200);
+    const amount = Number(row?.amount);
+    if (!label || !Number.isFinite(amount) || amount < 0 || amount > 1e9) {
+      return { ok: false, error: 'bad_item', label };
+    }
+    items.push({ no: items.length + 1, label, qty: 0, unitPrice: 0, amount: money(amount), note: text(row?.note, 200) });
+  }
+
+  const totals = invoiceTotals(items, existing.kind);
+  const now = nowIso();
+  await db.update(invoices).set({
+    issueDate: validYmd(body.issueDate) ? String(body.issueDate) : existing.issueDate,
+    itemsJson: JSON.stringify(items),
+    subtotal: totals.subtotal, vat: totals.vat, total: totals.total,
+    withholding: totals.withholding, netTotal: totals.netTotal,
+    note: text(body.note, 500) || existing.note,
+    preparedBy: actor.name,
+    updatedAt: now
+  }).where(eq(invoices.number, number));
+
+  return { ok: true, number, kind: existing.kind, items, ...totals };
+}
+
+/** ดึงใบเดิมมาเปิดแก้ */
+export async function getInvoice(body: ApiBody): Promise<ApiResult> {
+  const number = text(body.number, 40);
+  if (!number) return { ok: false, error: 'bad_request' };
+  const [row] = await db.select().from(invoices).where(eq(invoices.number, number)).limit(1);
+  if (!row) return { ok: false, error: 'invoice_not_found' };
+  let items: InvoiceItem[] = [];
+  try { items = JSON.parse(row.itemsJson || '[]'); } catch { items = []; }
+  return { ok: true, invoice: { ...row, items } };
+}

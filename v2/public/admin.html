@@ -2795,6 +2795,39 @@ var INV_STATUS = {
   cancelled:'<span class="pill rejected">ยกเลิก</span>'
 };
 
+
+/** เปิดใบเดิมมาแก้ — เลขที่กับชนิดแก้ไม่ได้ แก้ได้แต่รายการและยอด */
+function openInvoiceEdit(row){
+  if(!row) return;
+  api({ action:'getInvoice', token:state.token, number:row.number }).then(function(res){
+    if(!res.ok){ alert('เปิดใบไม่สำเร็จ: '+res.error); return; }
+    var inv = res.invoice;
+    var lines = (inv.items||[]).map(function(it){ return it.label + ' = ' + it.amount; }).join('\n');
+    var edited = prompt('แก้ใบ ' + inv.number + ' (' + (inv.kind==='V'?'มี VAT':'ไม่มี VAT') + ')\n'
+      + 'พิมพ์บรรทัดละ 1 รายการ รูปแบบ  ชื่อรายการ = ยอด\n'
+      + 'ลบบรรทัดที่ไม่ต้องการออกได้', lines);
+    if(edited === null) return;
+    var items = edited.split('\n').map(function(line){
+      var at = line.lastIndexOf('=');
+      if(at < 0) return null;
+      var label = line.slice(0, at).trim();
+      var amount = Number(line.slice(at+1).trim().replace(/,/g,''));
+      if(!label || !isFinite(amount) || amount < 0) return null;
+      return { label: label, amount: amount };
+    }).filter(Boolean);
+    if(!items.length){ alert('ต้องมีอย่างน้อย 1 บรรทัด รูปแบบ  ชื่อรายการ = ยอด'); return; }
+    api({ action:'updateInvoice', token:state.token, number:inv.number, items:items }).then(function(r2){
+      if(!r2.ok){
+        alert('บันทึกไม่สำเร็จ: ' + (r2.error==='invoice_cancelled'
+          ? 'ใบนี้ถูกยกเลิกแล้ว ต้องกด "คืนเป็นร่าง" ก่อน' : r2.error));
+        return;
+      }
+      loadInvoiceList();
+      alert('แก้ใบ ' + inv.number + ' แล้ว — ยอดใหม่ ' + baht(r2.total));
+    });
+  });
+}
+
 function renderInvoiceList(){
   var q = $('invl-search').value.trim().toLowerCase();
   var rows = invState.list.filter(function(r){
@@ -2804,8 +2837,17 @@ function renderInvoiceList(){
   if(!rows.length){ $('inv-list-body').innerHTML = '<tr><td colspan="9" class="muted">ยังไม่มีใบแจ้งหนี้</td></tr>'; return; }
   $('inv-list-body').innerHTML = rows.map(function(r, i){
     var act = '<button class="btn btn-ghost btn-sm invl-view" data-i="'+i+'">ดู</button>';
+    if(r.status !== 'cancelled'){
+      act += ' <button class="btn btn-ghost btn-sm invl-edit" data-i="'+i+'">แก้ไข</button>';
+    }
     if(invState.canApprove && r.status==='draft'){
       act += ' <button class="btn btn-ok btn-sm invl-ok" data-i="'+i+'">อนุมัติ</button>';
+    }
+    // ยกเลิก / คืนเป็นร่าง — เฉพาะ admin กับ manager-account (เซิร์ฟเวอร์กันอีกชั้น)
+    if(invState.canApprove){
+      act += r.status === 'cancelled'
+        ? ' <button class="btn btn-ghost btn-sm invl-undo" data-i="'+i+'">คืนเป็นร่าง</button>'
+        : ' <button class="btn btn-danger btn-sm invl-cancel" data-i="'+i+'">ยกเลิก</button>';
     }
     return '<tr>'
       + '<td><b>'+esc(r.number)+'</b></td>'
@@ -2821,6 +2863,25 @@ function renderInvoiceList(){
   Array.prototype.forEach.call($('inv-list-body').querySelectorAll('.invl-view'), function(b){
     b.addEventListener('click', function(){ printInvoice(rows[Number(b.getAttribute('data-i'))]); });
   });
+  Array.prototype.forEach.call($('inv-list-body').querySelectorAll('.invl-edit'), function(b){
+    b.addEventListener('click', function(){ openInvoiceEdit(rows[Number(b.getAttribute('data-i'))]); });
+  });
+  var invDecide = function(sel, decision, ask){
+    Array.prototype.forEach.call($('inv-list-body').querySelectorAll(sel), function(b){
+      b.addEventListener('click', function(){
+        var r = rows[Number(b.getAttribute('data-i'))];
+        if(ask && !confirm(ask.replace('%s', r.number))) return;
+        b.disabled = true;
+        api({ action:'decideInvoice', token:state.token, number:r.number, decision:decision })
+          .then(function(res){
+            if(res.ok) loadInvoiceList();
+            else { b.disabled = false; alert('ทำรายการไม่สำเร็จ: '+res.error); }
+          });
+      });
+    });
+  };
+  invDecide('.invl-cancel', 'cancelled', 'ยกเลิกใบ %s ?\n\nเลขใบนี้ถือว่าใช้ไปแล้ว ใบใหม่จะได้เลขถัดไป');
+  invDecide('.invl-undo', 'draft', null);
   Array.prototype.forEach.call($('inv-list-body').querySelectorAll('.invl-ok'), function(b){
     b.addEventListener('click', function(){
       var r = rows[Number(b.getAttribute('data-i'))];

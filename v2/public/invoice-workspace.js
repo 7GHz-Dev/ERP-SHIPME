@@ -125,6 +125,9 @@ function invoicePairDocuments(rows){
     if(row.createdPair){documents.push.apply(documents,row.createdPair);return;}
     ['V','NV'].forEach(function(kind){
       var items=inlineInvoiceItems(row,kind),subtotal=Math.round(items.reduce(function(sum,item){return sum+item.amount;},0)*100)/100;
+      // BL ที่ไม่มีค่าใช้จ่ายฝั่งนั้น (ส่วนใหญ่คือ NON VAT ที่ยังไม่มีค่าแลก DO)
+      // ให้ข้ามใบนั้นไปเลย ออกเฉพาะฝั่งที่มียอดจริง ไม่ใช่บล็อกทั้ง BL
+      if(!items.length) return;
       var vat=kind==='V'?Math.round(subtotal*7)/100:0;
       documents.push({number:row.numbers[kind],kind:kind,issueDate:$('inv-issue-date').value,bl:row.bl,settlementId:row.settlementId,items:items,
         subtotal:subtotal,vat:vat,total:Math.round((subtotal+vat)*100)/100,customerName:customer.name,customerAddress:customer.address,customerTaxId:customer.taxId,preparedBy:state.user.name});
@@ -155,8 +158,46 @@ async function runInvoicePair(save,rows){
   }
   if(save&&rows.some(function(row){return !!row.createdPair;}))return;
   var docs=invoicePairDocuments(rows);
-  var bad=docs.find(function(doc){return !doc.items.length||doc.items.some(function(item){return !item.label||item.label.length>200||!Number.isFinite(item.amount)||item.amount<0||item.amount>1e9;});});
-  if(bad){$('inv-inline-msg').textContent=bad.bl+' — เลือกรายการ '+bad.kind+' อย่างน้อย 1 รายการ พร้อมชื่อและยอดที่ถูกต้อง';return;}
+  var bad=docs.find(function(doc){return doc.items.some(function(item){return !item.label||item.label.length>200||!Number.isFinite(item.amount)||item.amount<0||item.amount>1e9;});});
+  if(bad){$('inv-inline-msg').textContent=bad.bl+' — รายการ '+bad.kind+' ต้องมีชื่อและยอดที่ถูกต้อง';return;}
+  // ทุก BL ต้องมีอย่างน้อยฝั่งใดฝั่งหนึ่ง ไม่งั้นไม่มีอะไรให้ออก
+  var empty=rows.find(function(row){return !docs.some(function(doc){return doc.settlementId===row.settlementId&&doc.bl===row.bl;});});
+  if(empty){$('inv-inline-msg').textContent=empty.bl+' — ต้องเลือกรายการอย่างน้อย 1 รายการ (VAT หรือ NON VAT)';return;}
+  if(!docs.length){$('inv-inline-msg').textContent='ไม่มีรายการให้ออกใบ';return;}
+
+  // เตือนตั้งแต่ก่อนยิง — เลขซ้ำกันเองในชุดที่กำลังจะออก
+  var dupNumbers=docs.map(function(d){return d.number;})
+    .filter(function(n,i,arr){return arr.indexOf(n)!==i;})
+    .filter(function(n,i,arr){return arr.indexOf(n)===i;});
+  if(dupNumbers.length){
+    $('inv-inline-msg').textContent='เลขใบแจ้งหนี้ซ้ำกันเองในชุดนี้: '+dupNumbers.join(', ')+' — แก้เลขเริ่มต้นแล้วลองใหม่';
+    return;
+  }
+  // เตือนเลขที่ออกไปแล้วในระบบ (ดูจากรายการที่โหลดมา)
+  var used=[];
+  (invState.sources||[]).forEach(function(r){
+    ['V','NV'].forEach(function(k){ if(r.issued&&r.issued[k]) used.push(r.issued[k]); });
+  });
+  var clashNumbers=docs.filter(function(d){return used.indexOf(d.number)>=0;}).map(function(d){return d.number;});
+  if(clashNumbers.length){
+    $('inv-inline-msg').textContent='เลขนี้ถูกใช้ไปแล้ว: '+clashNumbers.join(', ')+' — แก้เลขเริ่มต้นแล้วลองใหม่';
+    return;
+  }
+  // BL ที่เคยออกใบชนิดเดียวกันไปแล้ว — ถามยืนยันก่อน ไม่ได้ห้ามเด็ดขาด
+  if(save){
+    var dupBl=[];
+    rows.forEach(function(row){
+      ['V','NV'].forEach(function(k){
+        var has=docs.some(function(d){return d.settlementId===row.settlementId&&d.bl===row.bl&&d.kind===k;});
+        if(has&&row.issued&&row.issued[k]) dupBl.push(row.bl+' ('+k+' = '+row.issued[k]+')');
+      });
+    });
+    if(dupBl.length&&!confirm('BL เหล่านี้เคยออกใบแจ้งหนี้ไปแล้ว:\n\n'+dupBl.join('\n')+'\n\nต้องการออกใบใหม่เพิ่มอีกใบหรือไม่?')) {
+      $('inv-inline-msg').textContent='ยกเลิกการออกใบ';
+      return;
+    }
+    if(dupBl.length) invState.allowDuplicateBl=true;
+  }
   var popup=window.open('','_blank','popup,width=1000,height=850');
   if(popup){popup.document.body.textContent='กำลังจัดเตรียม PDF…';popup.document.body.style.margin='0';}
   invState.saving=true;updateInvoicePicked();
@@ -166,17 +207,27 @@ async function runInvoicePair(save,rows){
     // Generate first: failure to load fonts/images never leaves half a saved operation.
     var blob=await InvoicePDF.create(docs,invState.cfg.company);
     if(save){
-      var res=await api({action:'saveInvoiceBatch',token:state.token,kind:'BOTH',issueDate:docs[0].issueDate,targets:rows.map(function(row){
+      var res=await api({action:'saveInvoiceBatch',token:state.token,kind:'BOTH',issueDate:docs[0].issueDate,allowDuplicateBl:!!invState.allowDuplicateBl,targets:rows.map(function(row){
         var pair=docs.filter(function(doc){return doc.settlementId===row.settlementId&&doc.bl===row.bl;});
-        return {settlementId:row.settlementId,bl:row.bl,numbers:{V:pair[0].number,NV:pair[1].number},items:{V:pair[0].items,NV:pair[1].items}};
+        // ส่งเฉพาะฝั่งที่มีจริง — BL ที่ไม่มีค่า NON VAT จะมีแค่ใบ V
+        var numbers={},items={};
+        pair.forEach(function(doc){numbers[doc.kind]=doc.number;items[doc.kind]=doc.items;});
+        return {settlementId:row.settlementId,bl:row.bl,numbers:numbers,items:items};
       })});
-      if(!res.ok)throw new Error(res.error==='invoice_number_used'?'เลขใบแจ้งหนี้ซ้ำ กรุณาเปลี่ยนเลขเริ่มต้น':res.error);
+      if(!res.ok){
+        if(res.error==='invoice_number_used') throw new Error('เลขใบแจ้งหนี้ซ้ำ: '+(res.numbers||[]).join(', ')+' — กด "โหลดใหม่" แล้วเปลี่ยนเลขเริ่มต้น');
+        if(res.error==='bl_already_invoiced') throw new Error('BL นี้ออกใบไปแล้ว: '+(res.duplicates||[]).map(function(d){return d.bl+' ('+d.kind+' = '+d.number+')';}).join(', '));
+        throw new Error(res.error);
+      }
       saved=true;
       rows.forEach(function(row){row.createdPair=res.created.filter(function(doc){return doc.settlementId===row.settlementId&&doc.bl===row.bl;});row.issued=row.issued||{};row.createdPair.forEach(function(doc){row.issued[doc.kind]=doc.number;});});
       // Use the persisted, normalized values in the final PDF.
       blob=await InvoicePDF.create(res.created,invState.cfg.company);
       ['V','NV'].forEach(function(kind){
-        var max=Math.max.apply(null,res.created.filter(function(doc){return doc.kind===kind;}).map(function(doc){return doc.seq;}));
+        var seqs=res.created.filter(function(doc){return doc.kind===kind;}).map(function(doc){return doc.seq;});
+        // ไม่ได้ออกชนิดนี้เลยก็ไม่ต้องขยับเลขเริ่มต้น (Math.max ของ array ว่างได้ -Infinity)
+        if(!seqs.length) return;
+        var max=Math.max.apply(null,seqs);
         var input=$(kind==='V'?'inv-start-v':'inv-start-nv');input.value=kind+invoicePeriod()+String(Math.max(max+1,invoiceStart(kind)||1)).padStart(2,'0');
       });
       renderInvoiceSources();loadInvoiceList();
@@ -187,5 +238,5 @@ async function runInvoicePair(save,rows){
     var message=(saved?'บันทึกแล้ว แต่แสดง PDF ไม่สำเร็จ กด Preview เพื่อดาวน์โหลดอีกครั้ง: ':'ไม่สำเร็จ: ')+error.message;
     $('inv-inline-msg').textContent=message;if(popup&&!popup.closed)popup.document.body.textContent=message;
     if(saved){renderInvoiceSources();loadInvoiceList();}
-  }finally{invState.saving=false;updateInvoicePicked();}
+  }finally{invState.saving=false;invState.allowDuplicateBl=false;updateInvoicePicked();}
 }

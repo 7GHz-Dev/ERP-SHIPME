@@ -1,4 +1,4 @@
-import { inArray, sql } from 'drizzle-orm';
+import { and, inArray, ne, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { invoices, settlements } from '@/db/schema';
 import { INVOICE_CUSTOMER } from './constants';
@@ -22,20 +22,26 @@ export async function saveInvoicePairs(body: ApiBody, actor: { username: string;
     // ใบคู่ต้องใช้เลขรันเดียวกัน — V20260905 คู่กับ NV20260905 เท่านั้น
     // เก็บ seq ของ V ไว้แล้วบังคับให้ NV ตรงกัน ไม่งั้นคู่ที่ออกพร้อมกันจะได้คนละเลข
     let pairSeq = 0;
+    let issuedForTarget = 0;
     for (const kind of ['V', 'NV']) {
+      const input = target.items?.[kind];
+      // BL ที่ไม่มีค่าใช้จ่ายฝั่งนี้ (เจอบ่อยกับ NON VAT ที่ยังไม่มีค่าแลก DO)
+      // ให้ข้ามใบนั้นไป ออกเฉพาะฝั่งที่มียอดจริง — เลข NV ที่ข้ามจะหายไปตามกฎเดิม
+      if (input == null || (Array.isArray(input) && !input.length)) continue;
+      if (!Array.isArray(input) || input.length > 100) {
+        return { ok: false, error: 'no_items', bl, kind };
+      }
       const number = clean(target.numbers?.[kind], 40);
       const match = number.match(new RegExp('^' + kind + period + '([0-9]{2,6})$'));
       const seq = match ? Number(match[1]) : 0;
       if (!seq || number !== kind + period + String(seq).padStart(2, '0') || seen.has(number)) {
         return { ok: false, error: 'bad_invoice_number', number };
       }
-      if (kind === 'V') pairSeq = seq;
+      // เลขคู่ต้องตรงกันเมื่อออกทั้งสองฝั่ง (V เป็นตัวตั้ง ถ้าออกเฉพาะ NV ก็ใช้เลขตัวเองได้)
+      if (!pairSeq) pairSeq = seq;
       else if (seq !== pairSeq) return { ok: false, error: 'pair_seq_mismatch', number };
       seen.add(number);
-      const input = target.items?.[kind];
-      if (!Array.isArray(input) || !input.length || input.length > 100) {
-        return { ok: false, error: 'no_items', bl, kind };
-      }
+      issuedForTarget++;
       const items: InvoiceItem[] = [];
       for (const item of input) {
         const amount = Number(item.amount), label = clean(item.label, 200);
@@ -47,6 +53,7 @@ export async function saveInvoicePairs(body: ApiBody, actor: { username: string;
       }
       prepared.push({ kind, number, seq, settlementId, bl, items });
     }
+    if (!issuedForTarget) return { ok: false, error: 'no_items', bl };
   }
   const sourceIds = [...new Set(prepared.map(entry => entry.settlementId))];
   const sources = await db.select({ id: settlements.id, rowsJson: settlements.rowsJson })
@@ -66,6 +73,24 @@ export async function saveInvoicePairs(body: ApiBody, actor: { username: string;
       const conflicts = await tx.select({ number: invoices.number }).from(invoices)
         .where(inArray(invoices.number, [...seen]));
       if (conflicts.length) return { ok: false, error: 'invoice_number_used', numbers: conflicts.map(row => row.number) };
+
+      // BL ที่เคยออกใบชนิดเดียวกันไปแล้ว — กันออกซ้ำโดยไม่ตั้งใจ
+      // ใบที่ถูกยกเลิกไม่นับ เพราะตั้งใจออกใหม่แทนใบเดิม
+      const blList = [...new Set(prepared.map(entry => entry.bl.toUpperCase()))];
+      const already = await tx.select({ bl: invoices.bl, kind: invoices.kind, number: invoices.number })
+        .from(invoices)
+        .where(and(inArray(sql`upper(${invoices.bl})`, blList), ne(invoices.status, 'cancelled')));
+      const clash = prepared
+        .filter(entry => already.some(row =>
+          row.bl.toUpperCase() === entry.bl.toUpperCase() && row.kind === entry.kind))
+        .map(entry => {
+          const hit = already.find(row =>
+            row.bl.toUpperCase() === entry.bl.toUpperCase() && row.kind === entry.kind)!;
+          return { bl: entry.bl, kind: entry.kind, number: hit.number };
+        });
+      if (clash.length && !body.allowDuplicateBl) {
+        return { ok: false, error: 'bl_already_invoiced', duplicates: clash };
+      }
       const created = [];
       for (const entry of prepared) {
         const totals = invoiceTotals(entry.items, entry.kind);
