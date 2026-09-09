@@ -22,7 +22,7 @@ import { saveDataImage } from './storage';
 import { lookupTransport, transportDiagnostics } from './transport';
 import { pruneTransportSheets, syncTransportSheet, transportSyncStatus } from './transport-sync';
 import {
-  decideInvoice, getInvoice, invoiceConfig, invoicePreview, invoiceSources, listInvoices, updateInvoice,
+  decideInvoice, invoiceConfig, invoicePreview, invoiceSources, listInvoices,
   saveInvoice, saveInvoiceBatch
 } from './invoices';
 import type { ApiBody, ApiResult, Handler } from './types';
@@ -388,14 +388,6 @@ const handlers: Record<string, Handler> = {
   listInvoices: async (body) => {
     const session = await guard(body, ACCOUNT_ROLES);
     return session.error || listInvoices(body, session.user);
-  },
-  getInvoice: async (body) => {
-    const session = await guard(body, ACCOUNT_ROLES);
-    return session.error || getInvoice(body);
-  },
-  updateInvoice: async (body) => {
-    const session = await guard(body, ACCOUNT_ROLES);
-    return session.error || updateInvoice(body, session.user);
   },
   decideInvoice: async (body) => {
     const session = await guard(body, ['admin', 'manager-account']);
