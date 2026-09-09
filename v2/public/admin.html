@@ -2597,6 +2597,242 @@ function baht(n){
   return v.toLocaleString('th-TH', { minimumFractionDigits:2, maximumFractionDigits:2 });
 }
 
+/* ---------- ตารางเลือก BL ออกใบแจ้งหนี้ ---------- */
+/* ฟังก์ชันชุดนี้ถูกอ้างถึงตั้งแต่ commit 91ae941 แต่ตัวโค้ดไม่ได้ถูกใส่มาด้วย
+   ทำให้ทั้งหน้า admin ล้มตั้งแต่โหลด (ReferenceError ที่ addEventListener) */
+
+var INV_COST_LABELS = {
+  lift_on:'LIFT ON', lift_off:'LIFT OFF', storage:'STORAGE', extra_movement:'EXTRA MOVEMENT',
+  do_fee:'ค่าแลก DO', order_form:'ORDER FORM'
+};
+var INV_VAT_KEYS = ['lift_on','lift_off','storage','extra_movement'];
+var INV_NOVAT_KEYS = ['do_fee','order_form'];
+
+function initInvoiceWorkspace(){
+  if(!$('inv-issue-date').value) $('inv-issue-date').value = new Date().toISOString().slice(0,10);
+}
+
+/** เติมช่อง "เลขเริ่มต้น" จากเลขถัดไปที่เซิร์ฟเวอร์คำนวณให้ */
+function fillInvoiceStarts(){
+  var next = (invState.cfg && invState.cfg.next) || {};
+  if(!$('inv-start-v').value)  $('inv-start-v').value  = next.V  || '';
+  if(!$('inv-start-nv').value) $('inv-start-nv').value = next.NV || '';
+}
+
+/** แปลง "V20260905" หรือ "5" ให้เป็นเลขรัน */
+function invSeqFrom(text, period, kind){
+  var raw = String(text||'').trim();
+  if(!raw) return 0;
+  var m = raw.match(new RegExp('^'+kind+period+'([0-9]{2,6})$','i'));
+  if(m) return Number(m[1]);
+  if(/^[0-9]{1,6}$/.test(raw)) return Number(raw);
+  return 0;
+}
+
+function invNumber(kind, period, seq){
+  return kind + period + String(seq).padStart(2,'0');
+}
+
+/**
+ * แจกเลขให้ทุกแถวที่แสดงอยู่ — V เดินเลขเรียง ส่วน NV ใช้เลขเดียวกับ V ของแถวนั้น
+ * (กฎเดียวกับฝั่งเซิร์ฟเวอร์: ชุดไหนไม่มี Non VAT ก็ข้ามเลข NV ไปเลย)
+ */
+function assignInvoiceNumbers(){
+  var period = (invState.cfg && invState.cfg.period) || '';
+  if(!period) return;
+  var startV = invSeqFrom($('inv-start-v').value, period, 'V') || 1;
+  var seq = startV;
+  (invState.visible||[]).forEach(function(row){
+    row._numbers = { V: invNumber('V', period, seq), NV: invNumber('NV', period, seq) };
+    seq++;
+  });
+}
+
+function loadInvoiceSources(){
+  $('inv-src-body').innerHTML = '<tr><td colspan="9" class="muted">กำลังโหลด…</td></tr>';
+  api({ action:'invoiceSources', token:state.token, from:$('inv-from').value, to:$('inv-to').value })
+    .then(function(res){
+      if(!res.ok){ $('inv-src-body').innerHTML = '<tr><td colspan="9" class="muted">โหลดไม่สำเร็จ: '+esc(res.error)+'</td></tr>'; return; }
+      invState.sources = res.rows || [];
+      renderInvoiceSources();
+    });
+}
+
+/** ช่องกรอกค่าใช้จ่ายในแถว — แก้แล้วเก็บลง row.costs ทันที ไม่ต้องเปิดฟอร์ม */
+function invCostCells(row, keys, idx){
+  return '<div class="inv-cost-list">' + keys.map(function(k){
+    var v = Number((row.costs||{})[k]) || 0;
+    return '<label class="inv-cost-row"><span>'+esc(INV_COST_LABELS[k]||k)+'</span>'
+      + '<input type="number" step="0.01" min="0" class="inv-cost" data-i="'+idx+'" data-k="'+k+'" value="'+(v||'')+'" placeholder="0"></label>';
+  }).join('') + '</div>';
+}
+
+function renderInvoiceSources(){
+  var q = $('inv-search').value.trim().toLowerCase();
+  var mode = $('inv-filter').value;
+  var rows = (invState.sources||[]).filter(function(r){
+    var issued = r.issued && (r.issued.V || r.issued.NV);
+    if(mode === 'open' && issued) return false;
+    if(mode === 'done' && !issued) return false;
+    if(!q) return true;
+    return [r.bl, r.name, r.username, r.customer].join(' ').toLowerCase().indexOf(q) >= 0;
+  });
+  invState.visible = rows;
+  assignInvoiceNumbers();
+
+  if(!rows.length){
+    $('inv-src-body').innerHTML = '<tr><td colspan="9" class="muted">ไม่มีรายการ</td></tr>';
+    updateInvoicePicked();
+    return;
+  }
+
+  $('inv-src-body').innerHTML = rows.map(function(r, i){
+    var tags = [];
+    if(r.issued && r.issued.V)  tags.push('<span class="pill approved">'+esc(r.issued.V)+'</span>');
+    if(r.issued && r.issued.NV) tags.push('<span class="pill approved">'+esc(r.issued.NV)+'</span>');
+    var nums = r._numbers || {};
+    return '<tr>'
+      + '<td><input type="checkbox" class="inv-pick" data-i="'+i+'"></td>'
+      + '<td>'+esc(r.inspectDate||'')+'<div class="muted" style="font-size:11px">'+esc(nums.V||'')+'</div></td>'
+      + '<td>'+esc(r.name||r.username||'')+'</td>'
+      + '<td><b>'+esc(r.bl||'')+'</b><div class="muted" style="font-size:11px">'+esc(r.customer||'')+'</div></td>'
+      + '<td class="right">'+(Number(r.containers)||0)+'</td>'
+      + '<td>'+invCostCells(r, INV_VAT_KEYS, i)+'</td>'
+      + '<td>'+invCostCells(r, INV_NOVAT_KEYS, i)+'</td>'
+      + '<td>'+(tags.join(' ')||'<span class="muted">—</span>')+'</td>'
+      + '<td class="right" style="white-space:nowrap">'
+      +   '<button class="btn btn-ghost btn-sm inv-prev" data-i="'+i+'">Preview</button> '
+      +   '<button class="btn btn-primary btn-sm inv-save1" data-i="'+i+'">บันทึกใบนี้</button>'
+      + '</td></tr>';
+  }).join('');
+
+  // แก้ค่าใช้จ่ายในตารางได้เลย เก็บเข้า row ทันทีเพื่อให้ปุ่มบันทึกใช้ค่าล่าสุด
+  Array.prototype.forEach.call($('inv-src-body').querySelectorAll('.inv-cost'), function(inp){
+    inp.addEventListener('change', function(){
+      var row = rows[Number(inp.getAttribute('data-i'))];
+      if(!row) return;
+      row.costs = row.costs || {};
+      row.costs[inp.getAttribute('data-k')] = Number(inp.value) || 0;
+    });
+  });
+  Array.prototype.forEach.call($('inv-src-body').querySelectorAll('.inv-pick'), function(cb){
+    cb.addEventListener('change', updateInvoicePicked);
+  });
+  Array.prototype.forEach.call($('inv-src-body').querySelectorAll('.inv-prev'), function(b){
+    b.addEventListener('click', function(){ previewInvoiceRows([rows[Number(b.getAttribute('data-i'))]]); });
+  });
+  Array.prototype.forEach.call($('inv-src-body').querySelectorAll('.inv-save1'), function(b){
+    b.addEventListener('click', function(){ saveInvoiceRows([rows[Number(b.getAttribute('data-i'))]], b); });
+  });
+  $('inv-all').checked = false;
+  updateInvoicePicked();
+}
+
+function pickedInvoiceRows(){
+  var rows = invState.visible || [];
+  return Array.prototype.map.call($('inv-src-body').querySelectorAll('.inv-pick:checked'), function(cb){
+    return rows[Number(cb.getAttribute('data-i'))];
+  }).filter(Boolean);
+}
+
+function updateInvoicePicked(){
+  var n = pickedInvoiceRows().length;
+  $('inv-picked').textContent = 'เลือกไว้ ' + n + ' รายการ';
+  $('inv-preview-picked').disabled = !n;
+  $('inv-create-picked').disabled = !n;
+}
+
+/** รายการของใบหนึ่ง แยกตามชนิด — ใช้ค่าที่กรอกในตาราง ณ ตอนนั้น */
+function invItemsFor(row, kind){
+  var keys = kind === 'V' ? INV_VAT_KEYS : INV_NOVAT_KEYS;
+  var divisor = (invState.cfg && invState.cfg.divisor) || 1.04;
+  var items = [];
+  keys.forEach(function(k){
+    var raw = Number((row.costs||{})[k]) || 0;
+    if(raw <= 0) return;
+    var amount = kind === 'V' ? Math.round((raw/divisor)*100)/100 : raw;
+    items.push({ label: 'ADV - ค่า ' + INV_COST_LABELS[k], amount: amount });
+  });
+  // ไม่มีค่าใช้จ่ายฝั่งนี้เลย — ส่งบรรทัดยอด 0 ไปแทน จะได้ยังออกใบได้ (ฝั่งเซิร์ฟเวอร์ก็ยอมรับ)
+  if(!items.length) items.push({ label: 'ADV - ค่า ' + INV_COST_LABELS[keys[0]], amount: 0 });
+  return items;
+}
+
+/** ทำใบทั้งชุดเป็นเอกสารเดียวแล้วเปิดหน้าต่างใหม่ — ใช้ทั้ง preview และหลังบันทึก */
+function previewInvoiceRows(rows){
+  if(!rows || !rows.length) return;
+  var date = $('inv-issue-date').value || new Date().toISOString().slice(0,10);
+  var docs = [];
+  rows.forEach(function(r){
+    ['V','NV'].forEach(function(kind){
+      var items = invItemsFor(r, kind);
+      var sum = items.reduce(function(a,b){ return a + (Number(b.amount)||0); }, 0);
+      // ฝั่ง NV ที่ไม่มียอดเลย ไม่ต้องพิมพ์ออกมา (แต่ฝั่ง V พิมพ์เสมอ)
+      if(kind === 'NV' && sum <= 0) return;
+      var vat = kind === 'V' ? Math.round(sum*((invState.cfg&&invState.cfg.vatRate)||0.07)*100)/100 : 0;
+      docs.push({
+        kind: kind,
+        number: (r._numbers && r._numbers[kind]) || '(ยังไม่ออกเลข)',
+        issueDate: date,
+        customerName: (invState.cfg&&invState.cfg.customer&&invState.cfg.customer.name)||'',
+        customerAddress: (invState.cfg&&invState.cfg.customer&&invState.cfg.customer.address)||'',
+        customerTaxId: (invState.cfg&&invState.cfg.customer&&invState.cfg.customer.taxId)||'',
+        bl: r.bl, items: items,
+        subtotal: Math.round(sum*100)/100, vat: vat, total: Math.round((sum+vat)*100)/100
+      });
+    });
+  });
+  if(!docs.length){ alert('ไม่มีรายการให้แสดง'); return; }
+  printInvoiceBatch(docs);
+}
+
+/** บันทึกจริง — ทีละ BL หรือหลาย BL ก็ใช้ทางเดียวกัน แล้วเปิด PDF รวมให้ */
+function saveInvoiceRows(rows, btn){
+  if(!rows || !rows.length) return;
+  var date = $('inv-issue-date').value || new Date().toISOString().slice(0,10);
+  var targets = rows.map(function(r){
+    return {
+      settlementId: r.settlementId, bl: r.bl,
+      numbers: r._numbers || {},
+      items: { V: invItemsFor(r,'V'), NV: invItemsFor(r,'NV') }
+    };
+  });
+  var label = btn ? btn.textContent : '';
+  if(btn){ btn.disabled = true; btn.textContent = 'กำลังบันทึก…'; }
+  api({ action:'saveInvoiceBatch', token:state.token, kind:'BOTH', issueDate:date, targets:targets })
+    .then(function(res){
+      if(btn){ btn.disabled = false; btn.textContent = label; }
+      if(!res.ok){
+        alert('บันทึกไม่สำเร็จ: ' + (res.error==='invoice_number_used'
+          ? ('เลขนี้ถูกใช้ไปแล้ว ' + (res.numbers||[]).join(', ') + ' — กด "โหลดใหม่" แล้วลองอีกครั้ง')
+          : res.error));
+        return;
+      }
+      printInvoiceBatch(res.created || []);
+      loadInvoiceSources();
+      loadInvoiceList();
+      api({ action:'invoiceConfig', token:state.token }).then(function(cfg){
+        if(cfg.ok){ invState.cfg = cfg; $('inv-start-v').value=''; $('inv-start-nv').value=''; fillInvoiceStarts(); }
+      });
+    });
+}
+
+$('inv-all').addEventListener('change', function(){
+  var on = $('inv-all').checked;
+  Array.prototype.forEach.call($('inv-src-body').querySelectorAll('.inv-pick'), function(cb){ cb.checked = on; });
+  updateInvoicePicked();
+});
+$('inv-preview-picked').addEventListener('click', function(){ previewInvoiceRows(pickedInvoiceRows()); });
+$('inv-create-picked').addEventListener('click', function(){
+  var picked = pickedInvoiceRows();
+  if(!picked.length) return;
+  if(!confirm('สร้างใบแจ้งหนี้ ' + picked.length + ' รายการ (V + NV ตามที่มียอด)?')) return;
+  saveInvoiceRows(picked, $('inv-create-picked'));
+});
+$('inv-from').addEventListener('change', loadInvoiceSources);
+$('inv-to').addEventListener('change', loadInvoiceSources);
+$('inv-start-v').addEventListener('input', function(){ assignInvoiceNumbers(); renderInvoiceSources(); });
+
 function initInvoiceTab(){
   initInvoiceWorkspace();
   if(invState.loaded) return;
@@ -2795,6 +3031,37 @@ var INV_STATUS = {
   cancelled:'<span class="pill rejected">ยกเลิก</span>'
 };
 
+
+/** เปิดใบเดิมมาแก้ — เลขที่/ชนิดแก้ไม่ได้ แก้ได้แต่วันที่ ยอด และหมายเหตุ */
+function openInvoiceEdit(row){
+  if(!row) return;
+  api({ action:'getInvoice', token:state.token, number:row.number }).then(function(res){
+    if(!res.ok){ alert('เปิดใบไม่สำเร็จ: '+res.error); return; }
+    var inv = res.invoice;
+    var lines = (inv.items||[]).map(function(it){ return it.label + ' = ' + it.amount; }).join('\n');
+    var edited = prompt(
+      'แก้ใบ ' + inv.number + ' (' + (inv.kind==='V'?'มี VAT':'ไม่มี VAT') + ')\n' +
+      'พิมพ์บรรทัดละ 1 รายการ รูปแบบ  ชื่อรายการ = ยอด\n' +
+      'ลบบรรทัดที่ไม่ต้องการออกได้', lines);
+    if(edited === null) return;
+    var items = edited.split('\n').map(function(line){
+      var at = line.lastIndexOf('=');
+      if(at < 0) return null;
+      var label = line.slice(0, at).trim();
+      var amount = Number(line.slice(at+1).trim().replace(/,/g,''));
+      if(!label || !isFinite(amount) || amount < 0) return null;
+      return { label: label, amount: amount };
+    }).filter(Boolean);
+    if(!items.length){ alert('ไม่มีรายการที่ใช้ได้ — ต้องมีอย่างน้อย 1 บรรทัด รูปแบบ ชื่อรายการ = ยอด'); return; }
+    api({ action:'updateInvoice', token:state.token, number:inv.number, items:items })
+      .then(function(r2){
+        if(!r2.ok){ alert('บันทึกไม่สำเร็จ: ' + (r2.error==='invoice_cancelled' ? 'ใบนี้ถูกยกเลิกแล้ว ต้องกด "คืนเป็นร่าง" ก่อน' : r2.error)); return; }
+        loadInvoiceList();
+        toast('แก้ใบ ' + inv.number + ' แล้ว — ยอดใหม่ ' + baht(r2.total), 3500);
+      });
+  });
+}
+
 function renderInvoiceList(){
   var q = $('invl-search').value.trim().toLowerCase();
   var rows = invState.list.filter(function(r){
@@ -2804,8 +3071,17 @@ function renderInvoiceList(){
   if(!rows.length){ $('inv-list-body').innerHTML = '<tr><td colspan="9" class="muted">ยังไม่มีใบแจ้งหนี้</td></tr>'; return; }
   $('inv-list-body').innerHTML = rows.map(function(r, i){
     var act = '<button class="btn btn-ghost btn-sm invl-view" data-i="'+i+'">ดู</button>';
+    if(r.status !== 'cancelled'){
+      act += ' <button class="btn btn-ghost btn-sm invl-edit" data-i="'+i+'">แก้ไข</button>';
+    }
     if(invState.canApprove && r.status==='draft'){
       act += ' <button class="btn btn-ok btn-sm invl-ok" data-i="'+i+'">อนุมัติ</button>';
+    }
+    // ยกเลิก/คืนค่าเป็นร่าง — เฉพาะ admin กับ manager-account (ฝั่งเซิร์ฟเวอร์กันอีกชั้น)
+    if(invState.canApprove){
+      act += r.status === 'cancelled'
+        ? ' <button class="btn btn-ghost btn-sm invl-undo" data-i="'+i+'">คืนเป็นร่าง</button>'
+        : ' <button class="btn btn-danger btn-sm invl-cancel" data-i="'+i+'">ยกเลิก</button>';
     }
     return '<tr>'
       + '<td><b>'+esc(r.number)+'</b></td>'
@@ -2821,6 +3097,25 @@ function renderInvoiceList(){
   Array.prototype.forEach.call($('inv-list-body').querySelectorAll('.invl-view'), function(b){
     b.addEventListener('click', function(){ printInvoice(rows[Number(b.getAttribute('data-i'))]); });
   });
+  Array.prototype.forEach.call($('inv-list-body').querySelectorAll('.invl-edit'), function(b){
+    b.addEventListener('click', function(){ openInvoiceEdit(rows[Number(b.getAttribute('data-i'))]); });
+  });
+  var decide = function(sel, decision, ask){
+    Array.prototype.forEach.call($('inv-list-body').querySelectorAll(sel), function(b){
+      b.addEventListener('click', function(){
+        var r = rows[Number(b.getAttribute('data-i'))];
+        if(ask && !confirm(ask.replace('%s', r.number))) return;
+        b.disabled = true;
+        api({ action:'decideInvoice', token:state.token, number:r.number, decision:decision })
+          .then(function(res){
+            if(res.ok) loadInvoiceList();
+            else { b.disabled = false; alert('ทำรายการไม่สำเร็จ: '+res.error); }
+          });
+      });
+    });
+  };
+  decide('.invl-cancel', 'cancelled', 'ยกเลิกใบ %s ?\n\nเลขใบจะยังถูกใช้ไปแล้ว ออกใบใหม่จะได้เลขถัดไป');
+  decide('.invl-undo', 'draft', null);
   Array.prototype.forEach.call($('inv-list-body').querySelectorAll('.invl-ok'), function(b){
     b.addEventListener('click', function(){
       var r = rows[Number(b.getAttribute('data-i'))];
@@ -2832,6 +3127,113 @@ function renderInvoiceList(){
 }
 
 /** เปิดหน้าต่างใหม่แล้ววาดใบแจ้งหนี้ตามฟอร์มในชีต — สั่งพิมพ์หรือ Save as PDF ได้เลย */
+/** วาดเนื้อใบ 1 ใบ — แยกออกมาเพื่อให้พิมพ์หลายใบในหน้าต่างเดียวได้ */
+function invoicePageHtml(d, co, preparer){
+  var kind = d.kind, number = d.number, date = d.issueDate;
+  var cust = d.customerName, addr = d.customerAddress, tax = d.customerTaxId;
+  var bl = d.bl, items = d.items || [];
+  var subtotal = d.subtotal, vat = d.vat, total = d.total;
+  var dparts = String(date||'').split('-');
+  var thDate = dparts.length===3 ? (dparts[2]+'/'+dparts[1]+'/'+dparts[0]) : date;
+  var lines = '';
+  for(var i=0;i<15;i++){
+    var it = items[i];
+    lines += '<tr>'
+      + '<td class="c">'+(it?(i+1):'')+'</td>'
+      + '<td>'+(it?esc(it.label):'')+'</td>'
+      + '<td class="c">'+(it&&it.qty?it.qty:'')+'</td>'
+      + '<td class="r">'+(it&&it.unitPrice?baht(it.unitPrice):'')+'</td>'
+      + '<td class="r">'+(it?baht(it.amount):'')+'</td>'
+      + '<td>'+(it&&it.note?esc(it.note):'')+'</td></tr>';
+  }
+  var sumRow = function(label, value, bold){
+    var b0 = bold ? '<b>' : '', b1 = bold ? '</b>' : '';
+    return '<tr class="sumrow">'
+      + '<td class="sl" colspan="4">'+b0+label+b1+'</td>'
+      + '<td class="r sv">'+b0+value+b1+'</td>'
+      + '<td></td></tr>';
+  };
+  return ''
+  + '<div class="co">'
+    +   (co.logoUrl ? '<img class="logo" src="'+esc(co.logoUrl)+'" alt="" onerror="this.style.display=\'none\'">' : '')
+    +   '<div class="head">'+esc(co.name||'')+'</div>'
+    +   '<div>'+esc(co.address||'')+'</div>'
+    +   '<div>เลขประจำตัวผู้เสียภาษี '+esc(co.taxId||'')+'</div>'
+    + '</div>'
+    + '<h1>ใบแจ้งหนี้ / INVOICE</h1>'
+    + '<table class="noborder"><tr>'
+    +   '<td style="width:62%">ชื่อลูกค้า : '+esc(cust||'')+'</td>'
+    +   '<td class="r" style="width:16%">วันที่ &nbsp;</td><td style="width:22%">'+esc(thDate||'')+'</td></tr>'
+    + '<tr><td>ที่อยู่ : '+esc(addr||'')+'</td>'
+    +   '<td class="r">ใบแจ้งหนี้เลขที่ &nbsp;</td><td><b>'+esc(number||'')+'</b></td></tr>'
+    + '<tr><td>เลขประจำตัวผู้เสียภาษี : '+esc(tax||'')+'</td>'
+    +   '<td class="r">B/L &nbsp;</td><td>'+esc(bl||'')+'</td></tr></table><br>'
+    + '<table><thead><tr>'
+    +   '<th style="width:50px">ลำดับ</th><th>รายการ</th><th style="width:60px">จำนวน</th>'
+    +   '<th style="width:90px">ราคา/หน่วย</th><th style="width:110px">จำนวนเงิน</th><th style="width:110px">หมายเหตุ</th>'
+    + '</tr></thead><tbody>'+lines
+    +   sumRow('ค่าบริการรวม', baht(subtotal), false)
+    +   sumRow('ภาษีมูลค่าเพิ่ม 7%', (kind==='V'?baht(vat):''), false)
+    +   sumRow('รวมเงินทั้งสิ้น', baht(total), true)
+    +   sumRow('หักภาษี ณ ที่จ่าย 3%', '-', false)
+    +   sumRow('รวมเงินที่ต้องชำระ', baht(total), true)
+    + '</tbody></table>'
+    + '<div class="foot">'
+    // จำกัดความกว้างข้อความไว้ 70% กันหมายเหตุ (ยาว ~105 ตัวอักษร) ตัดบรรทัดไปลอดใต้ตราประทับ
+    +   '<table class="noborder" style="margin-top:10px;width:70%"><tr><td>'
+    +     '<div><b>ช่องทางการชำระเงิน</b></div>'
+    +     '<div>ชื่อบัญชี : '+esc(co.bankAccountName||'')+'</div>'
+    +     '<div>เลขที่บัญชี : '+esc(co.bankAccountNo||'')+'</div>'
+    +     '<div style="margin-top:8px">หมายเหตุ '+esc(co.note||'')+'</div>'
+    +     '<div style="margin-top:22px">ผู้จัดทำใบแจ้งหนี้ &nbsp;&nbsp;&nbsp; '+esc(preparer||'')+'</div>'
+    +   '</td></tr></table>'
+    +   (co.stampUrl ? '<img class="stamp" src="'+esc(co.stampUrl)+'" alt="" onerror="this.style.display=\'none\'">' : '')
+    + '</div>'
+      ;
+}
+
+/** พิมพ์หลายใบในหน้าต่างเดียว — ขึ้นหน้าใหม่ทุกใบ */
+function printInvoiceBatch(docs){
+  if(!docs || !docs.length) return;
+  var co = (invState.cfg && invState.cfg.company) || {};
+  var preparer = (state.user && state.user.name) || '';
+  var pages = docs.map(function(d){ return '<section class="invpage">' + invoicePageHtml(d, co, preparer) + '</section>'; }).join('');
+  var html = '<!doctype html><html lang="th"><head><meta charset="utf-8">'
+    + '<title>'+esc(docs.length===1 ? docs[0].number : ('ใบแจ้งหนี้ '+docs.length+' ใบ'))+'</title><style>'
+    + '@font-face{font-family:Sarabun;font-style:normal;font-weight:400;src:url(\"/fonts/Sarabun-Regular.ttf\") format(\"truetype\");font-display:swap}@font-face{font-family:Sarabun;font-style:normal;font-weight:600;src:url(\"/fonts/Sarabun-SemiBold.ttf\") format(\"truetype\");font-display:swap}@font-face{font-family:Sarabun;font-style:normal;font-weight:700;src:url(\"/fonts/Sarabun-Bold.ttf\") format(\"truetype\");font-display:swap}@font-face{font-family:Sarabun;font-style:normal;font-weight:800;src:url(\"/fonts/Sarabun-ExtraBold.ttf\") format(\"truetype\");font-display:swap}@page{size:Letter;margin:0}'
+    + 'body{font-family:"Sarabun","Leelawadee UI","Tahoma",sans-serif;font-size:13px;color:#111;margin:24px;}'
+    + 'table{border-collapse:collapse;width:100%;}'
+    + 'th,td{border:1px solid #333;padding:5px 7px;}'
+    + '.c{text-align:center}.r{text-align:right}'
+    + '.noborder,.noborder td{border:0;padding:2px 0;}'
+    + 'h1{font-size:19px;text-align:center;margin:14px 0;letter-spacing:1px}'
+    + '.head{font-weight:700;font-size:15px}'
+    + '.co{text-align:center;margin-bottom:6px}'
+    + '.logo{display:block;margin:0 auto 6px;max-height:78px}'
+    + 'thead th{background:#d9d9d9}'
+    + '.sumrow td{background:#d9d9d9}'
+    + '.sl{text-align:right;font-weight:600}'
+    + '.sv{text-align:right}'
+    + '.foot{position:relative}'
+    + '.stamp{position:absolute;right:6px;bottom:38px;max-height:116px;max-width:177px;transform:rotate(-10deg) scale(1.05);transform-origin:center}'  // ยกขึ้นพ้นบรรทัด "ผู้จัดทำใบแจ้งหนี้"
+    + '@media print{body{margin:10mm}'
+    +   'thead th,.sumrow td{-webkit-print-color-adjust:exact;print-color-adjust:exact}}'
+    + '</style></head><body>'
+        + '.invpage{page-break-after:always}.invpage:last-child{page-break-after:auto}'
+    + '</style></head><body>'
+    + pages
+    + '</body></html>';
+
+  var w = window.open('', '_blank');
+  if(!w){ alert('เบราว์เซอร์บล็อกหน้าต่างใหม่ — อนุญาต popup ของเว็บนี้ก่อน'); return; }
+  w.document.write(html);
+  w.document.close();
+  w.focus();
+  Promise.all([400,600,700,800].map(function(weight){return w.document.fonts.load(weight+' 13px Sarabun');}))
+    .then(function(){ w.print(); })
+    .catch(function(){ w.document.body.insertAdjacentHTML('afterbegin','<p>โหลดฟอนต์ Sarabun ไม่สำเร็จ กรุณาเปิดเอกสารใหม่</p>'); });
+}
+
 function printInvoice(saved){
   var co = (invState.cfg && invState.cfg.company) || {};
   var kind, number, date, cust, addr, tax, bl, items, subtotal, vat, total;
