@@ -269,6 +269,16 @@ export const invoices = pgTable('invoices', {
   status: text('status').notNull().default('draft'),  // draft | approved | cancelled
   approvedBy: text('approved_by').notNull().default(''),
   approvedAt: text('approved_at').notNull().default(''),
+  // ---- ชุดเอกสารที่ฝากส่ง KOLA ----
+  // batchNo = เลขชุดในเดือนนั้น (นับใหม่ทุกเดือน) เช่น 1 → "ชุดที่ 01/09"
+  batchNo: integer('batch_no'),
+  batchPeriod: text('batch_period').notNull().default(''),   // yyyymm ของชุด
+  batchSentDate: text('batch_sent_date').notNull().default(''), // วันที่ฝากส่ง yyyy-MM-dd
+  sentToKola: boolean('sent_to_kola').notNull().default(false),
+  // ---- ลูกหนี้สำรองจ่ายคงค้าง ----
+  paidAmount: doublePrecision('paid_amount').notNull().default(0),
+  paidAt: text('paid_at').notNull().default(''),
+  receiptNo: text('receipt_no').notNull().default(''),
   // ใบปิดบัญชีที่เอามาออกใบนี้ — กันออกซ้ำและตามกลับไปดูที่มาได้
   settlementId: text('settlement_id').notNull().default(''),
   createdBy: citext('created_by').notNull()

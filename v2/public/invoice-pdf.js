@@ -66,7 +66,7 @@
     });
     if(page.length||!pages.length)pages.push(page);return pages;
   }
-  function drawPage(invoice, company, images, items, pageIndex, pageCount){
+  function drawPage(invoice, company, images, items, pageIndex, pageCount, options){
     var canvas = document.createElement('canvas'); canvas.width = 1632; canvas.height = 2112;
     var ctx = canvas.getContext('2d'); ctx.scale(2,2);
     ctx.fillStyle = '#fff'; ctx.fillRect(0,0,816,1056); ctx.fillStyle = '#111';
@@ -91,7 +91,7 @@
     text(company.name,408,138,15,true,'center');
     text(company.address,408,155,13,false,'center');
     text('เลขประจำตัวผู้เสียภาษี '+company.taxId,408,172,13,false,'center');
-    text('ใบแจ้งหนี้ / INVOICE',408,209,19,true,'center');
+    text((options&&options.title)||'ใบแจ้งหนี้ / INVOICE',408,209,19,true,'center');
     text('ชื่อลูกค้า : '+invoice.customerName,38,243,13,false,'left',453);
     text('ที่อยู่ : '+invoice.customerAddress,38,264,13,false,'left',453);
     text('เลขประจำตัวผู้เสียภาษี : '+invoice.customerTaxId,38,285,13,false,'left',453);
@@ -151,13 +151,13 @@
     return {width:canvas.width,height:canvas.height,bytes:Uint8Array.from(raw,function(char){return char.charCodeAt(0);})};
   }
   global.InvoicePDF = {
-    create: async function(invoices,company){
+    create: async function(invoices,company,options){
       if(!invoices.length) throw new Error('ไม่มีใบแจ้งหนี้');
       await loadSarabun();
       var images=await Promise.all([loadImage(company.logoUrl),loadImage(company.stampUrl)]), pages=[];
       invoices.forEach(function(invoice){
         var groups=paginate(invoice.items);
-        for(var i=0;i<groups.length;i++) pages.push(drawPage(invoice,company,images,groups[i],i,groups.length));
+        for(var i=0;i<groups.length;i++) pages.push(drawPage(invoice,company,images,groups[i],i,groups.length,options));
       });
       return pdfBytes(pages);
     }

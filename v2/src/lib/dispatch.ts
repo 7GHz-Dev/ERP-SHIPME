@@ -1,4 +1,8 @@
 import { saveInvoicePairs } from './invoice-pairs';
+import {
+  createInvoiceBatch, issueReceipts, listReceivables, matchReceivables,
+  sendBatchToKola, settleReceivables
+} from './invoice-batches';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { checkins, geocodeCache, settlements, users } from '@/db/schema';
@@ -396,6 +400,30 @@ const handlers: Record<string, Handler> = {
   updateInvoice: async (body) => {
     const session = await guard(body, ACCOUNT_ROLES);
     return session.error || updateInvoice(body, session.user);
+  },
+  createInvoiceBatch: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || createInvoiceBatch(body);
+  },
+  sendBatchToKola: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || sendBatchToKola(body);
+  },
+  listReceivables: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || listReceivables(body);
+  },
+  matchReceivables: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || matchReceivables(body);
+  },
+  settleReceivables: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || settleReceivables(body, session.user);
+  },
+  issueReceipts: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || issueReceipts(body);
   },
   decideInvoice: async (body) => {
     const session = await guard(body, ['admin', 'manager-account']);
