@@ -233,6 +233,27 @@ export const transportJobs = pgTable('transport_jobs', {
   importedAt: text('imported_at').notNull()
 }, (t) => [index('transport_lookup_idx').on(t.transportDate, t.shipping)]);
 
+/**
+ * ประวัติการ sync ชีตงานขนส่ง — หน้า dashboard ใช้ดูว่ารอบไหนเพิ่ม/ลบอะไรบ้าง
+ *
+ * transport_jobs เก็บได้แค่สถานะปัจจุบัน เพราะทุกรอบ sync จะลบทั้งแท็บแล้วใส่ใหม่
+ * ทุกแถวเลยมี imported_at เดียวกันหมด ดูย้อนหลังไม่ได้ว่าแถวไหนเพิ่งเข้ามา
+ * ตารางนี้จึงบันทึกผลของแต่ละรอบไว้แยก พร้อมตัวอย่าง BL ที่เปลี่ยน
+ */
+export const transportSyncLogs = pgTable('transport_sync_logs', {
+  id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+  syncedAt: text('synced_at').notNull(),
+  sourceFile: text('source_file').notNull().default(''),
+  sourceSheet: text('source_sheet').notNull().default(''),
+  rowsBefore: integer('rows_before').notNull().default(0),
+  rowsAfter: integer('rows_after').notNull().default(0),
+  added: integer('added').notNull().default(0),
+  removed: integer('removed').notNull().default(0),
+  // ตัวอย่าง BL ที่เพิ่ม/หายไปในรอบนั้น เก็บเป็น JSON สั้น ๆ ไม่เกิน 20 รายการ
+  addedBls: text('added_bls').notNull().default('[]'),
+  removedBls: text('removed_bls').notNull().default('[]')
+}, (t) => [index('transport_sync_logs_idx').on(t.syncedAt)]);
+
 export const geocodeCache = pgTable('geocode_cache', {
   point: text('point').primaryKey(),
   address: text('address').notNull(),

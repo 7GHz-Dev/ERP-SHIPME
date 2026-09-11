@@ -1,6 +1,6 @@
 import { and, eq, notInArray, sql } from 'drizzle-orm';
 import { db } from '@/db';
-import { transportJobs } from '@/db/schema';
+import { transportJobs, transportSyncLogs } from '@/db/schema';
 import { env } from './env';
 import { nowIso } from './utils';
 import type { ApiBody, ApiResult } from './types';
@@ -144,7 +144,19 @@ export async function syncTransportSheet(body: ApiBody): Promise<ApiResult> {
 
   const scope = and(eq(transportJobs.sourceFile, sourceFile), eq(transportJobs.sourceSheet, sourceSheet));
 
-  const before = await db.select({ count: sql<number>`count(*)::int` }).from(transportJobs).where(scope);
+  // เก็บของเดิมไว้เทียบว่ารอบนี้เพิ่ม/หายอะไรบ้าง — ตัว transport_jobs เองเก็บ
+  // ได้แค่สถานะปัจจุบัน เพราะทุกรอบลบทั้งแท็บแล้วใส่ใหม่ ประวัติจึงต้องบันทึกแยก
+  const previous = await db.select({ bl: transportJobs.bl, containerNo: transportJobs.containerNo })
+    .from(transportJobs).where(scope);
+
+  const keyOf = (bl: string, cntr: string) => `${bl.toUpperCase()}|${cntr.toUpperCase()}`;
+  const beforeKeys = new Set(previous.map(r => keyOf(r.bl, r.containerNo)));
+  const afterKeys = new Set(rows.map(r => keyOf(r.bl, r.containerNo)));
+
+  const addedKeys = [...afterKeys].filter(k => !beforeKeys.has(k));
+  const removedKeys = [...beforeKeys].filter(k => !afterKeys.has(k));
+  // เก็บแค่เลข BL ไม่เอาเบอร์ตู้ เพราะหน้า dashboard อ่านเป็นรายการงาน
+  const blOf = (keys: string[]) => [...new Set(keys.map(k => k.split('|')[0]).filter(Boolean))].slice(0, 20);
 
   await db.transaction(async (tx) => {
     await tx.delete(transportJobs).where(scope);
@@ -152,6 +164,17 @@ export async function syncTransportSheet(body: ApiBody): Promise<ApiResult> {
       await tx.insert(transportJobs).values(rows.slice(index, index + 500).map((row) => ({
         ...row, sourceFile, sourceSheet, sourceName, importedAt
       })));
+    }
+    // บันทึกเฉพาะรอบที่มีอะไรเปลี่ยนจริง ไม่งั้นตารางจะโตด้วยรอบที่ไม่มีอะไรเกิดขึ้น
+    // (trigger กวาดทุกชั่วโมงยิงเข้ามาเรื่อย ๆ แม้ไม่มีคนแก้ชีต)
+    if (addedKeys.length || removedKeys.length) {
+      await tx.insert(transportSyncLogs).values({
+        syncedAt: importedAt, sourceFile, sourceSheet,
+        rowsBefore: previous.length, rowsAfter: rows.length,
+        added: addedKeys.length, removed: removedKeys.length,
+        addedBls: JSON.stringify(blOf(addedKeys)),
+        removedBls: JSON.stringify(blOf(removedKeys))
+      });
     }
   });
 
@@ -161,7 +184,9 @@ export async function syncTransportSheet(body: ApiBody): Promise<ApiResult> {
     sheet: sourceSheet,
     received: Array.isArray(body.rows) ? body.rows.length : 0,
     saved: rows.length,
-    replaced: before[0]?.count ?? 0,
+    replaced: previous.length,
+    added: addedKeys.length,
+    removed: removedKeys.length,
     importedAt
   };
 }

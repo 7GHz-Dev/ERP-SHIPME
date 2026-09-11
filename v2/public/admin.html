@@ -250,7 +250,7 @@
     <!-- DASH -->
     <section id="tab-dash">
       <div class="toolbar" style="margin-bottom:10px">
-        <b>ข้อมูลใน Supabase</b>
+        <b>สถานะ sync ชีตงานขนส่ง</b>
         <span id="db-at" class="muted"></span>
         <span class="grow"></span>
         <label style="display:flex;align-items:center;gap:6px;font-size:13px">
@@ -258,7 +258,7 @@
         <button id="db-reload" class="btn btn-ghost btn-sm">↻ รีเฟรชเดี๋ยวนี้</button>
       </div>
       <div class="stats" id="db-stats"></div>
-      <div id="db-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px;margin:14px 0"></div>
+      <div id="db-grid" style="display:grid;gap:14px;margin:14px 0"></div>
       <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
       <div class="stats" id="stats"></div>
       <h3 class="sec">การเข้างานล่าสุด</h3>
@@ -1246,77 +1246,55 @@ function loadDbOverview(){
 function renderDbOverview(r){
   $('db-at').textContent = 'อัปเดตล่าสุด ' + new Date(r.at).toLocaleTimeString('th-TH');
 
-  // แถวสรุปด้านบน
-  var byName = {};
-  r.tables.forEach(function(t){ byName[t.name] = t; });
-  var stats = [
-    { n:(byName.transport_jobs||{}).rows||0, l:'งานขนส่ง (แถว)' },
-    { n:(byName.checkins||{}).rows||0,      l:'บันทึกเข้างาน' },
-    { n:(byName.settlements||{}).rows||0,   l:'ใบปิดบัญชี' },
-    { n:(byName.invoices||{}).rows||0,      l:'ใบแจ้งหนี้' }
-  ];
-  $('db-stats').innerHTML = stats.map(function(x){
-    return '<div class="stat"><div class="n">'+x.n.toLocaleString('th-TH')+'</div><div class="l">'+x.l+'</div></div>';
+  var t = r.totals || {};
+  $('db-stats').innerHTML = [
+    { n:Number(t.rows||0).toLocaleString('th-TH'), l:'แถวทั้งหมด' },
+    { n:Number(t.bls||0).toLocaleString('th-TH'),  l:'เลข BL ไม่ซ้ำ' },
+    { n:Number(t.sheets||0),                        l:'แท็บที่ sync' },
+    { n:agoText(t.last_sync),                       l:'sync ล่าสุด' }
+  ].map(function(x){
+    return '<div class="stat"><div class="n" style="font-size:20px">'+x.n+'</div><div class="l">'+x.l+'</div></div>';
   }).join('');
 
-  var cards = [];
+  // ---- สถานะแต่ละแท็บ ----
+  var sheetTable = r.sheets.length
+    ? '<table class="grid"><thead><tr><th>ไฟล์ / แท็บ</th><th class="right">แถว</th><th class="right">BL</th>'
+      + '<th>ช่วงวันที่</th><th>sync ล่าสุด</th></tr></thead><tbody>'
+      + r.sheets.map(function(x){
+          return '<tr><td><b>'+esc(x.file)+'</b> <span class="muted">'+esc(x.sheet)+'</span></td>'
+            + '<td class="right">'+Number(x.rows).toLocaleString('th-TH')+'</td>'
+            + '<td class="right">'+Number(x.bls).toLocaleString('th-TH')+'</td>'
+            + '<td class="muted" style="font-size:12px">'+esc(x.firstDate||'—')+' → '+esc(x.lastDate||'—')+'</td>'
+            + '<td><span class="'+agoClass(x.lastSync,120)+'">'+agoText(x.lastSync)+'</span></td></tr>';
+        }).join('') + '</tbody></table>'
+    : '<div class="muted">ยังไม่มีข้อมูลจากชีต</div>';
 
-  // 1) ทุกตาราง + ข้อมูลเข้าล่าสุดเมื่อไหร่
-  cards.push(card('จำนวนแถวทุกตาราง',
-    '<table class="grid"><thead><tr><th>ตาราง</th><th class="right">แถว</th><th>ข้อมูลล่าสุด</th></tr></thead><tbody>'
-    + r.tables.map(function(t){
-        return '<tr><td>'+esc(DB_TABLE_TH[t.name]||t.name)+'</td>'
-          + '<td class="right">'+Number(t.rows).toLocaleString('th-TH')+'</td>'
-          + '<td><span class="'+agoClass(t.latest,1440)+'">'+agoText(t.latest)+'</span></td></tr>';
-      }).join('') + '</tbody></table>'));
+  // ---- รายละเอียดว่าแต่ละรอบเพิ่ม/ลบอะไร ----
+  var logTable = r.logs.length
+    ? '<table class="grid"><thead><tr><th>เวลา</th><th>แท็บ</th><th class="right">แถว</th>'
+      + '<th>รายละเอียดที่เปลี่ยน</th></tr></thead><tbody>'
+      + r.logs.map(function(g){
+          var detail = [];
+          if(g.added)   detail.push('<span class="pill approved">+'+g.added+' แถว</span> '
+            + (g.addedBls.length ? '<span class="muted" style="font-size:12px">BL: '+esc(g.addedBls.slice(0,6).join(', '))
+                + (g.addedBls.length>6 ? ' และอีก '+(g.addedBls.length-6) : '') + '</span>' : ''));
+          if(g.removed) detail.push('<span class="pill">−'+g.removed+' แถว</span> '
+            + (g.removedBls.length ? '<span class="muted" style="font-size:12px">BL: '+esc(g.removedBls.slice(0,6).join(', '))
+                + (g.removedBls.length>6 ? ' และอีก '+(g.removedBls.length-6) : '') + '</span>' : ''));
+          return '<tr><td style="white-space:nowrap">'+esc(new Date(g.syncedAt).toLocaleString('th-TH',{dateStyle:'short',timeStyle:'short'}))
+            + '<div class="muted" style="font-size:11px">'+agoText(g.syncedAt)+'</div></td>'
+            + '<td>'+esc(g.file)+'<div class="muted" style="font-size:11px">'+esc(g.sheet)+'</div></td>'
+            + '<td class="right">'+g.rowsBefore+' → <b>'+g.rowsAfter+'</b></td>'
+            + '<td>'+(detail.join('<br>')||'<span class="muted">—</span>')+'</td></tr>';
+        }).join('') + '</tbody></table>'
+    : '<div class="muted">ยังไม่มีการเปลี่ยนแปลงตั้งแต่เริ่มเก็บประวัติ — '
+      + 'ระบบบันทึกเฉพาะรอบที่มีแถวเพิ่มหรือหายจริง รอบที่ข้อมูลเหมือนเดิมจะไม่ถูกบันทึก</div>';
 
-  // 2) สถานะ sync ของชีต — เตือนเมื่อค้างเกิน 2 ชม.
-  cards.push(card('สถานะ sync ชีตงานขนส่ง',
-    r.sheets.length
-      ? '<table class="grid"><thead><tr><th>ไฟล์ / แท็บ</th><th class="right">แถว</th><th>sync ล่าสุด</th></tr></thead><tbody>'
-        + r.sheets.slice(0,12).map(function(x){
-            return '<tr><td>'+esc(x.file)+' <span class="muted">'+esc(x.sheet)+'</span></td>'
-              + '<td class="right">'+Number(x.rows).toLocaleString('th-TH')+'</td>'
-              + '<td><span class="'+agoClass(x.lastSync,120)+'">'+agoText(x.lastSync)+'</span></td></tr>';
-          }).join('') + '</tbody></table>'
-        : '<div class="muted">ยังไม่มีข้อมูลจากชีต</div>'));
-
-  // 3) งานขนส่งที่เพิ่งเข้ามา
-  cards.push(card('งานขนส่งที่เข้ามาล่าสุด',
-    r.recentJobs.length
-      ? '<table class="grid"><thead><tr><th>BL</th><th>ชิปปิ้ง</th><th>วันที่</th></tr></thead><tbody>'
-        + r.recentJobs.map(function(j){
-            return '<tr><td><b>'+esc(j.bl||'—')+'</b><div class="muted" style="font-size:11px">'+esc(j.customer||'')+'</div></td>'
-              + '<td>'+esc(j.shipping||'—')+'</td><td>'+esc(j.transport_date||'—')+'</td></tr>';
-          }).join('') + '</tbody></table>'
-      : '<div class="muted">ยังไม่มีข้อมูล</div>'));
-
-  // 4) เข้างานล่าสุด
-  cards.push(card('บันทึกเข้างานล่าสุด',
-    r.recentCheckins.length
-      ? '<table class="grid"><thead><tr><th>ชื่อ</th><th>ประเภท</th><th>เวลา</th></tr></thead><tbody>'
-        + r.recentCheckins.map(function(c){
-            return '<tr><td>'+esc(c.name||c.username||'—')+'</td><td>'+esc(c.type||'—')+'</td>'
-              + '<td><span class="muted">'+agoText(c.server_time)+'</span></td></tr>';
-          }).join('') + '</tbody></table>'
-      : '<div class="muted">ยังไม่มีข้อมูล</div>'));
-
-  // 5) ใบแจ้งหนี้ + ลูกหนี้
-  var invRows = r.invoiceStats.map(function(x){
-    return '<tr><td>'+esc(INV_STATUS_TEXT[x.status]||x.status)+'</td>'
-      + '<td class="right">'+x.rows+'</td><td class="right">'+baht(x.amount)+'</td></tr>';
-  }).join('') || '<tr><td colspan="3" class="muted">ยังไม่มีใบแจ้งหนี้</td></tr>';
-  cards.push(card('ใบแจ้งหนี้ และลูกหนี้สำรองจ่าย',
-    '<table class="grid"><thead><tr><th>สถานะ</th><th class="right">ใบ</th><th class="right">ยอด</th></tr></thead><tbody>'
-    + invRows + '</tbody></table>'
-    + '<div style="margin-top:10px;display:flex;gap:18px;flex-wrap:wrap">'
-    + '<div><div class="muted" style="font-size:12px">ส่ง KOLA แล้ว</div><b>'+r.receivables.sent+' ใบ</b></div>'
-    + '<div><div class="muted" style="font-size:12px">ค้างชำระ</div><b>'+baht(r.receivables.outstanding)+'</b></div>'
-    + '<div><div class="muted" style="font-size:12px">รับชำระแล้ว</div><b>'+baht(r.receivables.paid)+'</b></div>'
-    + '</div>'));
-
-  $('db-grid').innerHTML = cards.join('');
+  $('db-grid').innerHTML =
+      card('สถานะแต่ละแท็บ', sheetTable)
+    + card('ข้อมูลที่เพิ่ม/ลบเข้าตาราง transport_jobs', logTable);
 }
+
 var INV_STATUS_TEXT = { draft:'ร่าง', approved:'อนุมัติแล้ว', cancelled:'ยกเลิก' };
 function card(title, body){
   return '<div class="card" style="padding:14px"><h3 class="sec" style="margin:0 0 10px;font-size:14px">'
