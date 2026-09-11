@@ -599,6 +599,7 @@
             <input id="invl-sent-date" type="date"></label>
           <button id="invl-make-batch" class="btn btn-primary btn-sm" disabled>จัดชุด + สร้างข้อความ</button>
           <span class="grow"></span>
+          <button id="invl-cancel-picked" class="btn btn-danger btn-sm" disabled>ยกเลิกที่เลือก</button>
           <button id="invl-send-kola" class="btn btn-ok btn-sm" disabled>ส่ง KOLA</button>
         </div>
         <div id="invl-batch-msg" class="muted" style="margin:0 2px 10px"></div>
@@ -606,10 +607,10 @@
           <table class="inv-tbl">
             <thead><tr>
               <th style="width:34px"><input type="checkbox" id="invl-all" title="เลือกทั้งหมดที่เห็น"></th>
-              <th>เลขที่ / วันที่</th>
-              <th>B/L</th>
-              <th class="num">ยอดรวม</th>
-              <th>ชุดเอกสาร</th>
+              <th class="sortable" data-sort="number" style="cursor:pointer" title="กดเพื่อเรียง">เลขที่ / วันที่<span id="sa-number"></span></th>
+              <th class="sortable" data-sort="bl" style="cursor:pointer" title="กดเพื่อเรียง">B/L<span id="sa-bl"></span></th>
+              <th class="num sortable" data-sort="total" style="cursor:pointer" title="กดเพื่อเรียง">ยอดรวม<span id="sa-total"></span></th>
+              <th class="sortable" data-sort="batch" style="cursor:pointer" title="กดเพื่อเรียง">ชุดเอกสาร<span id="sa-batch"></span></th>
               <th>สถานะ</th>
               <th></th>
             </tr></thead>
@@ -3054,12 +3055,17 @@ function updateInvlPicked(){
   var picked = invlPickedRows();
   $('invl-picked').textContent = 'เลือกไว้ ' + picked.length + ' ใบ';
   $('invl-make-batch').disabled = !picked.length;
+  $('invl-cancel-picked').disabled = !picked.length || !invState.canApprove;
   // ส่ง KOLA ได้เมื่อเลือกใบที่อยู่ในชุดเดียวกันและยังไม่ได้ส่ง
   var batches = {};
   picked.forEach(function(r){ if(r.batchNo) batches[r.batchNo+'/'+r.batchPeriod] = 1; });
   var keys = Object.keys(batches);
   $('invl-send-kola').disabled = !(keys.length === 1 && picked.some(function(r){ return !r.sentToKola; }));
 }
+Array.prototype.forEach.call(document.querySelectorAll('#inv-pane-list th.sortable'), function(th){
+  th.addEventListener('click', function(){ sortInvoiceList(th.getAttribute('data-sort')); });
+});
+$('invl-cancel-picked').addEventListener('click', cancelPickedInvoices);
 $('invl-all').addEventListener('change', function(){
   var on = $('invl-all').checked;
   Array.prototype.forEach.call($('inv-list-body').querySelectorAll('.invl-pick'), function(cb){
@@ -3295,29 +3301,116 @@ function printReceipts(issued){
   }
 }
 
+
+/** ดูใบแจ้งหนี้เป็น PDF ในหน้าต่างใหม่ — ไม่เด้งกล่องสั่งพิมพ์ */
+function viewInvoicePopup(row){
+  if(!row) return;
+  if(!window.InvoicePDF || !invState.cfg){ alert('ยังโหลดข้อมูลไม่เสร็จ ลองอีกครั้ง'); return; }
+  // เปิดหน้าต่างทันทีที่กด ไม่งั้นเบราว์เซอร์บล็อกเพราะไม่ได้มาจากการคลิกโดยตรง
+  var popup = window.open('', '_blank', 'popup,width=1000,height=850');
+  if(popup){ popup.document.body.textContent = 'กำลังเตรียม PDF…'; popup.document.body.style.margin = '0'; }
+  api({ action:'getInvoice', token:state.token, number:row.number }).then(function(res){
+    if(!res.ok){
+      var msg = 'เปิดใบไม่สำเร็จ: ' + res.error;
+      if(popup && !popup.closed) popup.document.body.textContent = msg; else alert(msg);
+      return;
+    }
+    var inv = res.invoice;
+    return InvoicePDF.create([{
+      kind: inv.kind, number: inv.number, issueDate: inv.issueDate, bl: inv.bl,
+      items: inv.items || [], subtotal: inv.subtotal, vat: inv.vat, total: inv.total,
+      customerName: inv.customerName, customerAddress: inv.customerAddress,
+      customerTaxId: inv.customerTaxId, preparedBy: inv.preparedBy
+    }], invState.cfg.company).then(function(blob){
+      var url = URL.createObjectURL(blob);
+      invState.pdfUrls = invState.pdfUrls || []; invState.pdfUrls.push(url);
+      if(popup && !popup.closed){
+        popup.document.title = inv.number;
+        popup.document.body.innerHTML = '<iframe src="'+url+'" style="width:100%;height:100vh;border:0"></iframe>';
+      } else { window.open(url, '_blank'); }
+    });
+  }).catch(function(e){
+    var msg = 'สร้าง PDF ไม่สำเร็จ: ' + (e.message||e);
+    if(popup && !popup.closed) popup.document.body.textContent = msg; else alert(msg);
+  });
+}
+
+/** ยกเลิกหลายใบพร้อมกัน — วนทีละใบเพราะเซิร์ฟเวอร์ตรวจเงื่อนไขรายใบ */
+function cancelPickedInvoices(){
+  var picked = invlPickedRows();
+  if(!picked.length) return;
+  if(!confirm('ยกเลิกใบแจ้งหนี้ ' + picked.length + ' ใบ?\n\n'
+    + picked.map(function(r){ return r.number; }).join(', ')
+    + '\n\nรายการจะถูกลบออกจากตาราง และเลขกลับมาใช้ใหม่ได้')) return;
+  var btn = $('invl-cancel-picked');
+  btn.disabled = true; btn.textContent = 'กำลังยกเลิก…';
+  var done = 0, failed = [];
+  var next = function(i){
+    if(i >= picked.length){
+      btn.textContent = 'ยกเลิกที่เลือก';
+      loadInvoiceList();
+      var msg = 'ยกเลิกแล้ว ' + done + ' ใบ';
+      if(failed.length) msg += '\n\nยกเลิกไม่ได้ ' + failed.length + ' ใบ:\n' + failed.join('\n');
+      alert(msg);
+      return;
+    }
+    var r = picked[i];
+    api({ action:'decideInvoice', token:state.token, number:r.number, decision:'cancelled' })
+      .then(function(res){
+        if(res.ok) done++;
+        else failed.push(r.number + ' — ' + (res.error==='already_sent_to_kola' ? 'ส่ง KOLA แล้ว'
+          : (res.error==='already_paid' ? 'รับชำระแล้ว' : res.error)));
+        next(i+1);
+      });
+  };
+  next(0);
+}
+
+/** เรียงตารางตามคอลัมน์ที่กด กดซ้ำสลับน้อย→มาก / มาก→น้อย */
+function sortInvoiceList(key){
+  var cur = invState.sort || {};
+  invState.sort = { key: key, dir: (cur.key === key && cur.dir === 'asc') ? 'desc' : 'asc' };
+  renderInvoiceList();
+}
+function applyInvoiceSort(rows){
+  var st = invState.sort;
+  if(!st || !st.key) return rows;
+  var dir = st.dir === 'desc' ? -1 : 1;
+  return rows.slice().sort(function(a, b){
+    var x, y;
+    if(st.key === 'total'){ x = Number(a.total)||0; y = Number(b.total)||0; }
+    else if(st.key === 'batch'){ x = Number(a.batchNo)||0; y = Number(b.batchNo)||0; }
+    else { x = String(a[st.key]||''); y = String(b[st.key]||''); }
+    if(x < y) return -1*dir;
+    if(x > y) return 1*dir;
+    return 0;
+  });
+}
+function sortArrow(key){
+  var st = invState.sort || {};
+  if(st.key !== key) return '<span class="muted" style="font-size:10px"> ⇅</span>';
+  return '<span style="font-size:10px"> ' + (st.dir === 'asc' ? '▲' : '▼') + '</span>';
+}
+
 function renderInvoiceList(){
   var q = $('invl-search').value.trim().toLowerCase();
   var rows = invState.list.filter(function(r){
     if(!q) return true;
     return [r.number, r.bl, r.customerName].join(' ').toLowerCase().indexOf(q) >= 0;
   });
+  rows = applyInvoiceSort(rows);
   invState.listRows = rows;
+  ['number','bl','total','batch'].forEach(function(k){
+    var el = $('sa-'+k); if(el) el.innerHTML = sortArrow(k);
+  });
   if(!rows.length){ $('inv-list-body').innerHTML = '<tr><td colspan="7" class="muted" style="padding:20px">ยังไม่มีใบแจ้งหนี้</td></tr>'; updateInvlPicked(); return; }
   $('inv-list-body').innerHTML = rows.map(function(r, i){
     var batch = r.batchNo ? ('ชุดที่ '+String(r.batchNo).padStart(2,'0')+'/'+String(r.batchPeriod||'').slice(4,6)
       + (r.sentToKola ? ' <span class="pill approved">ส่ง KOLA</span>' : '')) : '<span class="muted">—</span>';
+    // เหลือแค่ ดู กับ ยกเลิก — ยกเลิกเฉพาะ admin/manager-account (เซิร์ฟเวอร์กันอีกชั้น)
     var act = '<button class="btn btn-ghost btn-sm invl-view" data-i="'+i+'">ดู</button>';
-    if(r.status !== 'cancelled'){
-      act += ' <button class="btn btn-ghost btn-sm invl-edit" data-i="'+i+'">แก้ไข</button>';
-    }
-    if(invState.canApprove && r.status==='draft'){
-      act += ' <button class="btn btn-ok btn-sm invl-ok" data-i="'+i+'">อนุมัติ</button>';
-    }
-    // ยกเลิก / คืนเป็นร่าง — เฉพาะ admin กับ manager-account (เซิร์ฟเวอร์กันอีกชั้น)
     if(invState.canApprove){
-      act += r.status === 'cancelled'
-        ? ' <button class="btn btn-ghost btn-sm invl-undo" data-i="'+i+'">คืนเป็นร่าง</button>'
-        : ' <button class="btn btn-danger btn-sm invl-cancel" data-i="'+i+'">ยกเลิก</button>';
+      act += ' <button class="btn btn-danger btn-sm invl-cancel" data-i="'+i+'">ยกเลิก</button>';
     }
     // ยอดก่อน VAT กับ VAT ย้ายไปเป็นบรรทัดรองใต้ยอดรวม ลดจาก 10 คอลัมน์เหลือ 7
     var money = '<b>'+baht(r.total)+'</b>'
@@ -3333,7 +3426,7 @@ function renderInvoiceList(){
       + '<td class="acts">'+act+'</td></tr>';
   }).join('');
   Array.prototype.forEach.call($('inv-list-body').querySelectorAll('.invl-view'), function(b){
-    b.addEventListener('click', function(){ printInvoice(rows[Number(b.getAttribute('data-i'))]); });
+    b.addEventListener('click', function(){ viewInvoicePopup(rows[Number(b.getAttribute('data-i'))]); });
   });
   Array.prototype.forEach.call($('inv-list-body').querySelectorAll('.invl-pick'), function(cb){
     cb.addEventListener('change', function(){
@@ -3344,9 +3437,6 @@ function renderInvoiceList(){
   });
   $('invl-all').checked = false;
   updateInvlPicked();
-  Array.prototype.forEach.call($('inv-list-body').querySelectorAll('.invl-edit'), function(b){
-    b.addEventListener('click', function(){ openInvoiceEdit(rows[Number(b.getAttribute('data-i'))]); });
-  });
   var invDecide = function(sel, decision, ask){
     Array.prototype.forEach.call($('inv-list-body').querySelectorAll(sel), function(b){
       b.addEventListener('click', function(){
@@ -3368,15 +3458,6 @@ function renderInvoiceList(){
     });
   };
   invDecide('.invl-cancel', 'cancelled', 'ยกเลิกใบ %s ?\n\nรายการจะถูกลบออกจากตาราง และเลขใบนี้กลับมาใช้ใหม่ได้');
-  invDecide('.invl-undo', 'draft', null);
-  Array.prototype.forEach.call($('inv-list-body').querySelectorAll('.invl-ok'), function(b){
-    b.addEventListener('click', function(){
-      var r = rows[Number(b.getAttribute('data-i'))];
-      b.disabled = true;
-      api({ action:'decideInvoice', token:state.token, number:r.number, decision:'approved' })
-        .then(function(res){ if(res.ok) loadInvoiceList(); else { b.disabled=false; alert('อนุมัติไม่สำเร็จ: '+res.error); } });
-    });
-  });
 }
 
 /** เปิดหน้าต่างใหม่แล้ววาดใบแจ้งหนี้ตามฟอร์มในชีต — สั่งพิมพ์หรือ Save as PDF ได้เลย */
