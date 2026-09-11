@@ -2,7 +2,8 @@ import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { invoices, settlements, transportJobs } from '@/db/schema';
 import {
-  INVOICE_COMPANY, INVOICE_CUSTOMER, INVOICE_NO_VAT_ITEMS, INVOICE_VAT_ITEMS, INVOICE_DIVISOR, VAT_RATE
+  INVOICE_COMPANY, INVOICE_CUSTOMER, INVOICE_NO_VAT_ITEMS, INVOICE_VAT_ITEMS,
+  INVOICE_VAT_EXEMPT_LABELS, INVOICE_DIVISOR, VAT_RATE
 } from './constants';
 import { id, nowIso, validYmd, ymd } from './utils';
 import type { ApiBody, ApiResult } from './types';
@@ -36,6 +37,12 @@ const money = (value: unknown) => {
 
 const text = (value: unknown, max = 300) => String(value ?? '').trim().slice(0, max);
 
+/** หัวข้อนี้อยู่ในใบ VAT แต่ไม่ต้องคิด VAT (เทียบชื่อแบบตัดช่องว่างซ้ำ) */
+export function isVatExempt(label: unknown) {
+  const value = String(label ?? '').replace(/\s+/g, ' ').trim();
+  return INVOICE_VAT_EXEMPT_LABELS.some((exempt) => exempt === value);
+}
+
 /** V20260901 — kind + yyyymm + เลขรัน 2 หลัก */
 export function invoiceNumber(kind: string, period: string, seq: number) {
   return `${kind}${period}${String(seq).padStart(2, '0')}`;
@@ -65,10 +72,14 @@ export async function nextSeq(_kind: string, period: string) {
 /** ยอดรวมของใบ — คิดที่เดียวทั้งตอน preview และตอนบันทึก จะได้ไม่มีทางเพี้ยนกัน */
 export function invoiceTotals(items: InvoiceItem[], kind: string) {
   const subtotal = money(items.reduce((sum, item) => sum + Number(item.amount || 0), 0));
-  const vat = kind === 'V' ? money(subtotal * VAT_RATE) : 0;
+  // บางหัวข้อในใบ VAT ไม่เข้าฐานภาษี (ค่าแลก DO ที่ออกแทนลูกค้า)
+  // จึงคิด VAT จากเฉพาะยอดที่เหลือ ไม่ใช่ subtotal ทั้งก้อน
+  const vatBase = money(items.reduce((sum, item) =>
+    sum + (isVatExempt(item.label) ? 0 : Number(item.amount || 0)), 0));
+  const vat = kind === 'V' ? money(vatBase * VAT_RATE) : 0;
   const total = money(subtotal + vat);
   // หัก ณ ที่จ่ายในใบตัวอย่างเป็น "-" (ไม่หัก) ให้ตั้งเป็น 0 ไว้ก่อน แก้ได้ตอนกรอก
-  return { subtotal, vat, total, withholding: 0, netTotal: total };
+  return { subtotal, vatBase, vat, total, withholding: 0, netTotal: total };
 }
 
 /**

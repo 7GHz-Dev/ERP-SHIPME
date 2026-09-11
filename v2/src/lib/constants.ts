@@ -106,6 +106,13 @@ export const INVOICE_DIVISOR = 1.04;
  * ค่าใช้จ่ายที่ขึ้นใบแจ้งหนี้แบบมี VAT — คีย์ต้องตรงกับ costs ใน settlements.rows_json
  * หัวข้อที่ยังไม่มีช่องในใบปิดบัญชีให้เลือกและกรอกยอดในฟอร์มใบแจ้งหนี้ได้
  */
+/**
+ * หัวข้อในใบ VAT ที่ "ไม่ต้องคิด VAT" — อยู่ในใบเดียวกันแต่ไม่เข้าฐานภาษี
+ * ค่าแลก DO เป็นเงินที่ออกแทนลูกค้า ไม่ใช่ค่าบริการของบริษัท จึงไม่มี VAT
+ * เทียบจาก label เพราะรายการที่ผู้ใช้กรอกเองส่งมาแค่ชื่อกับยอด ไม่มี key
+ */
+export const INVOICE_VAT_EXEMPT_LABELS = ['ADV - ค่าแลก DO (NON VAT)'] as const;
+
 export const INVOICE_VAT_ITEMS = [
   { key: 'do_non_vat', code: 'Dnv', label: 'ADV - ค่าแลก DO (NON VAT)' },
   { key: 'do_vat', code: 'Dv', label: 'ADV - ค่าแลก DO (VAT)' },

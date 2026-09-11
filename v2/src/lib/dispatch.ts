@@ -427,7 +427,8 @@ const handlers: Record<string, Handler> = {
     return session.error || issueReceipts(body);
   },
   dashboardOverview: async (body) => {
-    const session = await guard(body, ['admin', 'manager', 'manager-account']);
+    // ข้อมูลระดับฐานข้อมูล — เฉพาะ admin เท่านั้น
+    const session = await guard(body, ['admin']);
     return session.error || dashboardOverview();
   },
   decideInvoice: async (body) => {

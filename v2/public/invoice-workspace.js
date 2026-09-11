@@ -1,3 +1,17 @@
+/**
+ * หัวข้อที่อยู่ในใบ VAT แต่ไม่ต้องคิด VAT — ค่าแลก DO เป็นเงินที่ออกแทนลูกค้า
+ * ต้องตรงกับ INVOICE_VAT_EXEMPT_LABELS ฝั่งเซิร์ฟเวอร์ ไม่งั้นยอดหน้าเว็บกับที่บันทึกจะไม่ตรงกัน
+ */
+var INV_VAT_EXEMPT = ['ADV - ค่าแลก DO (NON VAT)'];
+function invVatExempt(label){
+  return INV_VAT_EXEMPT.indexOf(String(label==null?'':label).replace(/\s+/g,' ').trim()) >= 0;
+}
+/** ฐานภาษี = ยอดรวมหักหัวข้อที่ไม่คิด VAT ออก */
+function invVatBase(items){
+  return Math.round(items.reduce(function(sum,item){
+    return sum + (invVatExempt(item.label) ? 0 : (Number(item.amount)||0));
+  },0)*100)/100;
+}
 function invoicePeriod(){ return $('inv-issue-date').value.slice(0,7).replace('-',''); }
 function invoiceStart(kind){
   var value = $(kind==='V'?'inv-start-v':'inv-start-nv').value.trim().toUpperCase();
@@ -56,8 +70,9 @@ function renderInlineInvoiceItems(row,index,kind){
   }).join('')+'</div><button class="btn btn-ghost btn-sm inv-add-inline" data-row="'+index+'" data-kind="'+kind+'"'+locked+' style="margin-top:10px">+ เพิ่มรายการ '+(kind==='V'?'VAT':'NON VAT')+'</button><div class="inv-cost-total" id="inv-total-'+index+'-'+kind+'"></div>';
 }
 function updateInlineInvoiceTotal(row,index,kind){
-  var subtotal=Math.round(inlineInvoiceItems(row,kind).reduce(function(sum,item){return sum+(Number.isFinite(item.amount)?item.amount:0);},0)*100)/100;
-  var vat=kind==='V'?Math.round(subtotal*7)/100:0;
+  var list=inlineInvoiceItems(row,kind);
+  var subtotal=Math.round(list.reduce(function(sum,item){return sum+(Number.isFinite(item.amount)?item.amount:0);},0)*100)/100;
+  var vat=kind==='V'?Math.round(invVatBase(list)*7)/100:0;
   $('inv-total-'+index+'-'+kind).innerHTML='<span>ก่อน VAT '+baht(subtotal)+'</span><b>รวม '+baht(Math.round((subtotal+vat)*100)/100)+'</b>';
 }
 function loadInvoiceSources(){
@@ -128,7 +143,7 @@ function invoicePairDocuments(rows){
       // BL ที่ไม่มีค่าใช้จ่ายฝั่งนั้น (ส่วนใหญ่คือ NON VAT ที่ยังไม่มีค่าแลก DO)
       // ให้ข้ามใบนั้นไปเลย ออกเฉพาะฝั่งที่มียอดจริง ไม่ใช่บล็อกทั้ง BL
       if(!items.length) return;
-      var vat=kind==='V'?Math.round(subtotal*7)/100:0;
+      var vat=kind==='V'?Math.round(invVatBase(items)*7)/100:0;
       documents.push({number:row.numbers[kind],kind:kind,issueDate:$('inv-issue-date').value,bl:row.bl,settlementId:row.settlementId,items:items,
         subtotal:subtotal,vat:vat,total:Math.round((subtotal+vat)*100)/100,customerName:customer.name,customerAddress:customer.address,customerTaxId:customer.taxId,preparedBy:state.user.name});
     });
