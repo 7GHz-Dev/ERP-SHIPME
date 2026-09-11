@@ -1274,18 +1274,38 @@ function renderDbOverview(r){
     ? '<table class="grid"><thead><tr><th>เวลา</th><th>แท็บ</th><th class="right">แถว</th>'
       + '<th>รายละเอียดที่เปลี่ยน</th></tr></thead><tbody>'
       + r.logs.map(function(g){
-          var detail = [];
-          if(g.added)   detail.push('<span class="pill approved">+'+g.added+' แถว</span> '
-            + (g.addedBls.length ? '<span class="muted" style="font-size:12px">BL: '+esc(g.addedBls.slice(0,6).join(', '))
-                + (g.addedBls.length>6 ? ' และอีก '+(g.addedBls.length-6) : '') + '</span>' : ''));
-          if(g.removed) detail.push('<span class="pill">−'+g.removed+' แถว</span> '
-            + (g.removedBls.length ? '<span class="muted" style="font-size:12px">BL: '+esc(g.removedBls.slice(0,6).join(', '))
-                + (g.removedBls.length>6 ? ' และอีก '+(g.removedBls.length-6) : '') + '</span>' : ''));
-          return '<tr><td style="white-space:nowrap">'+esc(new Date(g.syncedAt).toLocaleString('th-TH',{dateStyle:'short',timeStyle:'short'}))
+          var head = [];
+          if(g.added)   head.push('<span class="pill approved">+'+g.added+' แถวใหม่</span>');
+          if(g.changed) head.push('<span class="pill">แก้ '+g.changed+' แถว</span>');
+          if(g.removed) head.push('<span class="pill">−'+g.removed+' แถว</span>');
+          if(g.removedBls.length) head.push('<span class="muted" style="font-size:12px">BL ที่หายไป: '
+            + esc(g.removedBls.slice(0,5).join(', '))
+            + (g.removedBls.length>5 ? ' และอีก '+(g.removedBls.length-5) : '') + '</span>');
+
+          // รายละเอียดรายแถว — ชื่อคอลัมน์กับค่าที่เพิ่งเข้ามา
+          var detail = (g.details||[]).map(function(d){
+            var fields = (d.fields||[]).map(function(f){
+              var to = '<b>'+esc(String(f.to))+'</b>';
+              // แถวที่แก้ค่าเดิม แสดงค่าก่อนหน้าด้วยจะได้รู้ว่าเปลี่ยนจากอะไร
+              return '<span style="display:inline-block;margin:2px 10px 2px 0">'
+                + esc(f.label) + ': '
+                + (d.kind==='changed' && String(f.from)!=='' ? '<span class="muted" style="text-decoration:line-through">'+esc(String(f.from))+'</span> → ' : '')
+                + to + '</span>';
+            }).join('');
+            return '<div style="margin-top:6px;padding:6px 8px;background:#f8fafc;border-radius:6px">'
+              + '<b>'+esc(d.bl||'(ไม่มี BL)')+'</b>'
+              + (d.container ? ' <span class="muted" style="font-size:12px">'+esc(d.container)+'</span>' : '')
+              + ' <span class="pill'+(d.kind==='added'?' approved':'')+'" style="font-size:11px">'
+              + (d.kind==='added'?'แถวใหม่':'แก้ค่า')+'</span>'
+              + '<div style="font-size:12px;margin-top:3px">'+(fields||'<span class="muted">—</span>')+'</div></div>';
+          }).join('');
+
+          return '<tr><td style="white-space:nowrap;vertical-align:top">'
+            + esc(new Date(g.syncedAt).toLocaleString('th-TH',{dateStyle:'short',timeStyle:'short'}))
             + '<div class="muted" style="font-size:11px">'+agoText(g.syncedAt)+'</div></td>'
-            + '<td>'+esc(g.file)+'<div class="muted" style="font-size:11px">'+esc(g.sheet)+'</div></td>'
-            + '<td class="right">'+g.rowsBefore+' → <b>'+g.rowsAfter+'</b></td>'
-            + '<td>'+(detail.join('<br>')||'<span class="muted">—</span>')+'</td></tr>';
+            + '<td style="vertical-align:top">'+esc(g.file)+'<div class="muted" style="font-size:11px">'+esc(g.sheet)+'</div></td>'
+            + '<td class="right" style="vertical-align:top">'+g.rowsBefore+' → <b>'+g.rowsAfter+'</b></td>'
+            + '<td>'+(head.join(' ')||'<span class="muted">—</span>')+detail+'</td></tr>';
         }).join('') + '</tbody></table>'
     : '<div class="muted">ยังไม่มีการเปลี่ยนแปลงตั้งแต่เริ่มเก็บประวัติ — '
       + 'ระบบบันทึกเฉพาะรอบที่มีแถวเพิ่มหรือหายจริง รอบที่ข้อมูลเหมือนเดิมจะไม่ถูกบันทึก</div>';

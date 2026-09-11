@@ -27,6 +27,38 @@ export type IncomingJob = {
 const text = (value: unknown, max = 300) => String(value ?? '').trim().slice(0, max);
 
 /**
+ * ชื่อคอลัมน์ในตารางกับชื่อที่คนอ่านรู้เรื่อง — ใช้ตอนบอกว่า sync รอบนั้นแก้ช่องไหน
+ * ตรงกับหัวคอลัมน์ในชีตเพื่อให้เทียบกลับไปหาต้นทางได้ทันที
+ */
+const COLUMN_LABELS: Record<string, string> = {
+  transportDate: 'TRANSPORT (วันที่ตรวจปล่อย)',
+  shipping: 'ชิปปิ้ง',
+  customer: 'ชิปเปอร์',
+  vessel: 'VESSEL',
+  containerNo: 'CONTAINER NO.',
+  port: 'ท่าส่งออก',
+  quantity: 'จำนวนตู้',
+  doFee: 'แลก DO',
+  dem: 'DEM',
+  extraMovement: 'EXTRA MOVEMENT',
+  storage: 'STORAGE',
+  liftOn: 'LIFT ON',
+  liftOff: 'LIFT OFF',
+  orderForm: 'ORDER FORM',
+  inspectorFee: 'ค่านายตรวจ',
+  overtime: 'ค่าล่วงเวลา',
+  sealFee: 'ค่าตะกั่ว',
+  otherFee: 'คชจ. อื่นๆ',
+  detention: 'ค่า Detention',
+  repairFee: 'ค่าซ่อมตู้',
+  note: 'หมายเหตุ',
+  driver: 'รายชื่อคนรถ',
+  settled: 'ปิดบัญชีแล้ว',
+  docSentDate: 'ส่งแม่สอด',
+  invoiceNo: 'เลขที่ใบแจ้งหนี้'
+};
+
+/**
  * ตัวเลขจากชีต — ตัดลูกน้ำออกและกัน #REF! / #VALUE! ที่สูตรในชีตพังแล้วส่งมาเป็นข้อความ
  * ถ้าไม่กัน ค่าพวกนี้จะกลายเป็น NaN แล้ว insert ลง double ไม่ผ่านทั้งก้อน
  */
@@ -144,19 +176,61 @@ export async function syncTransportSheet(body: ApiBody): Promise<ApiResult> {
 
   const scope = and(eq(transportJobs.sourceFile, sourceFile), eq(transportJobs.sourceSheet, sourceSheet));
 
-  // เก็บของเดิมไว้เทียบว่ารอบนี้เพิ่ม/หายอะไรบ้าง — ตัว transport_jobs เองเก็บ
+  // เก็บของเดิมทั้งแถวไว้เทียบว่ารอบนี้เปลี่ยนอะไรบ้าง — ตัว transport_jobs เองเก็บ
   // ได้แค่สถานะปัจจุบัน เพราะทุกรอบลบทั้งแท็บแล้วใส่ใหม่ ประวัติจึงต้องบันทึกแยก
-  const previous = await db.select({ bl: transportJobs.bl, containerNo: transportJobs.containerNo })
-    .from(transportJobs).where(scope);
+  const previous = await db.select().from(transportJobs).where(scope);
 
   const keyOf = (bl: string, cntr: string) => `${bl.toUpperCase()}|${cntr.toUpperCase()}`;
-  const beforeKeys = new Set(previous.map(r => keyOf(r.bl, r.containerNo)));
-  const afterKeys = new Set(rows.map(r => keyOf(r.bl, r.containerNo)));
+  const beforeMap = new Map(previous.map(r => [keyOf(r.bl, r.containerNo), r]));
+  const afterMap = new Map(rows.map(r => [keyOf(r.bl, r.containerNo), r]));
 
-  const addedKeys = [...afterKeys].filter(k => !beforeKeys.has(k));
-  const removedKeys = [...beforeKeys].filter(k => !afterKeys.has(k));
+  const addedKeys = [...afterMap.keys()].filter(k => !beforeMap.has(k));
+  const removedKeys = [...beforeMap.keys()].filter(k => !afterMap.has(k));
   // เก็บแค่เลข BL ไม่เอาเบอร์ตู้ เพราะหน้า dashboard อ่านเป็นรายการงาน
   const blOf = (keys: string[]) => [...new Set(keys.map(k => k.split('|')[0]).filter(Boolean))].slice(0, 20);
+
+  /**
+   * เทียบทีละคอลัมน์ว่าค่าไหนเปลี่ยน — แถวที่ BL+ตู้ เดิมแต่แก้ค่าข้างใน
+   * เดิมตรวจแค่ BL กับเบอร์ตู้ การแก้ยอดเงินหรือวันที่จึงไม่ถูกจับเลย
+   */
+  const norm = (v: unknown) => typeof v === 'number' ? v : String(v ?? '');
+  const diffFields = (before: any, after: any) => {
+    const out: { column: string; label: string; from: any; to: any }[] = [];
+    for (const [column, label] of Object.entries(COLUMN_LABELS)) {
+      const a = norm(before?.[column]);
+      const b = norm(after?.[column]);
+      if (a !== b) out.push({ column, label, from: a, to: b });
+    }
+    return out;
+  };
+
+  const details: any[] = [];
+  // แถวใหม่ — แสดงเฉพาะช่องที่มีค่า ไม่ต้องโชว์ช่องว่างทั้งหมด
+  for (const key of addedKeys) {
+    if (details.length >= 30) break;
+    const row: any = afterMap.get(key);
+    const fields = Object.entries(COLUMN_LABELS)
+      // ข้ามช่องที่ไม่มีค่าจริง — 0, ว่าง และ false ("ยังไม่ปิดบัญชี") ไม่ใช่ข้อมูลที่คนอยากเห็น
+      .filter(([column]) => {
+        const v = norm(row?.[column]);
+        return v !== '' && v !== 0 && v !== 'false';
+      })
+      .map(([column, label]) => ({ column, label, from: '', to: norm(row?.[column]) }))
+      .slice(0, 8);
+    details.push({ bl: row?.bl || '', container: row?.containerNo || '', kind: 'added', fields });
+  }
+  // แถวที่แก้ค่าเดิม
+  let changed = 0;
+  for (const [key, after] of afterMap) {
+    const before = beforeMap.get(key);
+    if (!before) continue;
+    const fields = diffFields(before, after);
+    if (!fields.length) continue;
+    changed++;
+    if (details.length < 30) {
+      details.push({ bl: (after as any).bl, container: (after as any).containerNo, kind: 'changed', fields: fields.slice(0, 8) });
+    }
+  }
 
   await db.transaction(async (tx) => {
     await tx.delete(transportJobs).where(scope);
@@ -167,13 +241,14 @@ export async function syncTransportSheet(body: ApiBody): Promise<ApiResult> {
     }
     // บันทึกเฉพาะรอบที่มีอะไรเปลี่ยนจริง ไม่งั้นตารางจะโตด้วยรอบที่ไม่มีอะไรเกิดขึ้น
     // (trigger กวาดทุกชั่วโมงยิงเข้ามาเรื่อย ๆ แม้ไม่มีคนแก้ชีต)
-    if (addedKeys.length || removedKeys.length) {
+    if (addedKeys.length || removedKeys.length || changed) {
       await tx.insert(transportSyncLogs).values({
         syncedAt: importedAt, sourceFile, sourceSheet,
         rowsBefore: previous.length, rowsAfter: rows.length,
-        added: addedKeys.length, removed: removedKeys.length,
+        added: addedKeys.length, removed: removedKeys.length, changed,
         addedBls: JSON.stringify(blOf(addedKeys)),
-        removedBls: JSON.stringify(blOf(removedKeys))
+        removedBls: JSON.stringify(blOf(removedKeys)),
+        details: JSON.stringify(details)
       });
     }
   });
@@ -187,6 +262,7 @@ export async function syncTransportSheet(body: ApiBody): Promise<ApiResult> {
     replaced: previous.length,
     added: addedKeys.length,
     removed: removedKeys.length,
+    changed,
     importedAt
   };
 }

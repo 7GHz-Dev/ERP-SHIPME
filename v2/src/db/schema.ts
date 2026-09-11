@@ -251,7 +251,15 @@ export const transportSyncLogs = pgTable('transport_sync_logs', {
   removed: integer('removed').notNull().default(0),
   // ตัวอย่าง BL ที่เพิ่ม/หายไปในรอบนั้น เก็บเป็น JSON สั้น ๆ ไม่เกิน 20 รายการ
   addedBls: text('added_bls').notNull().default('[]'),
-  removedBls: text('removed_bls').notNull().default('[]')
+  removedBls: text('removed_bls').notNull().default('[]'),
+  // จำนวนแถวที่ "แก้ค่าเดิม" (BL+ตู้ เดิม แต่คอลัมน์อื่นเปลี่ยน)
+  changed: integer('changed').notNull().default(0),
+  /**
+   * รายละเอียดว่าคอลัมน์ไหนเปลี่ยนเป็นค่าอะไร — JSON ไม่เกิน 30 รายการ
+   * [{ bl, container, kind:'added'|'changed', fields:[{ column, label, from, to }] }]
+   * เก็บไว้ให้หน้า dashboard แสดงชื่อคอลัมน์กับค่าที่เพิ่งเข้ามาได้
+   */
+  details: text('details').notNull().default('[]')
 }, (t) => [index('transport_sync_logs_idx').on(t.syncedAt)]);
 
 export const geocodeCache = pgTable('geocode_cache', {

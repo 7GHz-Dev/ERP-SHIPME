@@ -22,7 +22,7 @@ export async function dashboardOverview(): Promise<ApiResult> {
     // ประวัติรอบที่มีการเปลี่ยนแปลงจริง
     () => db.execute(sql`
       select synced_at, source_file, source_sheet, rows_before, rows_after,
-             added, removed, added_bls, removed_bls
+             added, removed, changed, added_bls, removed_bls, details
       from transport_sync_logs order by synced_at desc limit 25
     `),
     // ยอดรวมทั้งตาราง
@@ -58,7 +58,9 @@ export async function dashboardOverview(): Promise<ApiResult> {
       syncedAt: r.synced_at, file: r.source_file, sheet: r.source_sheet,
       rowsBefore: Number(r.rows_before) || 0, rowsAfter: Number(r.rows_after) || 0,
       added: Number(r.added) || 0, removed: Number(r.removed) || 0,
-      addedBls: parse(r.added_bls), removedBls: parse(r.removed_bls)
+      changed: Number(r.changed) || 0,
+      addedBls: parse(r.added_bls), removedBls: parse(r.removed_bls),
+      details: parse(r.details)
     }))
   };
 }
