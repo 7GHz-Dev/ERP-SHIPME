@@ -1,3 +1,4 @@
+import { dashboardOverview } from './dashboard';
 import { saveInvoicePairs } from './invoice-pairs';
 import {
   createInvoiceBatch, issueReceipts, listReceivables, matchReceivables,
@@ -424,6 +425,10 @@ const handlers: Record<string, Handler> = {
   issueReceipts: async (body) => {
     const session = await guard(body, ACCOUNT_ROLES);
     return session.error || issueReceipts(body);
+  },
+  dashboardOverview: async (body) => {
+    const session = await guard(body, ['admin', 'manager', 'manager-account']);
+    return session.error || dashboardOverview();
   },
   decideInvoice: async (body) => {
     const session = await guard(body, ['admin', 'manager-account']);
