@@ -170,7 +170,21 @@
 .inv-source-table th{padding:12px 10px}.inv-source-table button:disabled{opacity:.5;cursor:default}
 .inv-source-table th,.inv-source-table td:nth-child(2),.inv-source-table td:nth-child(4){white-space:nowrap}
 .inv-source-table{min-width:1450px;width:100%;border-collapse:collapse}.inv-source-table td{vertical-align:top;padding:14px 10px;border-bottom:1px solid #dbe3ed}.inv-source-table th{text-align:left;background:#edf2f7}
-.inv-cost-heading{width:31%}.inv-cost-list{display:grid;gap:7px;min-width:310px}
+.inv-cost-heading{width:31%}
+/* ตารางใบที่ออกแล้ว / ลูกหนี้ — อ่านง่ายขึ้น ไม่รก */
+.inv-tbl{border-collapse:separate;border-spacing:0;width:100%;font-size:13px}
+.inv-tbl thead th{position:sticky;top:0;z-index:1;background:#f1f5f9;color:#475569;font-size:12px;
+  font-weight:600;text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+.inv-tbl tbody td{padding:9px 10px;border-bottom:1px solid #eef2f7;vertical-align:middle}
+.inv-tbl tbody tr:hover{background:#f8fafc}
+.inv-tbl tbody tr.is-picked{background:#eff6ff}
+.inv-tbl .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.inv-tbl .no{color:var(--muted);width:46px}
+.inv-tbl .mono{font-family:ui-monospace,Menlo,monospace;font-size:12.5px}
+.inv-tbl .sub{color:var(--muted);font-size:11px;margin-top:2px}
+.inv-tbl td.acts{white-space:nowrap;text-align:right}
+.inv-tbl td.acts .btn{margin-left:4px}
+.tablewrap{max-height:62vh;overflow:auto;border:1px solid var(--line);border-radius:10px;background:#fff}.inv-cost-list{display:grid;gap:7px;min-width:310px}
 .inv-cost-row{display:grid;grid-template-columns:20px minmax(160px,1fr) 100px;align-items:center;gap:7px}
 .inv-cost-row input[type=checkbox]{width:16px;height:16px;margin:0}.inv-cost-row input[type=number]{width:100%;min-width:0;text-align:right;padding:7px}
 .inv-cost-row label{margin:0;font-size:12px;line-height:1.4;font-weight:500}.inv-cost-row input[type=text]{min-width:0;width:100%;padding:7px;font-size:12px}
@@ -589,14 +603,17 @@
         </div>
         <div id="invl-batch-msg" class="muted" style="margin:0 2px 10px"></div>
         <div class="tablewrap">
-          <table>
+          <table class="inv-tbl">
             <thead><tr>
               <th style="width:34px"><input type="checkbox" id="invl-all" title="เลือกทั้งหมดที่เห็น"></th>
-              <th>เลขที่</th><th>วันที่</th><th>B/L</th>
-              <th class="right">ก่อน VAT</th><th class="right">VAT</th><th class="right">รวม</th>
-              <th>ชุด</th><th>สถานะ</th><th></th>
+              <th>เลขที่ / วันที่</th>
+              <th>B/L</th>
+              <th class="num">ยอดรวม</th>
+              <th>ชุดเอกสาร</th>
+              <th>สถานะ</th>
+              <th></th>
             </tr></thead>
-            <tbody id="inv-list-body"><tr><td colspan="10" class="muted">กำลังโหลด…</td></tr></tbody>
+            <tbody id="inv-list-body"><tr><td colspan="7" class="muted">กำลังโหลด…</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -616,13 +633,17 @@
         </div>
         <div id="ar-match" class="hidden" style="margin-bottom:12px"></div>
         <div class="tablewrap">
-          <table>
+          <table class="inv-tbl">
             <thead><tr>
               <th style="width:34px"><input type="checkbox" id="ar-all" title="เลือกทั้งหมด"></th>
-              <th style="width:50px">No</th><th>วันที่ใบแจ้งหนี้</th><th>เลขใบแจ้งหนี้</th><th>BL</th>
-              <th class="right">ค้างชำระ</th><th class="right">ชำระแล้ว</th><th>ใบเสร็จ</th>
+              <th class="no">No</th>
+              <th>เลขใบแจ้งหนี้ / วันที่</th>
+              <th>BL</th>
+              <th class="num">ค้างชำระ</th>
+              <th class="num">ชำระแล้ว</th>
+              <th>ใบเสร็จ</th>
             </tr></thead>
-            <tbody id="ar-body"><tr><td colspan="8" class="muted">กำลังโหลด…</td></tr></tbody>
+            <tbody id="ar-body"><tr><td colspan="7" class="muted">กำลังโหลด…</td></tr></tbody>
           </table>
         </div>
         <div class="toolbar" style="margin-top:10px">
@@ -2972,10 +2993,10 @@ $('inv-save').addEventListener('click', function(){
 $('inv-print').addEventListener('click', function(){ printInvoice(); });
 
 function loadInvoiceList(){
-  $('inv-list-body').innerHTML = '<tr><td colspan="10" class="muted">กำลังโหลด…</td></tr>';
+  $('inv-list-body').innerHTML = '<tr><td colspan="7" class="muted">กำลังโหลด…</td></tr>';
   api({ action:'listInvoices', token:state.token, from:$('invl-from').value, to:$('invl-to').value })
     .then(function(res){
-      if(!res.ok){ $('inv-list-body').innerHTML = '<tr><td colspan="10" class="muted">โหลดไม่สำเร็จ: '+esc(res.error)+'</td></tr>'; return; }
+      if(!res.ok){ $('inv-list-body').innerHTML = '<tr><td colspan="7" class="muted">โหลดไม่สำเร็จ: '+esc(res.error)+'</td></tr>'; return; }
       invState.list = res.rows || [];
       invState.canApprove = !!res.canApprove;
       renderInvoiceList();
@@ -3088,28 +3109,31 @@ $('invl-send-kola').addEventListener('click', function(){
 /* ---------- ลูกหนี้สำรองจ่ายคงค้าง ---------- */
 var arState = { rows:[], matched:[] };
 function loadReceivables(){
-  $('ar-body').innerHTML = '<tr><td colspan="8" class="muted">กำลังโหลด…</td></tr>';
+  $('ar-body').innerHTML = '<tr><td colspan="7" class="muted">กำลังโหลด…</td></tr>';
   api({ action:'listReceivables', token:state.token, showPaid:$('ar-show-paid').checked })
     .then(function(res){
-      if(!res.ok){ $('ar-body').innerHTML = '<tr><td colspan="8" class="muted">โหลดไม่สำเร็จ: '+esc(res.error)+'</td></tr>'; return; }
+      if(!res.ok){ $('ar-body').innerHTML = '<tr><td colspan="7" class="muted">โหลดไม่สำเร็จ: '+esc(res.error)+'</td></tr>'; return; }
       arState.rows = res.rows || [];
       renderReceivables();
     });
 }
 function renderReceivables(){
   var rows = arState.rows;
-  if(!rows.length){ $('ar-body').innerHTML = '<tr><td colspan="8" class="muted">ไม่มีรายการคงค้าง</td></tr>'; updateArPicked(); return; }
+  if(!rows.length){ $('ar-body').innerHTML = '<tr><td colspan="7" class="muted" style="padding:20px">ไม่มีรายการคงค้าง</td></tr>'; updateArPicked(); return; }
   $('ar-body').innerHTML = rows.map(function(r, i){
     var done = r.outstanding <= 0;
-    return '<tr'+(done?' style="opacity:.6"':'')+'>'
+    // จ่ายบางส่วน — บอกไว้ใต้ยอดค้างจะได้ไม่ต้องเทียบเลขเอง
+    var partial = r.paidAmount > 0 && r.outstanding > 0;
+    return '<tr'+(done?' style="opacity:.55"':'')+'>'
       + '<td><input type="checkbox" class="ar-pick" data-i="'+i+'"'+(done&&r.receiptNo?' disabled':'')+'></td>'
-      + '<td>'+(i+1)+'</td>'
-      + '<td>'+esc(r.issueDate)+'</td>'
-      + '<td><b>'+esc(r.number)+'</b></td>'
-      + '<td>'+esc(r.bl||'—')+'</td>'
-      + '<td class="right">'+(r.outstanding>0?'<b>'+baht(r.outstanding)+'</b>':'—')+'</td>'
-      + '<td class="right">'+baht(r.paidAmount)+'</td>'
-      + '<td>'+(r.receiptNo?'<span class="pill approved">'+esc(r.receiptNo)+'</span>':'<span class="muted">—</span>')+'</td></tr>';
+      + '<td class="no">'+(i+1)+'</td>'
+      + '<td><b class="mono">'+esc(r.number)+'</b><div class="sub">'+esc(r.issueDate)+'</div></td>'
+      + '<td class="mono">'+esc(r.bl||'—')+'</td>'
+      + '<td class="num">'+(r.outstanding>0
+          ? '<b>'+baht(r.outstanding)+'</b>'+(partial?'<div class="sub">จ่ายบางส่วน</div>':'')
+          : '<span class="pill approved">ครบแล้ว</span>')+'</td>'
+      + '<td class="num">'+baht(r.paidAmount)+'</td>'
+      + '<td>'+(r.receiptNo?'<span class="pill approved mono">'+esc(r.receiptNo)+'</span>':'<span class="muted">—</span>')+'</td></tr>';
   }).join('');
   Array.prototype.forEach.call($('ar-body').querySelectorAll('.ar-pick'), function(cb){
     cb.addEventListener('change', updateArPicked);
@@ -3278,7 +3302,7 @@ function renderInvoiceList(){
     return [r.number, r.bl, r.customerName].join(' ').toLowerCase().indexOf(q) >= 0;
   });
   invState.listRows = rows;
-  if(!rows.length){ $('inv-list-body').innerHTML = '<tr><td colspan="10" class="muted">ยังไม่มีใบแจ้งหนี้</td></tr>'; updateInvlPicked(); return; }
+  if(!rows.length){ $('inv-list-body').innerHTML = '<tr><td colspan="7" class="muted" style="padding:20px">ยังไม่มีใบแจ้งหนี้</td></tr>'; updateInvlPicked(); return; }
   $('inv-list-body').innerHTML = rows.map(function(r, i){
     var batch = r.batchNo ? ('ชุดที่ '+String(r.batchNo).padStart(2,'0')+'/'+String(r.batchPeriod||'').slice(4,6)
       + (r.sentToKola ? ' <span class="pill approved">ส่ง KOLA</span>' : '')) : '<span class="muted">—</span>';
@@ -3295,23 +3319,28 @@ function renderInvoiceList(){
         ? ' <button class="btn btn-ghost btn-sm invl-undo" data-i="'+i+'">คืนเป็นร่าง</button>'
         : ' <button class="btn btn-danger btn-sm invl-cancel" data-i="'+i+'">ยกเลิก</button>';
     }
+    // ยอดก่อน VAT กับ VAT ย้ายไปเป็นบรรทัดรองใต้ยอดรวม ลดจาก 10 คอลัมน์เหลือ 7
+    var money = '<b>'+baht(r.total)+'</b>'
+      + '<div class="sub">ก่อน VAT '+baht(r.subtotal)
+      + (r.kind==='V' ? ' + VAT '+baht(r.vat) : ' (ไม่มี VAT)') + '</div>';
     return '<tr>'
       + '<td><input type="checkbox" class="invl-pick" data-i="'+i+'"'+(r.batchNo?' disabled title="อยู่ในชุดแล้ว"':'')+'></td>'
-      + '<td><b>'+esc(r.number)+'</b></td>'
-      + '<td>'+esc(r.issueDate)+'</td>'
-      + '<td>'+esc(r.bl||'—')+'</td>'
-      + '<td class="right">'+baht(r.subtotal)+'</td>'
-      + '<td class="right">'+(r.kind==='V'?baht(r.vat):'—')+'</td>'
-      + '<td class="right"><b>'+baht(r.total)+'</b></td>'
+      + '<td><b class="mono">'+esc(r.number)+'</b><div class="sub">'+esc(r.issueDate)+'</div></td>'
+      + '<td class="mono">'+esc(r.bl||'—')+'</td>'
+      + '<td class="num">'+money+'</td>'
       + '<td>'+batch+'</td>'
       + '<td>'+(INV_STATUS[r.status]||esc(r.status))+'</td>'
-      + '<td class="right" style="white-space:nowrap">'+act+'</td></tr>';
+      + '<td class="acts">'+act+'</td></tr>';
   }).join('');
   Array.prototype.forEach.call($('inv-list-body').querySelectorAll('.invl-view'), function(b){
     b.addEventListener('click', function(){ printInvoice(rows[Number(b.getAttribute('data-i'))]); });
   });
   Array.prototype.forEach.call($('inv-list-body').querySelectorAll('.invl-pick'), function(cb){
-    cb.addEventListener('change', updateInvlPicked);
+    cb.addEventListener('change', function(){
+      var tr = cb.parentNode && cb.parentNode.parentNode;
+      if(tr && tr.classList) tr.classList.toggle('is-picked', cb.checked);
+      updateInvlPicked();
+    });
   });
   $('invl-all').checked = false;
   updateInvlPicked();
@@ -3326,13 +3355,19 @@ function renderInvoiceList(){
         b.disabled = true;
         api({ action:'decideInvoice', token:state.token, number:r.number, decision:decision })
           .then(function(res){
-            if(res.ok) loadInvoiceList();
-            else { b.disabled = false; alert('ทำรายการไม่สำเร็จ: '+res.error); }
+            if(res.ok){ loadInvoiceList(); return; }
+            b.disabled = false;
+            var why = res.error === 'already_sent_to_kola'
+              ? 'ใบนี้ส่ง KOLA ไปแล้ว ยกเลิกไม่ได้ — ต้องออกใบลดหนี้แทน'
+              : (res.error === 'already_paid'
+                 ? 'ใบนี้มีการรับชำระแล้ว ยกเลิกไม่ได้'
+                 : res.error);
+            alert('ทำรายการไม่สำเร็จ: ' + why);
           });
       });
     });
   };
-  invDecide('.invl-cancel', 'cancelled', 'ยกเลิกใบ %s ?\n\nเลขใบนี้ถือว่าใช้ไปแล้ว ใบใหม่จะได้เลขถัดไป');
+  invDecide('.invl-cancel', 'cancelled', 'ยกเลิกใบ %s ?\n\nรายการจะถูกลบออกจากตาราง และเลขใบนี้กลับมาใช้ใหม่ได้');
   invDecide('.invl-undo', 'draft', null);
   Array.prototype.forEach.call($('inv-list-body').querySelectorAll('.invl-ok'), function(b){
     b.addEventListener('click', function(){

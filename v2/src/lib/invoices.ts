@@ -330,6 +330,23 @@ export async function decideInvoice(body: ApiBody, actor: { username: string }):
   const [existing] = await db.select().from(invoices).where(eq(invoices.number, number)).limit(1);
   if (!existing) return { ok: false, error: 'invoice_not_found' };
 
+  /**
+   * ยกเลิก = ลบทิ้งจริง เพื่อคืนเลขให้ใช้ซ้ำได้
+   *
+   * ถ้าเก็บแถวไว้แล้วติดสถานะ cancelled เลขนั้นจะถูกจองตลอดไป เพราะ nextSeq
+   * ใช้ max(seq) ของเดือน ออกใบถัดไปก็จะข้ามเลขที่ยกเลิกไปเรื่อย ๆ
+   * ลบทิ้งแล้ว max(seq) จะถอยกลับเอง เลขล่าสุดที่ยกเลิกจึงถูกหยิบมาใช้ใหม่ได้
+   *
+   * ใบที่ส่ง KOLA หรือรับชำระไปแล้วห้ามลบ เพราะเป็นเอกสารที่ออกไปข้างนอกแล้ว
+   * และมียอดผูกอยู่ในลูกหนี้ ต้องออกใบลดหนี้แทน ไม่ใช่ลบให้หายไปเฉย ๆ
+   */
+  if (decision === 'cancelled') {
+    if (existing.sentToKola) return { ok: false, error: 'already_sent_to_kola', number };
+    if (Number(existing.paidAmount) > 0) return { ok: false, error: 'already_paid', number };
+    await db.delete(invoices).where(eq(invoices.number, number));
+    return { ok: true, number, status: 'cancelled', deleted: true };
+  }
+
   const now = nowIso();
   await db.update(invoices).set({
     status: decision,
