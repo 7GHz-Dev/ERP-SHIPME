@@ -30,6 +30,9 @@ const text = (value: unknown, max = 300) => String(value ?? '').trim().slice(0, 
  * ชื่อคอลัมน์ในตารางกับชื่อที่คนอ่านรู้เรื่อง — ใช้ตอนบอกว่า sync รอบนั้นแก้ช่องไหน
  * ตรงกับหัวคอลัมน์ในชีตเพื่อให้เทียบกลับไปหาต้นทางได้ทันที
  */
+/** camelCase ใน schema → ชื่อคอลัมน์จริงใน Supabase (doFee → do_fee) */
+const dbColumn = (name: string) => name.replace(/[A-Z]/g, (c) => '_' + c.toLowerCase());
+
 const COLUMN_LABELS: Record<string, string> = {
   transportDate: 'TRANSPORT (วันที่ตรวจปล่อย)',
   shipping: 'ชิปปิ้ง',
@@ -199,7 +202,7 @@ export async function syncTransportSheet(body: ApiBody): Promise<ApiResult> {
     for (const [column, label] of Object.entries(COLUMN_LABELS)) {
       const a = norm(before?.[column]);
       const b = norm(after?.[column]);
-      if (a !== b) out.push({ column, label, from: a, to: b });
+      if (a !== b) out.push({ column: dbColumn(column), label, from: a, to: b });
     }
     return out;
   };
@@ -215,7 +218,7 @@ export async function syncTransportSheet(body: ApiBody): Promise<ApiResult> {
         const v = norm(row?.[column]);
         return v !== '' && v !== 0 && v !== 'false';
       })
-      .map(([column, label]) => ({ column, label, from: '', to: norm(row?.[column]) }))
+      .map(([column, label]) => ({ column: dbColumn(column), label, from: '', to: norm(row?.[column]) }))
       .slice(0, 8);
     details.push({ bl: row?.bl || '', container: row?.containerNo || '', kind: 'added', fields });
   }

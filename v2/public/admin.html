@@ -1282,26 +1282,30 @@ function renderDbOverview(r){
             + esc(g.removedBls.slice(0,5).join(', '))
             + (g.removedBls.length>5 ? ' และอีก '+(g.removedBls.length-5) : '') + '</span>');
 
-          // รายละเอียดรายแถว — ชื่อคอลัมน์กับค่าที่เพิ่งเข้ามา
+          // รายละเอียดรายแถว — ชื่อคอลัมน์จริงในฐานข้อมูลกับค่าที่เพิ่งเข้ามา
           var detail = (g.details||[]).map(function(d){
             var fields = (d.fields||[]).map(function(f){
-              var to = '<b>'+esc(String(f.to))+'</b>';
               // แถวที่แก้ค่าเดิม แสดงค่าก่อนหน้าด้วยจะได้รู้ว่าเปลี่ยนจากอะไร
-              return '<span style="display:inline-block;margin:2px 10px 2px 0">'
-                + esc(f.label) + ': '
+              return '<div style="margin-left:14px">'
+                + esc(f.column) + ' = '
                 + (d.kind==='changed' && String(f.from)!=='' ? '<span class="muted" style="text-decoration:line-through">'+esc(String(f.from))+'</span> → ' : '')
-                + to + '</span>';
+                + '<b>'+esc(String(f.to))+'</b>'
+                + ' <span class="muted" style="font-size:11px">'+esc(f.label)+'</span></div>';
             }).join('');
-            return '<div style="margin-top:6px;padding:6px 8px;background:#f8fafc;border-radius:6px">'
-              + '<b>'+esc(d.bl||'(ไม่มี BL)')+'</b>'
+            return '<div style="margin-top:8px;padding:8px 10px;background:#f8fafc;border-radius:6px;font-size:13px">'
+              + '<div>ที่ <b>bl=' + esc(d.bl||'(ไม่มี BL)') + '</b>'
               + (d.container ? ' <span class="muted" style="font-size:12px">'+esc(d.container)+'</span>' : '')
               + ' <span class="pill'+(d.kind==='added'?' approved':'')+'" style="font-size:11px">'
-              + (d.kind==='added'?'แถวใหม่':'แก้ค่า')+'</span>'
-              + '<div style="font-size:12px;margin-top:3px">'+(fields||'<span class="muted">—</span>')+'</div></div>';
+              + (d.kind==='added'?'แถวใหม่':'แก้ค่า')+'</span></div>'
+              + (fields||'<div class="muted" style="margin-left:14px">—</div>') + '</div>';
           }).join('');
 
+          var t = new Date(g.syncedAt);
+          var pad = function(n){ return String(n).padStart(2,'0'); };
+          var stamp = 'update ' + pad(t.getDate())+'/'+pad(t.getMonth()+1)+'/'+t.getFullYear()
+            + ' ' + pad(t.getHours())+':'+pad(t.getMinutes())+':'+pad(t.getSeconds())+'น.';
           return '<tr><td style="white-space:nowrap;vertical-align:top">'
-            + esc(new Date(g.syncedAt).toLocaleString('th-TH',{dateStyle:'short',timeStyle:'short'}))
+            + '<b>'+esc(stamp)+'</b>'
             + '<div class="muted" style="font-size:11px">'+agoText(g.syncedAt)+'</div></td>'
             + '<td style="vertical-align:top">'+esc(g.file)+'<div class="muted" style="font-size:11px">'+esc(g.sheet)+'</div></td>'
             + '<td class="right" style="vertical-align:top">'+g.rowsBefore+' → <b>'+g.rowsAfter+'</b></td>'
