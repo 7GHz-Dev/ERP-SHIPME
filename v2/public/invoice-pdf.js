@@ -133,11 +133,13 @@
     text('ชื่อบัญชี : '+company.bankAccountName,38,939,13);
     text('เลขที่บัญชี : '+company.bankAccountNo,38,956,13);
     // Keep the email on its own line, as in the reference, rather than splitting it.
+    // ป้ายกำกับที่นำหน้าอีเมล (เช่น "E-MAIL.") ต้องลงมาอยู่บรรทัดเดียวกับอีเมลด้วย
+    // ไม่งั้นจะค้างอยู่ท้ายบรรทัดบนแล้วอ่านขาดตอน
     var note='หมายเหตุ '+company.note;
-    var email=note.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+    var email=note.match(/(\S*(?:E-?MAIL|อีเมล)\S*\s+)?[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
     if(email){
       var noteHeight=wrapped(note.replace(email[0],'').trim(),38,981,518,17,13);
-      text(email[0],38,981+noteHeight,13);
+      text(email[0].replace(/\s+/g,' ').trim(),38,981+noteHeight,13);
     } else wrapped(note,38,981,518,17,13);
     text('ผู้จัดทำใบแจ้งหนี้',38,1037,13);
     text(invoice.preparedBy||'',143,1037,13);
