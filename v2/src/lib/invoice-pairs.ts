@@ -88,7 +88,9 @@ export async function saveInvoicePairs(body: ApiBody, actor: { username: string;
             row.bl.toUpperCase() === entry.bl.toUpperCase() && row.kind === entry.kind)!;
           return { bl: entry.bl, kind: entry.kind, number: hit.number };
         });
-      if (clash.length && !body.allowDuplicateBl) {
+      // ห้ามออกใบซ้ำ BL + ชนิดเดิมเสมอ ไม่มีทางลัดจากฝั่งหน้าเว็บ
+      // ถ้าต้องออกใหม่หรือใช้เลขเดิม ผู้ดูแลต้องยกเลิกใบเดิมก่อน (ยกเลิก = ลบ คืนเลขให้ว่าง)
+      if (clash.length) {
         return { ok: false, error: 'bl_already_invoiced', duplicates: clash };
       }
       const created = [];

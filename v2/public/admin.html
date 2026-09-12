@@ -189,6 +189,10 @@
 .inv-cost-row input[type=checkbox]{width:16px;height:16px;margin:0}.inv-cost-row input[type=number]{width:100%;min-width:0;text-align:right;padding:7px}
 .inv-cost-row label{margin:0;font-size:12px;line-height:1.4;font-weight:500}.inv-cost-row input[type=text]{min-width:0;width:100%;padding:7px;font-size:12px}
 .inv-row-number{display:block;background:#e9efff;color:#254bb4;padding:7px 10px;margin-bottom:12px;border-radius:5px;font-size:13px}
+    /* เลขที่ใบแจ้งหนี้แก้ได้รายแถว — คงหน้าตาเดิมไว้ แต่เป็นช่องกรอกจริง */
+    input.inv-row-number{width:100%;box-sizing:border-box;border:1px solid #bccbf0;font-weight:700;font-family:inherit}
+    input.inv-row-number:focus{outline:2px solid #254bb4;outline-offset:-1px;background:#fff}
+    input.inv-row-number:disabled{background:#eef1f6;color:#5a6377;border-color:#dfe3ea;font-weight:600}
 .inv-cost-total{display:flex;justify-content:space-between;gap:10px;margin-top:12px;padding-top:9px;border-top:1px solid #dbe3ed;font-size:12px}
 .inv-row-actions{display:grid;gap:8px;min-width:112px}.inv-source-table .pill{display:block;margin-bottom:5px}
 </style>
