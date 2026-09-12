@@ -13,33 +13,43 @@ function invVatBase(items){
   },0)*100)/100;
 }
 function invoicePeriod(){ return $('inv-issue-date').value.slice(0,7).replace('-',''); }
-function invoiceStart(kind){
-  var value = $(kind==='V'?'inv-start-v':'inv-start-nv').value.trim().toUpperCase();
-  var prefix=kind+invoicePeriod();
-  if(value.indexOf(prefix)===0) value=value.slice(prefix.length);
-  else if(value.indexOf(invoicePeriod())===0 && value.length>6) value=value.slice(6);
+/**
+ * เลขเริ่มต้นมีชุดเดียว — V กับ NV ใช้ลำดับเดียวกันเสมอ
+ * รับได้ทั้ง V20260901 / NV20260901 / 20260901 / 1
+ */
+function invoiceStart(){
+  var value = $('inv-start').value.trim().toUpperCase();
+  var period=invoicePeriod();
+  if(value.indexOf('NV'+period)===0) value=value.slice(('NV'+period).length);
+  else if(value.indexOf('V'+period)===0) value=value.slice(('V'+period).length);
+  else if(value.indexOf(period)===0 && value.length>6) value=value.slice(6);
   if(!/^[0-9]{1,6}$/.test(value) || Number(value)<1) return null;
   return Number(value);
 }
 function fillInvoiceStarts(){
-  ['V','NV'].forEach(function(kind){
-    var el=$(kind==='V'?'inv-start-v':'inv-start-nv');
-    if(!el.value) el.value=(invState.cfg && invState.cfg.period===invoicePeriod() && invState.cfg.next[kind]) || kind+invoicePeriod()+'01';
-  });
+  var el=$('inv-start');
+  if(!el.value) el.value=(invState.cfg && invState.cfg.period===invoicePeriod() && invState.cfg.next.V) || 'V'+invoicePeriod()+'01';
 }
 /**
- * เติมเลขให้ทุกแถวตามเลขเริ่มต้น
- * แถวที่ผู้ใช้พิมพ์เลขเองไว้ (numberEdited) จะไม่ถูกเขียนทับ แต่ยังกินลำดับ
- * ของเลขรันตามเดิม เพื่อไม่ให้แถวถัดไปได้เลขซ้ำกับที่พิมพ์ไว้
+ * เติมเลขให้ทุกแถวตามเลขเริ่มต้น — หนึ่ง BL กินหนึ่งลำดับ ไม่ว่าจะออกกี่ใบ
+ *
+ * V กับ NV ของ BL เดียวกันใช้เลขเดียวกันเสมอ เช่น V20260901 คู่กับ NV20260901
+ * BL ที่ออกแต่ใบ V เลข NV ของชุดนั้นจะถูกข้ามไปเลย ไม่เอากลับมาใช้กับ BL ถัดไป
+ * BL ถัดไปจึงได้ V20260902 + NV20260902 ไม่ใช่ NV20260901
+ *
+ * แถวที่ผู้ใช้พิมพ์เลขเองไว้ (numberEdited) จะไม่ถูกเขียนทับ แต่ยังกินลำดับตามเดิม
+ * เพื่อไม่ให้แถวถัดไปได้เลขซ้ำกับที่พิมพ์ไว้
  */
 function assignInvoiceNumbers(){
-  ['V','NV'].forEach(function(kind){
-    var seq=invoiceStart(kind);
-    (invState.visible||[]).forEach(function(row,i){
-      row.numbers=row.numbers||{};
+  var seq=invoiceStart();
+  (invState.visible||[]).forEach(function(row,i){
+    row.numbers=row.numbers||{};
+    // เลขของแถวนี้ตัวเดียว ใช้ร่วมกันทั้ง V และ NV
+    var running=seq===null || seq>999999?null:seq++;
+    ['V','NV'].forEach(function(kind){
       // BL ที่ออกไปแล้วอาจมีแค่ฝั่งเดียว (เช่น NON VAT ไม่มียอด) — ฝั่งที่ไม่ได้ออกยังต้องได้เลขถัดไปตามปกติ
       var created=row.createdPair&&row.createdPair.find(function(doc){return doc.kind===kind;});
-      var auto=seq===null || seq>999999?'':kind+invoicePeriod()+String(seq++).padStart(2,'0');
+      var auto=running===null?'':kind+invoicePeriod()+String(running).padStart(2,'0');
       if(created) row.numbers[kind]=created.number;
       else if(row.issued&&row.issued[kind]) row.numbers[kind]=row.issued[kind];
       else if(!(row.numberEdited&&row.numberEdited[kind])) row.numbers[kind]=auto;
@@ -79,9 +89,9 @@ function initInvoiceWorkspace(){
   // inv-from / inv-to จัดการบันทึกเองแล้วด้านบน เหลือแค่ช่องค้นหากับตัวกรอง
   $('inv-search').addEventListener('input',saveInvoiceFilters);
   $('inv-filter').addEventListener('change',saveInvoiceFilters);
-  ['inv-start-v','inv-start-nv'].forEach(function(id){ $(id).addEventListener('input',assignInvoiceNumbers); });
+  $('inv-start').addEventListener('input',assignInvoiceNumbers);
   $('inv-issue-date').addEventListener('change',function(){
-    $('inv-start-v').value=''; $('inv-start-nv').value=''; fillInvoiceStarts(); assignInvoiceNumbers();
+    $('inv-start').value=''; fillInvoiceStarts(); assignInvoiceNumbers();
   });
   $('inv-all').addEventListener('change',function(){
     var checked=this.checked;
@@ -342,13 +352,12 @@ async function runInvoicePair(save,rows){
       }
       saved=true;
       rows.forEach(function(row){row.createdPair=res.created.filter(function(doc){return doc.settlementId===row.settlementId&&doc.bl===row.bl;});row.issued=row.issued||{};row.createdPair.forEach(function(doc){row.issued[doc.kind]=doc.number;});});
-      ['V','NV'].forEach(function(kind){
-        var seqs=res.created.filter(function(doc){return doc.kind===kind;}).map(function(doc){return doc.seq;});
-        // ไม่ได้ออกชนิดนี้เลยก็ไม่ต้องขยับเลขเริ่มต้น (Math.max ของ array ว่างได้ -Infinity)
-        if(!seqs.length) return;
+      // ขยับเลขเริ่มต้นไปหลังลำดับสูงสุดที่เพิ่งออก — นับรวมทั้ง V และ NV เพราะใช้ชุดเดียวกัน
+      var seqs=res.created.map(function(doc){return Number(doc.seq);}).filter(function(n){return n>0;});
+      if(seqs.length){
         var max=Math.max.apply(null,seqs);
-        var input=$(kind==='V'?'inv-start-v':'inv-start-nv');input.value=kind+invoicePeriod()+String(Math.max(max+1,invoiceStart(kind)||1)).padStart(2,'0');
-      });
+        $('inv-start').value='V'+invoicePeriod()+String(Math.max(max+1,invoiceStart()||1)).padStart(2,'0');
+      }
       renderInvoiceSources();loadInvoiceList();
       $('inv-inline-msg').textContent='บันทึกใบแจ้งหนี้แล้ว '+res.created.length+' ใบ — เลขที่ '+res.created.map(function(doc){return doc.number;}).join(', ')+' (กด Preview เพื่อดูไฟล์)';
       return;
