@@ -32,7 +32,9 @@ function assignInvoiceNumbers(){
     var seq=invoiceStart(kind);
     (invState.visible||[]).forEach(function(row,i){
       row.numbers=row.numbers||{};
-      if(row.createdPair){ row.numbers[kind]=row.createdPair.find(function(doc){return doc.kind===kind;}).number; }
+      // BL ที่ออกไปแล้วอาจมีแค่ฝั่งเดียว (เช่น NON VAT ไม่มียอด) — ฝั่งที่ไม่ได้ออกยังต้องได้เลขถัดไปตามปกติ
+      var created=row.createdPair&&row.createdPair.find(function(doc){return doc.kind===kind;});
+      if(created){ row.numbers[kind]=created.number; }
       else { row.numbers[kind]=seq===null || seq>999999?'':kind+invoicePeriod()+String(seq++).padStart(2,'0'); }
       var el=$('inv-number-'+i+'-'+kind); if(el) el.textContent=row.numbers[kind]||'กรอกเลขเริ่มต้นให้ถูกต้อง';
     });
