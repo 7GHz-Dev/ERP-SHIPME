@@ -598,12 +598,12 @@
           <button id="invl-reset" class="btn btn-danger btn-sm hidden" disabled
             title="ลบใบทิ้งทั้งลูกหนี้และชุด แล้วส่ง BL กลับไปหน้าออกใบใหม่">↩ ถอยกลับไปออกใบใหม่</button>
           <button id="invl-cancel-picked" class="btn btn-danger btn-sm" disabled>ยกเลิกที่เลือก</button>
-          <button id="invl-send-kola" class="btn btn-ok btn-sm" disabled>ส่ง KOLA</button>
         </div>
         <div class="toolbar" style="margin-top:-6px">
           <span class="muted">พิมพ์หน้าปก — เฉพาะชุดที่ยังไม่ส่ง KOLA</span>
           <select id="invl-cover-batch" title="ชุดที่จะพิมพ์หน้าปก"></select>
           <button id="invl-print-batch" class="btn btn-ghost btn-sm" disabled>พิมพ์หน้าปกชุด</button>
+          <button id="invl-send-kola" class="btn btn-ok btn-sm" disabled>ส่ง KOLA</button>
         </div>
         <div id="invl-batch-msg" class="muted" style="margin:0 2px 10px"></div>
         <div class="tablewrap">
@@ -2951,11 +2951,6 @@ function updateInvlPicked(){
   // ถอยกลับไปออกใบใหม่ — โชว์เฉพาะ admin (เซิร์ฟเวอร์กันอีกชั้น)
   $('invl-reset').classList.toggle('hidden', !isAdminUser());
   $('invl-reset').disabled = !isAdminUser() || !picked.length;
-  // ส่ง KOLA / พิมพ์ชุด — ทำทีละชุด จึงต้องเลือกใบที่อยู่ชุดเดียวกัน
-  var keys = {};
-  picked.forEach(function(r){ if(r.batchNo) keys[r.batchNo+'/'+r.batchPeriod] = 1; });
-  var oneBatch = Object.keys(keys).length === 1;
-  $('invl-send-kola').disabled = !(oneBatch && picked.some(function(r){ return !r.sentToKola; }));
 }
 Array.prototype.forEach.call(document.querySelectorAll('#inv-pane-list th.sortable'), function(th){
   th.addEventListener('click', function(){ sortInvoiceList(th.getAttribute('data-sort')); });
@@ -3058,14 +3053,6 @@ $('invl-unbatch').addEventListener('click', function(){
     });
 });
 
-/** ชุดที่เลือกอยู่ตอนนี้ — คืนทุกใบในชุดนั้น ไม่ใช่เฉพาะที่ติ๊กไว้ */
-function pickedBatchRows(){
-  var picked = invlPickedRows().filter(function(r){ return r.batchNo; });
-  if(!picked.length) return null;
-  var key = picked[0].batchNo + '/' + picked[0].batchPeriod;
-  return (invState.list || []).filter(function(r){ return r.batchNo && (r.batchNo+'/'+r.batchPeriod) === key; });
-}
-
 /* ---------- ตัวเลือกชุด / เดือน ---------- */
 var batchState = { batches: [] };
 
@@ -3115,7 +3102,9 @@ function refreshCoverOptions(){
       }).join('')
     : '<option value="">— ไม่มีชุดที่ยังไม่ส่ง —</option>';
   if(keep && open.some(function(b){ return b.key === keep; })) sel.value = keep;
+  // พิมพ์หน้าปกกับส่ง KOLA ใช้ชุดจาก dropdown เดียวกัน
   $('invl-print-batch').disabled = !open.length;
+  $('invl-send-kola').disabled = !open.length;
 }
 
 function loadInvoiceBatches(){
@@ -3185,15 +3174,15 @@ function batchCoverMessage(batch){
 }
 
 $('invl-send-kola').addEventListener('click', function(){
-  // ส่งทั้งชุดเสมอ ไม่ใช่เฉพาะใบที่ติ๊ก — เซิร์ฟเวอร์ก็อัปเดตด้วย batchNo + period
-  var rows = pickedBatchRows();
-  if(!rows || !rows.length) return;
-  var picked = rows;
-  var first = rows[0];
-  if(!confirm('ส่งชุดที่ ' + String(first.batchNo).padStart(2,'0') + '/' + String(first.batchPeriod).slice(4,6)
-      + ' ไป KOLA?' + String.fromCharCode(10,10) + 'ชุดนี้จะย้ายไปแถบ รอลูกค้ารับเอกสาร')) return;
+  // ใช้ dropdown ตัวเดียวกับปุ่มพิมพ์หน้าปกที่อยู่ข้างกัน
+  // ส่งทั้งชุดเสมอ — เซิร์ฟเวอร์ก็อัปเดตด้วย batchNo + period
+  var key = $('invl-cover-batch').value;
+  var batch = (batchState.batches || []).filter(function(b){ return b.key === key; })[0];
+  if(!batch){ alert('เลือกชุดก่อน'); return; }
+  if(!confirm('ส่ง ' + batch.name + ' (' + batch.count + ' ใบ) ไป KOLA?'
+      + String.fromCharCode(10,10) + 'ชุดนี้จะย้ายไปแถบ รอลูกค้ารับเอกสาร')) return;
   var btn = $('invl-send-kola'); btn.disabled = true;
-  api({ action:'sendBatchToKola', token:state.token, batchNo:first.batchNo, period:first.batchPeriod })
+  api({ action:'sendBatchToKola', token:state.token, batchNo:batch.batchNo, period:batch.period })
     .then(function(res){
       btn.disabled = false;
       if(!res.ok){ alert('ส่งไม่สำเร็จ: '+res.error); return; }
