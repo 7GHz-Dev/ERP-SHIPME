@@ -2895,6 +2895,16 @@ var INV_STATUS = {
   cancelled:'<span class="pill rejected">ยกเลิก</span>'
 };
 
+/**
+ * สถานะการส่งเอกสาร — คนละเรื่องกับสถานะอนุมัติของตัวใบ
+ * ใบที่ยกเลิกไม่ต้องบอกสถานะส่ง เพราะจบไปแล้ว
+ */
+function invShipStatus(r){
+  if(r.status === 'cancelled') return '';
+  if(r.sentToKola) return '<span class="pill approved">ส่ง KOLA แล้ว</span>';
+  return '<span class="pill pending">รอส่ง</span>';
+}
+
 
 /** เปิดใบเดิมมาแก้ — เลขที่กับชนิดแก้ไม่ได้ แก้ได้แต่รายการและยอด */
 function openInvoiceEdit(row){
@@ -3636,8 +3646,9 @@ function renderInvoiceList(){
   });
   if(!rows.length){ $('inv-list-body').innerHTML = '<tr><td colspan="7" class="muted" style="padding:20px">ยังไม่มีใบแจ้งหนี้</td></tr>'; updateInvlPicked(); return; }
   $('inv-list-body').innerHTML = rows.map(function(r, i){
-    var batch = r.batchNo ? (esc(r.batchName || ('ชุดที่ '+String(r.batchNo).padStart(2,'0')+'/'+String(r.batchPeriod||'').slice(4,6)))
-      + (r.sentToKola ? ' <span class="pill approved">ส่ง KOLA</span>' : '')) : '<span class="muted">—</span>';
+    var batch = r.batchNo
+      ? esc(r.batchName || ('ชุดที่ '+String(r.batchNo).padStart(2,'0')+'/'+String(r.batchPeriod||'').slice(4,6)))
+      : '<span class="muted">—</span>';
     // เหลือแค่ ดู กับ ยกเลิก — ยกเลิกเฉพาะ admin/manager-account (เซิร์ฟเวอร์กันอีกชั้น)
     var act = '<button class="btn btn-ghost btn-sm invl-view" data-i="'+i+'">ดู</button>';
     if(invState.canApprove){
@@ -3653,7 +3664,8 @@ function renderInvoiceList(){
       + '<td class="mono">'+esc(r.bl||'—')+'</td>'
       + '<td class="num">'+money+'</td>'
       + '<td>'+batch+'</td>'
-      + '<td>'+(INV_STATUS[r.status]||esc(r.status))+'</td>'
+      + '<td>'+(INV_STATUS[r.status]||esc(r.status))
+        + (invShipStatus(r) ? '<div style="margin-top:4px">'+invShipStatus(r)+'</div>' : '')+'</td>'
       + '<td class="acts">'+act+'</td></tr>';
   }).join('');
   Array.prototype.forEach.call($('inv-list-body').querySelectorAll('.invl-view'), function(b){
