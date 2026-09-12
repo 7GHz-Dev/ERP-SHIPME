@@ -126,7 +126,8 @@
         var emphasized=i===2||i===4;
         rule(38,y,490,28,'#d9d9d9'); rule(528,y,125,28,'#d9d9d9'); rule(653,y,125,28,'#d9d9d9');
         text(row[0],521,y+20,13,emphasized?800:600,'right');
-        text(row[1]===null?(i===3?'-':''):money(row[1]),646,y+20,13,emphasized,'right'); y+=28;
+        // ช่องที่ไม่มียอด (ใบ NON VAT ไม่มี VAT, ไม่ได้หัก ณ ที่จ่าย) ใส่ "-" ไม่ปล่อยว่าง
+        text(row[1]===null?'-':money(row[1]),646,y+20,13,emphasized,'right'); y+=28;
       });
     } else { text('รายการต่อในหน้าถัดไป',778,y+28,13,true,'right'); }
     text('ช่องทางการชำระเงิน',38,922,13,true);
