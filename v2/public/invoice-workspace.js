@@ -63,7 +63,7 @@ function assignInvoiceNumbers(){
  * เก็บเฉพาะตัวกรอง ไม่เก็บยอดหรือเลขใบ เพราะต้องดึงสดจากเซิร์ฟเวอร์เสมอ
  */
 var INV_FILTER_KEY='invoiceFilters';
-var INV_FILTER_IDS=['inv-search','inv-from','inv-to','inv-filter'];
+var INV_FILTER_IDS=['inv-search','inv-from','inv-to'];
 function saveInvoiceFilters(){
   var data={};
   INV_FILTER_IDS.forEach(function(id){ data[id]=$(id).value; });
@@ -88,7 +88,6 @@ function initInvoiceWorkspace(){
   $('inv-to').addEventListener('change',function(){ saveInvoiceFilters(); loadInvoiceSources(); });
   // inv-from / inv-to จัดการบันทึกเองแล้วด้านบน เหลือแค่ช่องค้นหากับตัวกรอง
   $('inv-search').addEventListener('input',saveInvoiceFilters);
-  $('inv-filter').addEventListener('change',saveInvoiceFilters);
   $('inv-start').addEventListener('input',assignInvoiceNumbers);
   $('inv-issue-date').addEventListener('change',function(){
     $('inv-start').value=''; fillInvoiceStarts(); assignInvoiceNumbers();
@@ -135,10 +134,10 @@ function loadInvoiceSources(){
   }).catch(function(){ $('inv-inline-msg').textContent='โหลดรายการไม่สำเร็จ โปรดลองใหม่'; });
 }
 function renderInvoiceSources(){
-  var q=$('inv-search').value.trim().toLowerCase(),mode=$('inv-filter').value;
+  // เซิร์ฟเวอร์ตัด BL ที่ออกใบไปแล้วออกให้ตั้งแต่ต้นทาง เหลือแค่กรองด้วยคำค้น
+  var q=$('inv-search').value.trim().toLowerCase();
   var rows=invState.sources.filter(function(row){
-    var done=!!(row.issued&&(row.issued.V||row.issued.NV));
-    return !(mode==='open'&&done) && !(mode==='done'&&!done) && (!q||[row.bl,row.name,row.username].join(' ').toLowerCase().indexOf(q)>=0);
+    return !q||[row.bl,row.name,row.username].join(' ').toLowerCase().indexOf(q)>=0;
   });
   invState.visible=rows;
   $('inv-src-body').innerHTML=rows.map(function(row,i){

@@ -563,11 +563,6 @@
           <input id="inv-search" type="text" placeholder="ค้นหา เลข BL / ชื่อพนักงาน" class="grow">
           <input id="inv-from" type="date" title="วันที่ตรวจปล่อย ตั้งแต่">
           <input id="inv-to" type="date" title="วันที่ตรวจปล่อย ถึง">
-          <select id="inv-filter">
-            <option value="">ทุกงาน</option>
-            <option value="open">ยังไม่ได้ออกใบ</option>
-            <option value="done">ออกใบแล้ว</option>
-          </select>
           <button id="inv-reload" class="btn btn-ghost btn-sm">โหลดใหม่</button>
         </div>
         <div class="inv-number-toolbar">
@@ -602,14 +597,22 @@
         </div>
         <div class="toolbar" style="margin-top:-6px">
           <span id="invl-picked" class="muted">เลือกไว้ 0 ใบ</span>
+          <label style="display:flex;align-items:center;gap:6px">ชุดที่
+            <select id="invl-batch-no" title="เลขชุด"></select></label>
+          <label style="display:flex;align-items:center;gap:6px">เดือน
+            <select id="invl-batch-month" title="เดือนของชุด"></select></label>
           <label style="display:flex;align-items:center;gap:6px">วันที่ฝากส่ง
             <input id="invl-sent-date" type="date"></label>
-          <button id="invl-make-batch" class="btn btn-primary btn-sm" disabled>จัดชุด + สร้างข้อความ</button>
+          <button id="invl-make-batch" class="btn btn-primary btn-sm" disabled>จัดชุด</button>
           <button id="invl-unbatch" class="btn btn-ghost btn-sm" disabled>ยกเลิกจัดชุด</button>
-          <button id="invl-print-batch" class="btn btn-ghost btn-sm" disabled>พิมพ์ชุดเอกสาร</button>
           <span class="grow"></span>
           <button id="invl-cancel-picked" class="btn btn-danger btn-sm" disabled>ยกเลิกที่เลือก</button>
           <button id="invl-send-kola" class="btn btn-ok btn-sm" disabled>ส่ง KOLA</button>
+        </div>
+        <div class="toolbar" style="margin-top:-6px">
+          <span class="muted">พิมพ์หน้าปก — เฉพาะชุดที่ยังไม่ส่ง KOLA</span>
+          <select id="invl-cover-batch" title="ชุดที่จะพิมพ์หน้าปก"></select>
+          <button id="invl-print-batch" class="btn btn-ghost btn-sm" disabled>พิมพ์หน้าปกชุด</button>
         </div>
         <div id="invl-batch-msg" class="muted" style="margin:0 2px 10px"></div>
         <div class="tablewrap">
@@ -2846,6 +2849,8 @@ function initInvoiceTab(){
   });
   loadInvoiceSources();
   loadInvoiceList();
+  fillBatchPickers();
+  loadInvoiceBatches();
 }
 
 Array.prototype.forEach.call(document.querySelectorAll('.inv-sub'), function(btn){
@@ -2864,7 +2869,6 @@ Array.prototype.forEach.call(document.querySelectorAll('.inv-sub'), function(btn
 $('inv-reload').addEventListener('click', loadInvoiceSources);
 $('invl-reload').addEventListener('click', loadInvoiceList);
 $('inv-search').addEventListener('input', renderInvoiceSources);
-$('inv-filter').addEventListener('change', renderInvoiceSources);
 $('invl-search').addEventListener('input', renderInvoiceList);
 
 function openInvoiceForm(src, kind){
@@ -3095,7 +3099,6 @@ function updateInvlPicked(){
   picked.forEach(function(r){ if(r.batchNo) keys[r.batchNo+'/'+r.batchPeriod] = 1; });
   var oneBatch = Object.keys(keys).length === 1;
   $('invl-send-kola').disabled = !(oneBatch && picked.some(function(r){ return !r.sentToKola; }));
-  $('invl-print-batch').disabled = !oneBatch;
 }
 Array.prototype.forEach.call(document.querySelectorAll('#inv-pane-list th.sortable'), function(th){
   th.addEventListener('click', function(){ sortInvoiceList(th.getAttribute('data-sort')); });
@@ -3113,18 +3116,27 @@ $('invl-make-batch').addEventListener('click', function(){
   if(!picked.length) return;
   var sent = $('invl-sent-date').value;
   if(!sent){ alert('กรอกวันที่ฝากส่งก่อน'); return; }
+  var batchNo = Number($('invl-batch-no').value);
+  var month = $('invl-batch-month').value;
+  if(!batchNo){ alert('เลือกเลขชุดก่อน'); return; }
   var btn = $('invl-make-batch'); btn.disabled = true;
   api({ action:'createInvoiceBatch', token:state.token, sentDate:sent,
+        batchNo:batchNo, month:month,
         numbers:picked.map(function(r){ return r.number; }) })
     .then(function(res){
       btn.disabled = false;
       if(!res.ok){
         alert('จัดชุดไม่สำเร็จ: ' + (res.error==='already_batched'
-          ? ('ใบเหล่านี้อยู่ในชุดแล้ว: '+(res.numbers||[]).join(', ')) : res.error));
+          ? ('ใบเหล่านี้อยู่ในชุดแล้ว: '+(res.numbers||[]).join(', '))
+          : res.error==='batch_no_used'
+          ? ('เลขชุดนี้ถูกใช้ไปแล้วในเดือนที่เลือก — เลือกเลขอื่น')
+          : res.error));
+        if(res.error==='batch_no_used') loadInvoiceBatches();
         return;
       }
       $('invl-batch-msg').innerHTML = '<b>' + esc(res.message) + '</b>'
         + ' <button class="btn btn-ghost btn-sm" id="invl-copy">คัดลอกข้อความ</button>';
+      loadInvoiceBatches();
       $('invl-copy').addEventListener('click', function(){
         navigator.clipboard.writeText(res.message).then(function(){ alert('คัดลอกแล้ว'); });
       });
@@ -3147,6 +3159,7 @@ $('invl-unbatch').addEventListener('click', function(){
       }
       $('invl-batch-msg').textContent = 'ยกเลิกจัดชุดแล้ว ' + res.count + ' ใบ';
       loadInvoiceList();
+      loadInvoiceBatches();
     });
 });
 
@@ -3158,80 +3171,122 @@ function pickedBatchRows(){
   return (invState.list || []).filter(function(r){ return r.batchNo && (r.batchNo+'/'+r.batchPeriod) === key; });
 }
 
+/* ---------- ตัวเลือกชุด / เดือน ---------- */
+var batchState = { batches: [] };
+
+/** เติมเลขชุด 01-99 และเดือน 01-12 ให้ dropdown — เลขที่ใช้ไปแล้วของเดือนนั้นจะติดไว้ */
+function fillBatchPickers(){
+  var monthSel = $('invl-batch-month');
+  if(!monthSel.options.length){
+    var now = new Date();
+    var html = '';
+    for(var m = 1; m <= 12; m++){
+      var mm = String(m).padStart(2, '0');
+      html += '<option value="' + mm + '"' + (m === now.getMonth() + 1 ? ' selected' : '') + '>' + mm + '</option>';
+    }
+    monthSel.innerHTML = html;
+  }
+  refreshBatchNoOptions();
+}
+
+/** เลขชุดที่ใช้ไปแล้วในเดือนที่เลือก — กันไม่ให้เลือกซ้ำ */
+function refreshBatchNoOptions(){
+  var sel = $('invl-batch-no');
+  var month = $('invl-batch-month').value || String(new Date().getMonth() + 1).padStart(2, '0');
+  var year = ($('invl-sent-date').value || '').slice(0, 4) || String(new Date().getFullYear());
+  var period = year + month;
+  var used = {};
+  (batchState.batches || []).forEach(function(b){ if(b.period === period) used[b.batchNo] = b; });
+  var keep = sel.value;
+  var html = '', firstFree = '';
+  for(var n = 1; n <= 99; n++){
+    var nn = String(n).padStart(2, '0');
+    var hit = used[n];
+    if(hit) html += '<option value="' + n + '" disabled>' + nn + ' (ใช้แล้ว)</option>';
+    else { html += '<option value="' + n + '">' + nn + '</option>'; if(!firstFree) firstFree = String(n); }
+  }
+  sel.innerHTML = html;
+  sel.value = (keep && !used[Number(keep)]) ? keep : firstFree;
+}
+
+/** ชุดที่ยังไม่ส่ง KOLA — มีสิทธิ์พิมพ์หน้าปก */
+function refreshCoverOptions(){
+  var sel = $('invl-cover-batch');
+  var open = (batchState.batches || []).filter(function(b){ return !b.sentToKola; });
+  var keep = sel.value;
+  sel.innerHTML = open.length
+    ? open.map(function(b){
+        return '<option value="' + esc(b.key) + '">' + esc(b.name) + ' (' + b.count + ' ใบ)</option>';
+      }).join('')
+    : '<option value="">— ไม่มีชุดที่ยังไม่ส่ง —</option>';
+  if(keep && open.some(function(b){ return b.key === keep; })) sel.value = keep;
+  $('invl-print-batch').disabled = !open.length;
+}
+
+function loadInvoiceBatches(){
+  return api({ action:'listInvoiceBatches', token:state.token }).then(function(res){
+    if(res.ok) batchState.batches = res.batches || [];
+    refreshBatchNoOptions();
+    refreshCoverOptions();
+  });
+}
+
+$('invl-batch-month').addEventListener('change', refreshBatchNoOptions);
+$('invl-sent-date').addEventListener('change', refreshBatchNoOptions);
+
+/* ---------- หน้าปกชุด ---------- */
 $('invl-print-batch').addEventListener('click', function(){
-  var rows = pickedBatchRows();
-  if(!rows || !rows.length) return;
-  var first = rows[0];
-  var fallback = 'ชุดที่ ' + String(first.batchNo).padStart(2,'0') + '/' + String(first.batchPeriod||'').slice(4,6);
-  var name = prompt('ชื่อชุดที่จะพิมพ์บนใบปก', first.batchName || fallback);
-  if(name === null) return;
-  name = String(name).trim() || fallback;
+  var key = $('invl-cover-batch').value;
+  var batch = (batchState.batches || []).filter(function(b){ return b.key === key; })[0];
+  if(!batch){ alert('เลือกชุดก่อน'); return; }
   var btn = $('invl-print-batch'); btn.disabled = true;
-  // จำชื่อที่แก้ไว้กับชุด ครั้งหน้าจะได้ชื่อเดิม
-  api({ action:'renameInvoiceBatch', token:state.token,
-        batchNo:first.batchNo, period:first.batchPeriod, name:name })
-    .then(function(res){
-      if(res && res.ok){ rows.forEach(function(r){ r.batchName = name; }); renderInvoiceList(); }
-      return printInvoiceBatch(rows, name);
-    })
+  printBatchCover(batch)
     .catch(function(err){ alert('พิมพ์ไม่สำเร็จ: ' + (err && err.message ? err.message : err)); })
     .then(function(){ btn.disabled = false; });
 });
 
 /**
- * พิมพ์ชุดเอกสาร — ใบปกชุดหนึ่งหน้า แล้วตามด้วยใบแจ้งหนี้ทุกใบในชุด
- * ใช้ InvoicePDF ตัวเดิม จะได้หน้าตาเหมือนกับที่ออกให้ลูกค้าจริง
+ * หน้าปกชุด — หน้าเดียว ไม่มีใบแจ้งหนี้ต่อท้าย
+ * ข้อความเหมือนตอนจัดชุด แล้วต่อท้ายด้วย "ส่งถึงคุณปอนด์"
  */
-async function printInvoiceBatch(rows, name){
+async function printBatchCover(batch){
   if(!invState.cfg){ alert('กำลังโหลดข้อมูลบริษัท โปรดลองอีกครั้ง'); return; }
   var popup = window.open('', '_blank', 'popup,width=1000,height=850');
   if(popup){ popup.document.body.textContent = 'กำลังจัดเตรียม PDF…'; popup.document.body.style.margin = '0'; }
   try{
-    var sorted = rows.slice().sort(function(a,b){ return String(a.number).localeCompare(String(b.number)); });
-    var docs = [];
-    for(var i=0;i<sorted.length;i++){
-      var res = await api({ action:'getInvoice', token:state.token, number:sorted[i].number });
-      if(!res.ok) throw new Error('ดึงใบ ' + sorted[i].number + ' ไม่สำเร็จ: ' + res.error);
-      var inv = res.invoice;
-      docs.push({ number:inv.number, kind:inv.kind, issueDate:inv.issueDate, bl:inv.bl,
-        settlementId:inv.settlementId, items:inv.items,
-        subtotal:Number(inv.subtotal), vat:Number(inv.vat), total:Number(inv.total),
-        customerName:inv.customerName, customerAddress:inv.customerAddress,
-        customerTaxId:inv.customerTaxId, preparedBy:inv.preparedBy });
-    }
-    var cover = buildBatchCover(docs, sorted, name);
-    var blob = await InvoicePDF.create([cover].concat(docs), invState.cfg.company,
-      { coverCount: 1 });
-    showInvoicePDF(popup, blob, name.replace(/[\\/:*?"<>|]/g,'-') + '.pdf', false);
+    var blob = await InvoicePDF.create([buildBatchCover(batch)], invState.cfg.company);
+    showInvoicePDF(popup, blob, String(batch.name).replace(/[\\/:*?"<>|]/g, '-') + '.pdf', false);
+    $('invl-batch-msg').textContent = 'สร้างหน้าปก ' + batch.name + ' แล้ว';
   }catch(error){
-    var message = 'พิมพ์ชุดไม่สำเร็จ: ' + error.message;
+    var message = 'พิมพ์หน้าปกไม่สำเร็จ: ' + error.message;
     if(popup && !popup.closed) popup.document.body.textContent = message;
-    alert(message);
+    throw error;
   }
 }
 
-/** ใบปกชุด — ใช้โครงเดียวกับใบแจ้งหนี้ แต่เนื้อหาเป็นสารบัญรายการ */
-function buildBatchCover(docs, rows, name){
-  var first = rows[0] || {};
-  var sent = first.batchSentDate || '';
-  var total = docs.reduce(function(sum, d){ return sum + Number(d.total || 0); }, 0);
+/** หน้าปกใช้โครงเดียวกับใบแจ้งหนี้ แต่เนื้อหาเป็นข้อความส่งชุด */
+function buildBatchCover(batch){
+  var cu = invState.cfg.customer || {};
   return {
-    number: name,
+    number: batch.name,
     kind: 'COVER',
-    issueDate: sent || (docs[0] && docs[0].issueDate) || '',
-    bl: 'รวม ' + docs.length + ' ใบ',
-    items: docs.map(function(d, i){
-      return { no:i+1, label:d.number + '   B/L ' + (d.bl||'—'), amount:Number(d.total||0),
-               qty:0, unitPrice:0, note:d.kind==='V'?'VAT':'NON VAT' };
-    }),
-    subtotal: Math.round(total*100)/100,
-    vat: null,
-    total: Math.round(total*100)/100,
-    customerName: (invState.cfg.customer||{}).name || '',
-    customerAddress: (invState.cfg.customer||{}).address || '',
-    customerTaxId: (invState.cfg.customer||{}).taxId || '',
+    issueDate: batch.sentDate || '',
+    bl: batch.count + ' ใบ',
+    coverMessage: batchCoverMessage(batch),
+    items: [],
+    subtotal: 0, vat: null, total: Number(batch.total || 0),
+    customerName: cu.name || '', customerAddress: cu.address || '', customerTaxId: cu.taxId || '',
     preparedBy: state.user.name
   };
+}
+
+/** ข้อความบนหน้าปก — เหมือนตอนจัดชุด แล้วต่อท้ายด้วยผู้รับ */
+function batchCoverMessage(batch){
+  var d = String(batch.sentDate || '').split('-');
+  var thai = d.length === 3 ? (d[2] + '/' + d[1] + '/' + d[0]) : (batch.sentDate || '');
+  return batch.name + ' เอกสาร ' + batch.count + ' ชุด'
+    + (thai ? ' ฝากส่งไปวันที่ ' + thai : '')
+    + ' ส่งถึงคุณปอนด์';
 }
 
 $('invl-send-kola').addEventListener('click', function(){
@@ -3249,6 +3304,7 @@ $('invl-send-kola').addEventListener('click', function(){
       if(!res.ok){ alert('ส่งไม่สำเร็จ: '+res.error); return; }
       alert('ส่ง KOLA แล้ว ' + res.count + ' ใบ — ย้ายไปแถบ รอลูกค้ารับเอกสาร แล้ว');
       loadInvoiceList();
+      loadInvoiceBatches();
       if(!$('inv-pane-wait').classList.contains('hidden')) loadPendingDocs();
     });
 });

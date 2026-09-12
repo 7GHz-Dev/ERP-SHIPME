@@ -204,6 +204,9 @@ export async function invoiceSources(body: ApiBody): Promise<ApiResult> {
       byBl.set(key, group);
     }
     for (const [key, group] of byBl) {
+      // ออกใบไปแล้วไม่ต้องโชว์ในหน้าออกใบใหม่อีก
+      // ยกเลิกใบ = ลบแถวทิ้ง (ดู decideInvoice) BL นั้นจึงกลับมาโผล่เองอัตโนมัติ
+      if (issuedMap.has(key)) continue;
       out.push({
         settlementId: settlement.id,
         username: settlement.username,

@@ -31,7 +31,15 @@ export async function createInvoiceBatch(body: ApiBody): Promise<ApiResult> {
   if (numbers.length > 200) return { ok: false, error: 'too_many' };
 
   const sentDate = validYmd(body.sentDate) ? String(body.sentDate) : ymd();
-  const period = sentDate.slice(0, 7).replace('-', '');
+  // เลขชุดกับเดือนมาจากหน้าเว็บ — ผู้ใช้เลือกเองว่าจะใส่ชุดไหน
+  // ไม่ส่งมาก็ใช้เดือนของวันที่ฝากส่งและเลขถัดไปตามเดิม
+  const monthInput = text(body.month, 2);
+  const period = /^(0[1-9]|1[0-2])$/.test(monthInput)
+    ? sentDate.slice(0, 4) + monthInput
+    : sentDate.slice(0, 7).replace('-', '');
+  const wantedNo = Number(body.batchNo);
+  const hasWanted = Number.isInteger(wantedNo);
+  if (hasWanted && (wantedNo < 1 || wantedNo > 99)) return { ok: false, error: 'bad_batch_no' };
 
   return await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(71942027)`);
@@ -46,9 +54,18 @@ export async function createInvoiceBatch(body: ApiBody): Promise<ApiResult> {
     const cancelled = rows.filter(r => r.status === 'cancelled');
     if (cancelled.length) return { ok: false, error: 'invoice_cancelled', numbers: cancelled.map(r => r.number) };
 
-    const [top] = await tx.select({ maxNo: sql<number | null>`max(${invoices.batchNo})` })
-      .from(invoices).where(eq(invoices.batchPeriod, period));
-    const batchNo = Number(top?.maxNo ?? 0) + 1;
+    let batchNo: number;
+    if (hasWanted) {
+      // เลขชุดที่เลือกต้องยังไม่มีใครใช้ในเดือนนั้น ไม่งั้นจะไปปนกับชุดเดิม
+      const [taken] = await tx.select({ number: invoices.number }).from(invoices)
+        .where(and(eq(invoices.batchPeriod, period), eq(invoices.batchNo, wantedNo))).limit(1);
+      if (taken) return { ok: false, error: 'batch_no_used', batchNo: wantedNo, period };
+      batchNo = wantedNo;
+    } else {
+      const [top] = await tx.select({ maxNo: sql<number | null>`max(${invoices.batchNo})` })
+        .from(invoices).where(eq(invoices.batchPeriod, period));
+      batchNo = Number(top?.maxNo ?? 0) + 1;
+    }
 
     const name = batchLabel(batchNo, period);
     await tx.update(invoices)
@@ -123,6 +140,40 @@ export async function sendBatchToKola(body: ApiBody): Promise<ApiResult> {
   await db.update(invoices)
     .set({ sentToKola: true, docStatus: 'waiting', updatedAt: nowIso() }).where(scope);
   return { ok: true, batchNo, period, count: rows.length };
+}
+
+/**
+ * ชุดที่มีอยู่แล้ว — หน้าเว็บเอาไปกันเลขชน และทำรายการชุดให้เลือกพิมพ์หน้าปก
+ */
+export async function listInvoiceBatches(): Promise<ApiResult> {
+  const rows = await db.select({
+    batchNo: invoices.batchNo, period: invoices.batchPeriod,
+    sentDate: invoices.batchSentDate, name: invoices.batchName,
+    sentToKola: invoices.sentToKola, total: invoices.total
+  }).from(invoices)
+    .where(and(isNotNull(invoices.batchNo), ne(invoices.status, 'cancelled')))
+    .limit(2000);
+
+  const map = new Map<string, any>();
+  for (const row of rows) {
+    const key = `${row.period}/${row.batchNo}`;
+    let batch = map.get(key);
+    if (!batch) {
+      batch = {
+        key, batchNo: Number(row.batchNo), period: row.period, sentDate: row.sentDate,
+        name: row.name || batchLabel(Number(row.batchNo), row.period),
+        count: 0, total: 0, sentToKola: true
+      };
+      map.set(key, batch);
+    }
+    batch.count += 1;
+    batch.total = money(batch.total + Number(row.total));
+    // ชุดถือว่าส่งแล้วก็ต่อเมื่อทุกใบส่งแล้ว
+    if (!row.sentToKola) batch.sentToKola = false;
+  }
+  const batches = [...map.values()]
+    .sort((a, b) => a.period.localeCompare(b.period) || a.batchNo - b.batchNo);
+  return { ok: true, batches };
 }
 
 /** ชุดที่ส่ง KOLA แล้วและยังรอลูกค้ารับเอกสาร — จัดกลุ่มเป็นรายชุด */

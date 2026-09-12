@@ -56,6 +56,7 @@
     if(line)lines.push(line);return lines;
   }
   function paginate(items){
+    if(!items||!items.length) return [[]];
     var ctx=document.createElement('canvas').getContext('2d');
     ctx.font='13px "Sarabun", sans-serif';
     var pages=[],page=[],height=0;
@@ -93,15 +94,27 @@
     text('เลขประจำตัวผู้เสียภาษี '+company.taxId,408,172,13,false,'center');
     // ใบปกชุดใช้โครงเดียวกัน เปลี่ยนแค่หัวเรื่องกับชื่อช่อง
     var cover=invoice.kind==='COVER';
-    text(cover?'ใบปกชุดเอกสาร / COVER':((options&&options.title)||'ใบแจ้งหนี้ / INVOICE'),408,209,19,true,'center');
+    text(cover?'หน้าปกชุดเอกสาร':((options&&options.title)||'ใบแจ้งหนี้ / INVOICE'),408,209,19,true,'center');
+    if(cover){
+      // หน้าปกชุด — มีแค่ข้อความส่งชุด ไม่มีตารางรายการหรือช่องยอด
+      wrapped(invoice.coverMessage||'',38,300,740,30,22);
+      if(images[1]){
+        var cscale=Math.min(177/images[1].width,116/images[1].height)*1.05;
+        ctx.save(); ctx.translate(659,996); ctx.rotate(-10*Math.PI/180);
+        ctx.drawImage(images[1],-images[1].width*cscale/2,-images[1].height*cscale/2,
+          images[1].width*cscale,images[1].height*cscale); ctx.restore();
+      }
+      var raw0=atob(canvas.toDataURL('image/jpeg',.94).split(',')[1]);
+      return {width:canvas.width,height:canvas.height,bytes:Uint8Array.from(raw0,function(char){return char.charCodeAt(0);})};
+    }
     text('ชื่อลูกค้า : '+invoice.customerName,38,243,13,false,'left',453);
     text('ที่อยู่ : '+invoice.customerAddress,38,264,13,false,'left',453);
     text('เลขประจำตัวผู้เสียภาษี : '+invoice.customerTaxId,38,285,13,false,'left',453);
     text('วันที่',612,243,13,false,'right');
     text(String(invoice.issueDate).split('-').reverse().join('/'),619,243,13);
-    text(cover?'ชื่อชุด':'ใบแจ้งหนี้เลขที่',612,264,13,false,'right');
+    text('ใบแจ้งหนี้เลขที่',612,264,13,false,'right');
     text(invoice.number,619,264,13,true,'left',158);
-    text(cover?'จำนวน':'B/L',612,285,13,false,'right');
+    text('B/L',612,285,13,false,'right');
     text(invoice.bl,619,285,13,false,'left',158);
     var y=307, widths=[65,245,75,105,125,125], xs=[38,103,348,423,528,653];
     var heads=['ลำดับ','รายการ','จำนวน','ราคา/หน่วย','จำนวนเงิน','หมายเหตุ'];
@@ -124,11 +137,9 @@
       y+=h;
     }
     if(pageIndex===pageCount-1){
-      var totalRows=cover
-        ? [['รวมทั้งชุด',invoice.total]]
-        : [['ค่าบริการรวม',invoice.subtotal],['ภาษีมูลค่าเพิ่ม 7%',invoice.kind==='V'?invoice.vat:null],['รวมเงินทั้งสิ้น',invoice.total],['หักภาษี ณ ที่จ่าย 3%',null],['รวมเงินที่ต้องชำระ',invoice.total]];
+      var totalRows=[['ค่าบริการรวม',invoice.subtotal],['ภาษีมูลค่าเพิ่ม 7%',invoice.kind==='V'?invoice.vat:null],['รวมเงินทั้งสิ้น',invoice.total],['หักภาษี ณ ที่จ่าย 3%',null],['รวมเงินที่ต้องชำระ',invoice.total]];
       totalRows.forEach(function(row,i){
-        var emphasized=cover||i===2||i===4;
+        var emphasized=i===2||i===4;
         rule(38,y,490,28,'#d9d9d9'); rule(528,y,125,28,'#d9d9d9'); rule(653,y,125,28,'#d9d9d9');
         text(row[0],521,y+20,13,emphasized?800:600,'right');
         // ช่องที่ไม่มียอด (ใบ NON VAT ไม่มี VAT, ไม่ได้หัก ณ ที่จ่าย) ใส่ "-" ไม่ปล่อยว่าง

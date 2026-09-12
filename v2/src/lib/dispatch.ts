@@ -2,7 +2,7 @@ import { dashboardOverview } from './dashboard';
 import { saveInvoicePairs } from './invoice-pairs';
 import {
   acceptDocs, clearDocFix, createInvoiceBatch, flagDocsForFix, issueReceipts,
-  listPendingDocs, listReceivables, matchReceivables, renameInvoiceBatch,
+  listInvoiceBatches, listPendingDocs, listReceivables, matchReceivables, renameInvoiceBatch,
   sendBatchToKola, settleReceivables, unbatchInvoices
 } from './invoice-batches';
 import { and, desc, eq } from 'drizzle-orm';
@@ -406,6 +406,10 @@ const handlers: Record<string, Handler> = {
   createInvoiceBatch: async (body) => {
     const session = await guard(body, ACCOUNT_ROLES);
     return session.error || createInvoiceBatch(body);
+  },
+  listInvoiceBatches: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || listInvoiceBatches();
   },
   unbatchInvoices: async (body) => {
     const session = await guard(body, ACCOUNT_ROLES);
