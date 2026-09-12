@@ -63,10 +63,15 @@ export function invoiceNumber(kind: string, period: string, seq: number) {
  * รีเซ็ตเป็น 01 เมื่อขึ้นเดือนใหม่ — period เปลี่ยนจึงไม่เจอแถวเดิม max เป็น null แล้วเริ่ม 1
  */
 export async function nextSeq(_kind: string, period: string) {
-  const [row] = await db.select({ maxSeq: sql<number | null>`max(${invoices.seq})` })
-    .from(invoices)
-    .where(eq(invoices.period, period));
-  return Number(row?.maxSeq ?? 0) + 1;
+  // เอาเลขที่ว่างต่ำสุดมาใช้ ไม่ใช่ max+1
+  // ใบที่ยกเลิกถูกลบทิ้ง เลขนั้นจึงว่างและต้องหยิบกลับมาใช้ได้ ถ้าใช้ max+1
+  // เลขที่ว่างอยู่ตรงกลาง (เช่นยกเลิก 05 ทั้งที่ออกถึง 10 แล้ว) จะไม่มีวันถูกใช้อีก
+  const rows = await db.select({ seq: invoices.seq })
+    .from(invoices).where(eq(invoices.period, period));
+  const used = new Set(rows.map((row) => Number(row.seq)));
+  let seq = 1;
+  while (used.has(seq)) seq += 1;
+  return seq;
 }
 
 /** ยอดรวมของใบ — คิดที่เดียวทั้งตอน preview และตอนบันทึก จะได้ไม่มีทางเพี้ยนกัน */
@@ -279,10 +284,12 @@ export async function saveInvoice(body: ApiBody, actor: { username: string; name
   const now = nowIso();
 
   const saved = await db.transaction(async (tx) => {
-    // นับรวมทั้ง V และ NV — ดู nextSeq ว่าทำไมถึงไม่แยก kind
-    const [row] = await tx.select({ maxSeq: sql<number | null>`max(${invoices.seq})` })
+    // นับรวมทั้ง V และ NV และหยิบเลขว่างต่ำสุด — ดู nextSeq ว่าทำไม
+    const taken = await tx.select({ seq: invoices.seq })
       .from(invoices).where(eq(invoices.period, period));
-    const seq = Number(row?.maxSeq ?? 0) + 1;
+    const usedSeq = new Set(taken.map((r) => Number(r.seq)));
+    let seq = 1;
+    while (usedSeq.has(seq)) seq += 1;
     if (seq > 99) throw new Error('seq_overflow');
     const number = invoiceNumber(kind, period, seq);
 
@@ -345,8 +352,8 @@ export async function decideInvoice(body: ApiBody, actor: { username: string }):
    * ยกเลิก = ลบทิ้งจริง เพื่อคืนเลขให้ใช้ซ้ำได้
    *
    * ถ้าเก็บแถวไว้แล้วติดสถานะ cancelled เลขนั้นจะถูกจองตลอดไป เพราะ nextSeq
-   * ใช้ max(seq) ของเดือน ออกใบถัดไปก็จะข้ามเลขที่ยกเลิกไปเรื่อย ๆ
-   * ลบทิ้งแล้ว max(seq) จะถอยกลับเอง เลขล่าสุดที่ยกเลิกจึงถูกหยิบมาใช้ใหม่ได้
+   * หยิบเลขว่างต่ำสุดของเดือน ลบทิ้งแล้วเลขนั้นจึงว่างและถูกหยิบกลับมาใช้ได้
+   * ไม่ว่าจะเป็นเลขล่าสุดหรือเลขที่อยู่ตรงกลาง
    *
    * ใบที่ส่ง KOLA หรือรับชำระไปแล้วห้ามลบ เพราะเป็นเอกสารที่ออกไปข้างนอกแล้ว
    * และมียอดผูกอยู่ในลูกหนี้ ต้องออกใบลดหนี้แทน ไม่ใช่ลบให้หายไปเฉย ๆ
@@ -414,13 +421,16 @@ export async function saveInvoiceBatch(body: ApiBody, actor: { username: string;
 
   const now = nowIso();
   const created = await db.transaction(async (tx) => {
-    const [row] = await tx.select({ maxSeq: sql<number | null>`max(${invoices.seq})` })
+    const taken = await tx.select({ seq: invoices.seq })
       .from(invoices).where(eq(invoices.period, period));
-    let seq = Number(row?.maxSeq ?? 0);
+    const usedSeq = new Set(taken.map((r) => Number(r.seq)));
+    let seq = 0;
     const out: ApiResult[] = [];
 
     for (const entry of prepared) {
-      seq += 1;
+      // ข้ามเลขที่ยังมีใบอยู่ หยิบเฉพาะช่องว่าง
+      do { seq += 1; } while (usedSeq.has(seq));
+      usedSeq.add(seq);
       if (seq > 99) throw new Error('seq_overflow');
       const number = invoiceNumber(kind, period, seq);
       const totals = invoiceTotals(entry.items, kind);
