@@ -303,7 +303,19 @@ export const invoices = pgTable('invoices', {
   batchNo: integer('batch_no'),
   batchPeriod: text('batch_period').notNull().default(''),   // yyyymm ของชุด
   batchSentDate: text('batch_sent_date').notNull().default(''), // วันที่ฝากส่ง yyyy-MM-dd
+  // ชื่อชุดที่แสดง — ปกติเป็น "ชุดที่ 03/09" ที่ระบบออกให้ แก้เองได้ถ้าต้องใช้ชื่ออื่น
+  batchName: text('batch_name').notNull().default(''),
   sentToKola: boolean('sent_to_kola').notNull().default(false),
+  // ---- รอลูกค้ารับเอกสาร ----
+  // ส่ง KOLA แล้วจะมาอยู่สถานะ 'waiting' จนกว่าลูกค้าจะตอบกลับ
+  //   waiting  = รอลูกค้ารับเอกสาร
+  //   accepted = เอกสารถูกต้อง → ไปโผล่ที่ลูกหนี้สำรองจ่ายคงค้าง
+  // ใบที่ต้องแก้ยังค้างอยู่ที่ waiting แต่ติดธง needsFix ไว้พร้อมเหตุผล
+  docStatus: text('doc_status').notNull().default(''),
+  needsFix: boolean('needs_fix').notNull().default(false),
+  fixNote: text('fix_note').notNull().default(''),
+  fixedBy: citext('fixed_by').notNull().default(''),
+  fixedAt: text('fixed_at').notNull().default(''),
   // ---- ลูกหนี้สำรองจ่ายคงค้าง ----
   paidAmount: doublePrecision('paid_amount').notNull().default(0),
   paidAt: text('paid_at').notNull().default(''),

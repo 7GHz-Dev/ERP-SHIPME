@@ -1,8 +1,9 @@
 import { dashboardOverview } from './dashboard';
 import { saveInvoicePairs } from './invoice-pairs';
 import {
-  createInvoiceBatch, issueReceipts, listReceivables, matchReceivables,
-  sendBatchToKola, settleReceivables
+  acceptDocs, clearDocFix, createInvoiceBatch, flagDocsForFix, issueReceipts,
+  listPendingDocs, listReceivables, matchReceivables, renameInvoiceBatch,
+  sendBatchToKola, settleReceivables, unbatchInvoices
 } from './invoice-batches';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '@/db';
@@ -406,9 +407,33 @@ const handlers: Record<string, Handler> = {
     const session = await guard(body, ACCOUNT_ROLES);
     return session.error || createInvoiceBatch(body);
   },
+  unbatchInvoices: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || unbatchInvoices(body);
+  },
+  renameInvoiceBatch: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || renameInvoiceBatch(body);
+  },
   sendBatchToKola: async (body) => {
     const session = await guard(body, ACCOUNT_ROLES);
     return session.error || sendBatchToKola(body);
+  },
+  listPendingDocs: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || listPendingDocs();
+  },
+  acceptDocs: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || acceptDocs(body, session.user);
+  },
+  flagDocsForFix: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || flagDocsForFix(body, session.user);
+  },
+  clearDocFix: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || clearDocFix(body, session.user);
   },
   listReceivables: async (body) => {
     const session = await guard(body, ACCOUNT_ROLES);

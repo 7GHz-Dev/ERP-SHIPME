@@ -88,6 +88,9 @@
   .pill.pending { background:#fef9c3; color:#854d0e; }
   .pill.approved { background:#dcfce7; color:#166534; }
   .pill.rejected { background:#fee2e2; color:#991b1b; }
+  /* รอลูกค้ารับเอกสาร — หนึ่งกล่องต่อหนึ่งชุด กดหัวกล่องเพื่อขยายดูใบข้างใน */
+  .wait-batch{border:1px solid var(--line);border-radius:10px;background:#fff;padding:10px;margin-bottom:10px}
+  .wait-batch.has-fix{border-color:#fca5a5;background:#fff7f7}
   .muted { color:var(--muted); font-size:13px; }
   .center-load { text-align:center; padding:40px 0; color:var(--muted); }
   .spinner { width:22px; height:22px; border:3px solid #cbd5e1; border-top-color:var(--blue2); border-radius:50%; animation:spin 1s linear infinite; display:inline-block; vertical-align:middle; }
@@ -548,6 +551,7 @@
       <div class="subnav">
         <button type="button" class="btn btn-ghost btn-sm inv-sub active" data-sub="new">➕ ออกใบใหม่</button>
         <button type="button" class="btn btn-ghost btn-sm inv-sub" data-sub="list">📄 ใบที่ออกแล้ว</button>
+        <button type="button" class="btn btn-ghost btn-sm inv-sub" data-sub="wait">📮 รอลูกค้ารับเอกสาร</button>
         <button type="button" class="btn btn-ghost btn-sm inv-sub" data-sub="ar">💰 ลูกหนี้สำรองจ่ายคงค้าง</button>
       </div>
 
@@ -601,6 +605,8 @@
           <label style="display:flex;align-items:center;gap:6px">วันที่ฝากส่ง
             <input id="invl-sent-date" type="date"></label>
           <button id="invl-make-batch" class="btn btn-primary btn-sm" disabled>จัดชุด + สร้างข้อความ</button>
+          <button id="invl-unbatch" class="btn btn-ghost btn-sm" disabled>ยกเลิกจัดชุด</button>
+          <button id="invl-print-batch" class="btn btn-ghost btn-sm" disabled>พิมพ์ชุดเอกสาร</button>
           <span class="grow"></span>
           <button id="invl-cancel-picked" class="btn btn-danger btn-sm" disabled>ยกเลิกที่เลือก</button>
           <button id="invl-send-kola" class="btn btn-ok btn-sm" disabled>ส่ง KOLA</button>
@@ -620,6 +626,18 @@
             <tbody id="inv-list-body"><tr><td colspan="7" class="muted">กำลังโหลด…</td></tr></tbody>
           </table>
         </div>
+      </div>
+
+      <!-- ---------- รอลูกค้ารับเอกสาร ---------- -->
+      <div id="inv-pane-wait" class="hidden">
+        <p class="muted">ชุดที่ส่ง KOLA แล้ว รอลูกค้าตอบกลับ — กดชื่อชุดเพื่อดูใบข้างใน</p>
+        <div class="toolbar">
+          <span id="wait-count" class="muted">—</span>
+          <span class="grow"></span>
+          <button id="wait-reload" class="btn btn-ghost btn-sm">โหลดใหม่</button>
+        </div>
+        <div id="wait-msg" class="muted" style="margin:0 2px 10px"></div>
+        <div id="wait-body"><p class="muted">กำลังโหลด…</p></div>
       </div>
 
       <!-- ---------- ลูกหนี้สำรองจ่ายคงค้าง ---------- -->
@@ -2836,8 +2854,10 @@ Array.prototype.forEach.call(document.querySelectorAll('.inv-sub'), function(btn
     Array.prototype.forEach.call(document.querySelectorAll('.inv-sub'), function(b){ b.classList.toggle('active', b===btn); });
     $('inv-pane-new').classList.toggle('hidden', sub!=='new');
     $('inv-pane-list').classList.toggle('hidden', sub!=='list');
+    $('inv-pane-wait').classList.toggle('hidden', sub!=='wait');
     $('inv-pane-ar').classList.toggle('hidden', sub!=='ar');
     if(sub==='ar') loadReceivables();
+    if(sub==='wait') loadPendingDocs();
   });
 });
 
@@ -3062,14 +3082,20 @@ function invlPickedRows(){
 }
 function updateInvlPicked(){
   var picked = invlPickedRows();
+  var loose = picked.filter(function(r){ return !r.batchNo; });
+  var batched = picked.filter(function(r){ return r.batchNo && !r.sentToKola; });
   $('invl-picked').textContent = 'เลือกไว้ ' + picked.length + ' ใบ';
-  $('invl-make-batch').disabled = !picked.length;
+  // จัดชุดได้เฉพาะใบที่ยังไม่มีชุด ไม่งั้นเลขชุดจะเดินโดยไม่ตั้งใจ
+  $('invl-make-batch').disabled = !loose.length || loose.length !== picked.length;
+  // ยกเลิกจัดชุดได้เฉพาะใบที่อยู่ในชุดและยังไม่ส่ง KOLA
+  $('invl-unbatch').disabled = !batched.length || batched.length !== picked.length;
   $('invl-cancel-picked').disabled = !picked.length || !invState.canApprove;
-  // ส่ง KOLA ได้เมื่อเลือกใบที่อยู่ในชุดเดียวกันและยังไม่ได้ส่ง
-  var batches = {};
-  picked.forEach(function(r){ if(r.batchNo) batches[r.batchNo+'/'+r.batchPeriod] = 1; });
-  var keys = Object.keys(batches);
-  $('invl-send-kola').disabled = !(keys.length === 1 && picked.some(function(r){ return !r.sentToKola; }));
+  // ส่ง KOLA / พิมพ์ชุด — ทำทีละชุด จึงต้องเลือกใบที่อยู่ชุดเดียวกัน
+  var keys = {};
+  picked.forEach(function(r){ if(r.batchNo) keys[r.batchNo+'/'+r.batchPeriod] = 1; });
+  var oneBatch = Object.keys(keys).length === 1;
+  $('invl-send-kola').disabled = !(oneBatch && picked.some(function(r){ return !r.sentToKola; }));
+  $('invl-print-batch').disabled = !oneBatch;
 }
 Array.prototype.forEach.call(document.querySelectorAll('#inv-pane-list th.sortable'), function(th){
   th.addEventListener('click', function(){ sortInvoiceList(th.getAttribute('data-sort')); });
@@ -3077,7 +3103,7 @@ Array.prototype.forEach.call(document.querySelectorAll('#inv-pane-list th.sortab
 $('invl-cancel-picked').addEventListener('click', cancelPickedInvoices);
 $('invl-all').addEventListener('change', function(){
   var on = $('invl-all').checked;
-  Array.prototype.forEach.call($('inv-list-body').querySelectorAll('.invl-pick'), function(cb){
+  Array.prototype.forEach.call($('inv-list-body').querySelectorAll('.invl-pick:not(:disabled)'), function(cb){
     if(!cb.disabled) cb.checked = on;
   });
   updateInvlPicked();
@@ -3105,21 +3131,249 @@ $('invl-make-batch').addEventListener('click', function(){
       loadInvoiceList();
     });
 });
-$('invl-send-kola').addEventListener('click', function(){
-  var picked = invlPickedRows().filter(function(r){ return r.batchNo; });
+/* ---------- ยกเลิกจัดชุด / เปลี่ยนชื่อชุด / พิมพ์ชุด ---------- */
+$('invl-unbatch').addEventListener('click', function(){
+  var picked = invlPickedRows().filter(function(r){ return r.batchNo && !r.sentToKola; });
   if(!picked.length) return;
-  var first = picked[0];
+  if(!confirm('ยกเลิกจัดชุด ' + picked.length + ' ใบ?\n\nใบเหล่านี้จะกลับไปอยู่นอกชุด นำไปจัดชุดใหม่ได้')) return;
+  var btn = $('invl-unbatch'); btn.disabled = true;
+  api({ action:'unbatchInvoices', token:state.token, numbers:picked.map(function(r){ return r.number; }) })
+    .then(function(res){
+      btn.disabled = false;
+      if(!res.ok){
+        alert('ยกเลิกไม่สำเร็จ: ' + (res.error==='already_sent_to_kola'
+          ? ('ใบเหล่านี้ส่ง KOLA ไปแล้ว: '+(res.numbers||[]).join(', ')) : res.error));
+        return;
+      }
+      $('invl-batch-msg').textContent = 'ยกเลิกจัดชุดแล้ว ' + res.count + ' ใบ';
+      loadInvoiceList();
+    });
+});
+
+/** ชุดที่เลือกอยู่ตอนนี้ — คืนทุกใบในชุดนั้น ไม่ใช่เฉพาะที่ติ๊กไว้ */
+function pickedBatchRows(){
+  var picked = invlPickedRows().filter(function(r){ return r.batchNo; });
+  if(!picked.length) return null;
+  var key = picked[0].batchNo + '/' + picked[0].batchPeriod;
+  return (invState.list || []).filter(function(r){ return r.batchNo && (r.batchNo+'/'+r.batchPeriod) === key; });
+}
+
+$('invl-print-batch').addEventListener('click', function(){
+  var rows = pickedBatchRows();
+  if(!rows || !rows.length) return;
+  var first = rows[0];
+  var fallback = 'ชุดที่ ' + String(first.batchNo).padStart(2,'0') + '/' + String(first.batchPeriod||'').slice(4,6);
+  var name = prompt('ชื่อชุดที่จะพิมพ์บนใบปก', first.batchName || fallback);
+  if(name === null) return;
+  name = String(name).trim() || fallback;
+  var btn = $('invl-print-batch'); btn.disabled = true;
+  // จำชื่อที่แก้ไว้กับชุด ครั้งหน้าจะได้ชื่อเดิม
+  api({ action:'renameInvoiceBatch', token:state.token,
+        batchNo:first.batchNo, period:first.batchPeriod, name:name })
+    .then(function(res){
+      if(res && res.ok){ rows.forEach(function(r){ r.batchName = name; }); renderInvoiceList(); }
+      return printInvoiceBatch(rows, name);
+    })
+    .catch(function(err){ alert('พิมพ์ไม่สำเร็จ: ' + (err && err.message ? err.message : err)); })
+    .then(function(){ btn.disabled = false; });
+});
+
+/**
+ * พิมพ์ชุดเอกสาร — ใบปกชุดหนึ่งหน้า แล้วตามด้วยใบแจ้งหนี้ทุกใบในชุด
+ * ใช้ InvoicePDF ตัวเดิม จะได้หน้าตาเหมือนกับที่ออกให้ลูกค้าจริง
+ */
+async function printInvoiceBatch(rows, name){
+  if(!invState.cfg){ alert('กำลังโหลดข้อมูลบริษัท โปรดลองอีกครั้ง'); return; }
+  var popup = window.open('', '_blank', 'popup,width=1000,height=850');
+  if(popup){ popup.document.body.textContent = 'กำลังจัดเตรียม PDF…'; popup.document.body.style.margin = '0'; }
+  try{
+    var sorted = rows.slice().sort(function(a,b){ return String(a.number).localeCompare(String(b.number)); });
+    var docs = [];
+    for(var i=0;i<sorted.length;i++){
+      var res = await api({ action:'getInvoice', token:state.token, number:sorted[i].number });
+      if(!res.ok) throw new Error('ดึงใบ ' + sorted[i].number + ' ไม่สำเร็จ: ' + res.error);
+      var inv = res.invoice;
+      docs.push({ number:inv.number, kind:inv.kind, issueDate:inv.issueDate, bl:inv.bl,
+        settlementId:inv.settlementId, items:inv.items,
+        subtotal:Number(inv.subtotal), vat:Number(inv.vat), total:Number(inv.total),
+        customerName:inv.customerName, customerAddress:inv.customerAddress,
+        customerTaxId:inv.customerTaxId, preparedBy:inv.preparedBy });
+    }
+    var cover = buildBatchCover(docs, sorted, name);
+    var blob = await InvoicePDF.create([cover].concat(docs), invState.cfg.company,
+      { coverCount: 1 });
+    showInvoicePDF(popup, blob, name.replace(/[\\/:*?"<>|]/g,'-') + '.pdf', false);
+  }catch(error){
+    var message = 'พิมพ์ชุดไม่สำเร็จ: ' + error.message;
+    if(popup && !popup.closed) popup.document.body.textContent = message;
+    alert(message);
+  }
+}
+
+/** ใบปกชุด — ใช้โครงเดียวกับใบแจ้งหนี้ แต่เนื้อหาเป็นสารบัญรายการ */
+function buildBatchCover(docs, rows, name){
+  var first = rows[0] || {};
+  var sent = first.batchSentDate || '';
+  var total = docs.reduce(function(sum, d){ return sum + Number(d.total || 0); }, 0);
+  return {
+    number: name,
+    kind: 'COVER',
+    issueDate: sent || (docs[0] && docs[0].issueDate) || '',
+    bl: 'รวม ' + docs.length + ' ใบ',
+    items: docs.map(function(d, i){
+      return { no:i+1, label:d.number + '   B/L ' + (d.bl||'—'), amount:Number(d.total||0),
+               qty:0, unitPrice:0, note:d.kind==='V'?'VAT':'NON VAT' };
+    }),
+    subtotal: Math.round(total*100)/100,
+    vat: null,
+    total: Math.round(total*100)/100,
+    customerName: (invState.cfg.customer||{}).name || '',
+    customerAddress: (invState.cfg.customer||{}).address || '',
+    customerTaxId: (invState.cfg.customer||{}).taxId || '',
+    preparedBy: state.user.name
+  };
+}
+
+$('invl-send-kola').addEventListener('click', function(){
+  // ส่งทั้งชุดเสมอ ไม่ใช่เฉพาะใบที่ติ๊ก — เซิร์ฟเวอร์ก็อัปเดตด้วย batchNo + period
+  var rows = pickedBatchRows();
+  if(!rows || !rows.length) return;
+  var picked = rows;
+  var first = rows[0];
   if(!confirm('ส่งชุดที่ ' + String(first.batchNo).padStart(2,'0') + '/' + String(first.batchPeriod).slice(4,6)
-      + ' ไป KOLA?\n\nใบในชุดนี้จะเข้าไปอยู่ในลูกหนี้สำรองจ่ายคงค้าง')) return;
+      + ' ไป KOLA?' + String.fromCharCode(10,10) + 'ชุดนี้จะย้ายไปแถบ รอลูกค้ารับเอกสาร')) return;
   var btn = $('invl-send-kola'); btn.disabled = true;
   api({ action:'sendBatchToKola', token:state.token, batchNo:first.batchNo, period:first.batchPeriod })
     .then(function(res){
       btn.disabled = false;
       if(!res.ok){ alert('ส่งไม่สำเร็จ: '+res.error); return; }
-      alert('ส่ง KOLA แล้ว ' + res.count + ' ใบ');
+      alert('ส่ง KOLA แล้ว ' + res.count + ' ใบ — ย้ายไปแถบ รอลูกค้ารับเอกสาร แล้ว');
       loadInvoiceList();
+      if(!$('inv-pane-wait').classList.contains('hidden')) loadPendingDocs();
     });
 });
+
+/* ---------- รอลูกค้ารับเอกสาร ---------- */
+var waitState = { batches:[], open:{} };
+
+function loadPendingDocs(){
+  $('wait-body').innerHTML = '<p class="muted">กำลังโหลด…</p>';
+  api({ action:'listPendingDocs', token:state.token }).then(function(res){
+    if(!res.ok){ $('wait-body').innerHTML = '<p class="muted">โหลดไม่สำเร็จ: '+esc(res.error)+'</p>'; return; }
+    waitState.batches = res.batches || [];
+    renderPendingDocs();
+  }).catch(function(){ $('wait-body').innerHTML = '<p class="muted">โหลดไม่สำเร็จ โปรดลองใหม่</p>'; });
+}
+
+function renderPendingDocs(){
+  var batches = waitState.batches;
+  var docs = batches.reduce(function(sum, b){ return sum + b.rows.length; }, 0);
+  $('wait-count').textContent = batches.length
+    ? ('รออยู่ ' + batches.length + ' ชุด (' + docs + ' ใบ)') : '—';
+  if(!batches.length){
+    $('wait-body').innerHTML = '<p class="muted" style="padding:20px">ไม่มีชุดที่รอลูกค้ารับ</p>';
+    return;
+  }
+  $('wait-body').innerHTML = batches.map(function(b, bi){
+    var open = !!waitState.open[b.key];
+    var flag = b.needsFixCount
+      ? ' <span class="pill rejected">ต้องแก้ไข '+b.needsFixCount+' ใบ</span>' : '';
+    var head = '<div class="toolbar" style="margin:0">'
+      + '<button class="btn btn-ghost btn-sm wait-toggle" data-b="'+bi+'">'+(open?'▾':'▸')+' <b>'+esc(b.name)+'</b></button>'
+      + '<span class="muted">'+b.rows.length+' ใบ · '+baht(b.total)+'</span>'
+      + (b.sentDate ? '<span class="muted">ฝากส่ง '+esc(b.sentDate)+'</span>' : '')
+      + flag
+      + '<span class="grow"></span>'
+      + '<button class="btn btn-ok btn-sm wait-accept" data-b="'+bi+'">เอกสารถูกต้อง</button>'
+      + '<button class="btn btn-danger btn-sm wait-fix" data-b="'+bi+'">ต้องแก้ไข</button>'
+      + '</div>';
+    if(!open) return '<div class="wait-batch'+(b.needsFixCount?' has-fix':'')+'">'+head+'</div>';
+    var body = '<div class="tablewrap" style="margin-top:10px"><table class="inv-tbl"><thead><tr>'
+      + '<th style="width:34px"></th><th>เลขที่ / วันที่</th><th>B/L</th>'
+      + '<th class="num">ยอดรวม</th><th>สถานะ</th></tr></thead><tbody>'
+      + b.rows.map(function(r, ri){
+          var fix = r.needsFix
+            ? '<span class="pill rejected">ต้องแก้ไข</span><div class="sub">'+esc(r.fixNote||'')+'</div>'
+            : '<span class="muted">รอรับ</span>';
+          return '<tr>'
+            + '<td><input type="checkbox" class="wait-pick" data-b="'+bi+'" data-r="'+ri+'"></td>'
+            + '<td><b class="mono">'+esc(r.number)+'</b><div class="sub">'+esc(r.issueDate)+'</div></td>'
+            + '<td class="mono">'+esc(r.bl||'—')+'</td>'
+            + '<td class="num">'+baht(r.total)+'</td>'
+            + '<td>'+fix+'</td></tr>';
+        }).join('')
+      + '</tbody></table></div>'
+      + '<div class="toolbar" style="margin:8px 0 0">'
+      + '<span class="muted">เลือกเฉพาะบางใบแล้วกดปุ่มด้านล่าง</span>'
+      + '<span class="grow"></span>'
+      + '<button class="btn btn-ok btn-sm wait-accept-sel" data-b="'+bi+'">เอกสารถูกต้อง (ที่เลือก)</button>'
+      + '<button class="btn btn-danger btn-sm wait-fix-sel" data-b="'+bi+'">ต้องแก้ไข (ที่เลือก)</button>'
+      + (b.needsFixCount ? '<button class="btn btn-ghost btn-sm wait-clear" data-b="'+bi+'">แก้เสร็จแล้ว (ที่เลือก)</button>' : '')
+      + '</div>';
+    return '<div class="wait-batch'+(b.needsFixCount?' has-fix':'')+'">'+head+body+'</div>';
+  }).join('');
+
+  Array.prototype.forEach.call($('wait-body').querySelectorAll('.wait-toggle'), function(btn){
+    btn.addEventListener('click', function(){
+      var b = waitState.batches[Number(btn.getAttribute('data-b'))];
+      waitState.open[b.key] = !waitState.open[b.key];
+      renderPendingDocs();
+    });
+  });
+  bindWaitAction('.wait-accept', function(b){ return { whole:true, batch:b }; }, 'accept');
+  bindWaitAction('.wait-fix', function(b){ return { whole:true, batch:b }; }, 'fix');
+  bindWaitAction('.wait-accept-sel', pickedWaitRows, 'accept');
+  bindWaitAction('.wait-fix-sel', pickedWaitRows, 'fix');
+  bindWaitAction('.wait-clear', pickedWaitRows, 'clear');
+}
+
+/** ใบที่ติ๊กไว้ในชุดนั้น */
+function pickedWaitRows(batch, bi){
+  var numbers = Array.prototype.map.call(
+    $('wait-body').querySelectorAll('.wait-pick[data-b="'+bi+'"]:checked'),
+    function(cb){ return batch.rows[Number(cb.getAttribute('data-r'))].number; });
+  return { whole:false, batch:batch, numbers:numbers };
+}
+
+function bindWaitAction(selector, pick, kind){
+  Array.prototype.forEach.call($('wait-body').querySelectorAll(selector), function(btn){
+    btn.addEventListener('click', function(){
+      var bi = Number(btn.getAttribute('data-b'));
+      var batch = waitState.batches[bi];
+      var target = pick(batch, bi);
+      if(!target.whole && !target.numbers.length){ alert('เลือกใบก่อน'); return; }
+      var count = target.whole ? batch.rows.length : target.numbers.length;
+      var body = { token:state.token };
+      if(target.whole){ body.batchNo = batch.batchNo; body.period = batch.period; }
+      else body.numbers = target.numbers;
+
+      if(kind === 'fix'){
+        var note = prompt('ระบุเรื่องที่ต้องแก้ (' + count + ' ใบ)');
+        if(note === null) return;
+        note = String(note).trim();
+        if(!note){ alert('ต้องระบุเรื่องที่ต้องแก้'); return; }
+        body.action = 'flagDocsForFix'; body.note = note;
+      } else if(kind === 'accept'){
+        if(!confirm('ยืนยันว่าเอกสารถูกต้อง ' + count + ' ใบ?\n\nใบเหล่านี้จะย้ายไปอยู่ที่ลูกหนี้สำรองจ่ายคงค้าง')) return;
+        body.action = 'acceptDocs';
+      } else {
+        body.action = 'clearDocFix';
+      }
+
+      btn.disabled = true;
+      api(body).then(function(res){
+        btn.disabled = false;
+        if(!res.ok){ alert('ไม่สำเร็จ: ' + res.error); return; }
+        $('wait-msg').textContent = (kind==='accept' ? 'รับเอกสารแล้ว '
+          : kind==='fix' ? 'ติดธงต้องแก้ไขแล้ว ' : 'เคลียร์ธงแล้ว ') + res.count + ' ใบ';
+        loadPendingDocs();
+        if(kind === 'accept') loadInvoiceList();
+      });
+    });
+  });
+}
+
+$('wait-reload').addEventListener('click', loadPendingDocs);
 
 /* ---------- ลูกหนี้สำรองจ่ายคงค้าง ---------- */
 var arState = { rows:[], matched:[] };
@@ -3414,7 +3668,7 @@ function renderInvoiceList(){
   });
   if(!rows.length){ $('inv-list-body').innerHTML = '<tr><td colspan="7" class="muted" style="padding:20px">ยังไม่มีใบแจ้งหนี้</td></tr>'; updateInvlPicked(); return; }
   $('inv-list-body').innerHTML = rows.map(function(r, i){
-    var batch = r.batchNo ? ('ชุดที่ '+String(r.batchNo).padStart(2,'0')+'/'+String(r.batchPeriod||'').slice(4,6)
+    var batch = r.batchNo ? (esc(r.batchName || ('ชุดที่ '+String(r.batchNo).padStart(2,'0')+'/'+String(r.batchPeriod||'').slice(4,6)))
       + (r.sentToKola ? ' <span class="pill approved">ส่ง KOLA</span>' : '')) : '<span class="muted">—</span>';
     // เหลือแค่ ดู กับ ยกเลิก — ยกเลิกเฉพาะ admin/manager-account (เซิร์ฟเวอร์กันอีกชั้น)
     var act = '<button class="btn btn-ghost btn-sm invl-view" data-i="'+i+'">ดู</button>';
@@ -3426,7 +3680,7 @@ function renderInvoiceList(){
       + '<div class="sub">ก่อน VAT '+baht(r.subtotal)
       + (r.kind==='V' ? ' + VAT '+baht(r.vat) : ' (ไม่มี VAT)') + '</div>';
     return '<tr>'
-      + '<td><input type="checkbox" class="invl-pick" data-i="'+i+'"'+(r.batchNo?' disabled title="อยู่ในชุดแล้ว"':'')+'></td>'
+      + '<td><input type="checkbox" class="invl-pick" data-i="'+i+'"'+(r.sentToKola?' disabled title="ส่ง KOLA แล้ว"':'')+'></td>'
       + '<td><b class="mono">'+esc(r.number)+'</b><div class="sub">'+esc(r.issueDate)+'</div></td>'
       + '<td class="mono">'+esc(r.bl||'—')+'</td>'
       + '<td class="num">'+money+'</td>'

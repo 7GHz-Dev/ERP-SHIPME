@@ -50,19 +50,67 @@ export async function createInvoiceBatch(body: ApiBody): Promise<ApiResult> {
       .from(invoices).where(eq(invoices.batchPeriod, period));
     const batchNo = Number(top?.maxNo ?? 0) + 1;
 
+    const name = batchLabel(batchNo, period);
     await tx.update(invoices)
-      .set({ batchNo, batchPeriod: period, batchSentDate: sentDate, updatedAt: nowIso() })
+      .set({ batchNo, batchPeriod: period, batchSentDate: sentDate, batchName: name, updatedAt: nowIso() })
       .where(inArray(invoices.number, numbers));
 
     return {
       ok: true, batchNo, period, sentDate, count: numbers.length,
-      label: batchLabel(batchNo, period),
+      label: name,
       message: batchMessage(batchNo, period, numbers.length, sentDate)
     };
   });
 }
 
-/** กดส่ง KOLA — ใบยังอยู่ที่เดิม แค่ติดสถานะและเข้าไปอยู่ในลูกหนี้สำรองจ่าย */
+/**
+ * ถอนใบออกจากชุด — ยกเลิกการจัดชุดที่เพิ่งทำไป
+ * ทำได้เฉพาะชุดที่ยังไม่ส่ง KOLA เพราะส่งไปแล้วถือว่าเอกสารออกจากมือเราแล้ว
+ * เลขชุดที่ว่างลงไม่ถูกนำกลับมาใช้ซ้ำ (batchNo เดินจาก max เสมอ) กันชนกับชุดเดิม
+ */
+export async function unbatchInvoices(body: ApiBody): Promise<ApiResult> {
+  const numbers = Array.isArray(body.numbers)
+    ? [...new Set(body.numbers.map((n: unknown) => text(n, 40)).filter(Boolean))] : [];
+  if (!numbers.length) return { ok: false, error: 'no_invoices' };
+  if (numbers.length > 200) return { ok: false, error: 'too_many' };
+
+  const rows = await db.select({ number: invoices.number, batchNo: invoices.batchNo, sentToKola: invoices.sentToKola })
+    .from(invoices).where(inArray(invoices.number, numbers));
+  if (rows.length !== numbers.length) {
+    const found = new Set(rows.map(r => r.number));
+    return { ok: false, error: 'invoice_not_found', missing: numbers.filter(n => !found.has(n)) };
+  }
+  const sent = rows.filter(r => r.sentToKola);
+  if (sent.length) return { ok: false, error: 'already_sent_to_kola', numbers: sent.map(r => r.number) };
+  const loose = rows.filter(r => r.batchNo == null);
+  if (loose.length) return { ok: false, error: 'not_batched', numbers: loose.map(r => r.number) };
+
+  await db.update(invoices)
+    .set({ batchNo: null, batchPeriod: '', batchSentDate: '', batchName: '', updatedAt: nowIso() })
+    .where(inArray(invoices.number, numbers));
+  return { ok: true, count: numbers.length, numbers };
+}
+
+/** เปลี่ยนชื่อชุด — เลขชุดยังเป็นตัวเดิม แค่ชื่อที่แสดงเปลี่ยน */
+export async function renameInvoiceBatch(body: ApiBody): Promise<ApiResult> {
+  const batchNo = Number(body.batchNo);
+  const period = text(body.period, 6);
+  const name = text(body.name, 80);
+  if (!Number.isInteger(batchNo) || !period) return { ok: false, error: 'bad_request' };
+  if (!name) return { ok: false, error: 'bad_name' };
+
+  const scope = and(eq(invoices.batchNo, batchNo), eq(invoices.batchPeriod, period));
+  const rows = await db.select({ number: invoices.number }).from(invoices).where(scope);
+  if (!rows.length) return { ok: false, error: 'batch_not_found' };
+
+  await db.update(invoices).set({ batchName: name, updatedAt: nowIso() }).where(scope);
+  return { ok: true, batchNo, period, name, count: rows.length };
+}
+
+/**
+ * กดส่ง KOLA — ชุดย้ายไปแถบ รอลูกค้ารับเอกสาร
+ * ใบยังอยู่ที่เดิม แค่ติดสถานะ ยังไม่เข้าลูกหนี้จนกว่าลูกค้าจะรับว่าเอกสารถูกต้อง
+ */
 export async function sendBatchToKola(body: ApiBody): Promise<ApiResult> {
   const batchNo = Number(body.batchNo);
   const period = text(body.period, 6);
@@ -72,14 +120,117 @@ export async function sendBatchToKola(body: ApiBody): Promise<ApiResult> {
   const rows = await db.select({ number: invoices.number }).from(invoices).where(scope);
   if (!rows.length) return { ok: false, error: 'batch_not_found' };
 
-  await db.update(invoices).set({ sentToKola: true, updatedAt: nowIso() }).where(scope);
+  await db.update(invoices)
+    .set({ sentToKola: true, docStatus: 'waiting', updatedAt: nowIso() }).where(scope);
   return { ok: true, batchNo, period, count: rows.length };
+}
+
+/** ชุดที่ส่ง KOLA แล้วและยังรอลูกค้ารับเอกสาร — จัดกลุ่มเป็นรายชุด */
+export async function listPendingDocs(): Promise<ApiResult> {
+  const rows = await db.select({
+    number: invoices.number, kind: invoices.kind, issueDate: invoices.issueDate,
+    bl: invoices.bl, total: invoices.total,
+    batchNo: invoices.batchNo, batchPeriod: invoices.batchPeriod,
+    batchSentDate: invoices.batchSentDate, batchName: invoices.batchName,
+    needsFix: invoices.needsFix, fixNote: invoices.fixNote, fixedAt: invoices.fixedAt
+  })
+    .from(invoices)
+    .where(and(eq(invoices.docStatus, 'waiting'), ne(invoices.status, 'cancelled')))
+    .orderBy(asc(invoices.batchPeriod), asc(invoices.batchNo), asc(invoices.number))
+    .limit(1000);
+
+  const batches = new Map<string, any>();
+  for (const row of rows) {
+    const key = `${row.batchPeriod}/${row.batchNo}`;
+    let batch = batches.get(key);
+    if (!batch) {
+      batch = {
+        key, batchNo: row.batchNo, period: row.batchPeriod, sentDate: row.batchSentDate,
+        name: row.batchName || batchLabel(Number(row.batchNo), row.batchPeriod),
+        rows: [], total: 0, needsFixCount: 0
+      };
+      batches.set(key, batch);
+    }
+    batch.rows.push(row);
+    batch.total = money(batch.total + Number(row.total));
+    if (row.needsFix) batch.needsFixCount += 1;
+  }
+  return { ok: true, batches: [...batches.values()], count: rows.length };
+}
+
+/** ขอบเขตของคำสั่งในแถบรอลูกค้ารับ — ทั้งชุด หรือเลือกเป็นรายใบ */
+function docScope(body: ApiBody): { where: any } | { ok: false; error: string } {
+  const numbers = Array.isArray(body.numbers)
+    ? [...new Set(body.numbers.map((n: unknown) => text(n, 40)).filter(Boolean))] : [];
+  if (numbers.length) {
+    if (numbers.length > 500) return { ok: false, error: 'too_many' };
+    return { where: and(inArray(invoices.number, numbers), eq(invoices.docStatus, 'waiting')) };
+  }
+  const batchNo = Number(body.batchNo);
+  const period = text(body.period, 6);
+  if (!Number.isInteger(batchNo) || !period) return { ok: false, error: 'bad_request' };
+  return { where: and(eq(invoices.batchNo, batchNo), eq(invoices.batchPeriod, period), eq(invoices.docStatus, 'waiting')) };
+}
+
+/**
+ * ลูกค้ารับเอกสารแล้วและตรวจว่าถูกต้อง — ใบเข้าลูกหนี้สำรองจ่ายคงค้าง
+ * รับได้ทั้งทั้งชุด (batchNo + period) หรือระบุเป็นรายใบ
+ */
+export async function acceptDocs(body: ApiBody, actor: { username: string }): Promise<ApiResult> {
+  const scope = docScope(body);
+  if ('error' in scope) return scope as ApiResult;
+
+  const rows = await db.select({ number: invoices.number }).from(invoices).where(scope.where);
+  if (!rows.length) return { ok: false, error: 'nothing_to_accept' };
+
+  // รับว่าถูกต้องแล้วก็เคลียร์ธงต้องแก้ทิ้ง ถือว่าจบเรื่องนั้นไป
+  await db.update(invoices).set({
+    docStatus: 'accepted', needsFix: false, fixNote: '',
+    fixedBy: actor.username, fixedAt: nowIso(), updatedAt: nowIso()
+  }).where(scope.where);
+  return { ok: true, count: rows.length, numbers: rows.map(r => r.number) };
+}
+
+/**
+ * ลูกค้าแจ้งว่าต้องแก้ไข — ใบยังค้างอยู่ในแถบรอรับเหมือนเดิม แค่ติดธงพร้อมเหตุผล
+ * ไม่ย้ายไปไหน เพราะเรื่องยังไม่จบจนกว่าจะแก้แล้วลูกค้ารับ
+ */
+export async function flagDocsForFix(body: ApiBody, actor: { username: string }): Promise<ApiResult> {
+  const note = text(body.note, 500);
+  if (!note) return { ok: false, error: 'bad_note' };
+  const scope = docScope(body);
+  if ('error' in scope) return scope as ApiResult;
+
+  const rows = await db.select({ number: invoices.number }).from(invoices).where(scope.where);
+  if (!rows.length) return { ok: false, error: 'nothing_to_flag' };
+
+  await db.update(invoices).set({
+    needsFix: true, fixNote: note, fixedBy: actor.username, fixedAt: nowIso(), updatedAt: nowIso()
+  }).where(scope.where);
+  return { ok: true, count: rows.length, numbers: rows.map(r => r.number), note };
+}
+
+/** เคลียร์ธงต้องแก้ไขหลังแก้เอกสารเสร็จ — ใบกลับไปรอลูกค้ารับตามปกติ */
+export async function clearDocFix(body: ApiBody, actor: { username: string }): Promise<ApiResult> {
+  const scope = docScope(body);
+  if ('error' in scope) return scope as ApiResult;
+
+  const rows = await db.select({ number: invoices.number }).from(invoices).where(scope.where);
+  if (!rows.length) return { ok: false, error: 'nothing_to_clear' };
+
+  await db.update(invoices).set({
+    needsFix: false, fixNote: '', fixedBy: actor.username, fixedAt: nowIso(), updatedAt: nowIso()
+  }).where(scope.where);
+  return { ok: true, count: rows.length, numbers: rows.map(r => r.number) };
 }
 
 /** ลูกหนี้สำรองจ่ายคงค้าง — ใบที่ส่ง KOLA แล้วและยังไม่ปิดยอด */
 export async function listReceivables(body: ApiBody): Promise<ApiResult> {
   const showPaid = body.showPaid === true;
-  const clauses = [eq(invoices.sentToKola, true), ne(invoices.status, 'cancelled')];
+  // เข้าลูกหนี้ต่อเมื่อลูกค้ารับเอกสารว่าถูกต้องแล้วเท่านั้น
+  // ใบเก่าที่ส่ง KOLA ไปก่อนมีขั้นตอนนี้ (docStatus ว่าง) ยังนับเป็นลูกหนี้เหมือนเดิม
+  const clauses = [eq(invoices.sentToKola, true), ne(invoices.status, 'cancelled'),
+    ne(invoices.docStatus, 'waiting')];
   if (!showPaid) clauses.push(sql`${invoices.paidAmount} < ${invoices.total}`);
 
   const rows = await db.select({

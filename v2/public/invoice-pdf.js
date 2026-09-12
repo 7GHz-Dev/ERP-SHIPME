@@ -91,15 +91,17 @@
     text(company.name,408,138,15,true,'center');
     text(company.address,408,155,13,false,'center');
     text('เลขประจำตัวผู้เสียภาษี '+company.taxId,408,172,13,false,'center');
-    text((options&&options.title)||'ใบแจ้งหนี้ / INVOICE',408,209,19,true,'center');
+    // ใบปกชุดใช้โครงเดียวกัน เปลี่ยนแค่หัวเรื่องกับชื่อช่อง
+    var cover=invoice.kind==='COVER';
+    text(cover?'ใบปกชุดเอกสาร / COVER':((options&&options.title)||'ใบแจ้งหนี้ / INVOICE'),408,209,19,true,'center');
     text('ชื่อลูกค้า : '+invoice.customerName,38,243,13,false,'left',453);
     text('ที่อยู่ : '+invoice.customerAddress,38,264,13,false,'left',453);
     text('เลขประจำตัวผู้เสียภาษี : '+invoice.customerTaxId,38,285,13,false,'left',453);
     text('วันที่',612,243,13,false,'right');
     text(String(invoice.issueDate).split('-').reverse().join('/'),619,243,13);
-    text('ใบแจ้งหนี้เลขที่',612,264,13,false,'right');
+    text(cover?'ชื่อชุด':'ใบแจ้งหนี้เลขที่',612,264,13,false,'right');
     text(invoice.number,619,264,13,true,'left',158);
-    text('B/L',612,285,13,false,'right');
+    text(cover?'จำนวน':'B/L',612,285,13,false,'right');
     text(invoice.bl,619,285,13,false,'left',158);
     var y=307, widths=[65,245,75,105,125,125], xs=[38,103,348,423,528,653];
     var heads=['ลำดับ','รายการ','จำนวน','ราคา/หน่วย','จำนวนเงิน','หมายเหตุ'];
@@ -122,8 +124,11 @@
       y+=h;
     }
     if(pageIndex===pageCount-1){
-      [['ค่าบริการรวม',invoice.subtotal],['ภาษีมูลค่าเพิ่ม 7%',invoice.kind==='V'?invoice.vat:null],['รวมเงินทั้งสิ้น',invoice.total],['หักภาษี ณ ที่จ่าย 3%',null],['รวมเงินที่ต้องชำระ',invoice.total]].forEach(function(row,i){
-        var emphasized=i===2||i===4;
+      var totalRows=cover
+        ? [['รวมทั้งชุด',invoice.total]]
+        : [['ค่าบริการรวม',invoice.subtotal],['ภาษีมูลค่าเพิ่ม 7%',invoice.kind==='V'?invoice.vat:null],['รวมเงินทั้งสิ้น',invoice.total],['หักภาษี ณ ที่จ่าย 3%',null],['รวมเงินที่ต้องชำระ',invoice.total]];
+      totalRows.forEach(function(row,i){
+        var emphasized=cover||i===2||i===4;
         rule(38,y,490,28,'#d9d9d9'); rule(528,y,125,28,'#d9d9d9'); rule(653,y,125,28,'#d9d9d9');
         text(row[0],521,y+20,13,emphasized?800:600,'right');
         // ช่องที่ไม่มียอด (ใบ NON VAT ไม่มี VAT, ไม่ได้หัก ณ ที่จ่าย) ใส่ "-" ไม่ปล่อยว่าง
