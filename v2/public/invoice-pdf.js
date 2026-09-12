@@ -87,26 +87,22 @@
       ctx.strokeStyle='#444'; ctx.lineWidth=.7; ctx.strokeRect(x,y,w,h);
     }
     function money(n){ return Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+    var cover=invoice.kind==='COVER';
+    if(cover){
+      // หน้าปกชุด — มีแค่ข้อความส่งชุดตัวใหญ่
+      // ไม่มีหัวบริษัท ไม่มีตราประทับ ไม่มีตารางรายการหรือช่องยอด
+      // ขนาดตัวอักษรใหญ่ขึ้น 3 เท่าจากของเดิม (หัวเรื่อง 19→57, ข้อความ 22→66)
+      text('หน้าปกชุดเอกสาร',408,150,57,true,'center',740);
+      wrapped(invoice.coverMessage||'',38,300,740,90,66);
+      var raw0=atob(canvas.toDataURL('image/jpeg',.94).split(',')[1]);
+      return {width:canvas.width,height:canvas.height,bytes:Uint8Array.from(raw0,function(char){return char.charCodeAt(0);})};
+    }
     // Coordinates measured from the supplied Letter reference at 96 CSS pixels/inch.
     if(images[0]){ var ratio=Math.min(200/images[0].width,78/images[0].height); ctx.drawImage(images[0],408-images[0].width*ratio/2,38,images[0].width*ratio,images[0].height*ratio); }
     text(company.name,408,138,15,true,'center');
     text(company.address,408,155,13,false,'center');
     text('เลขประจำตัวผู้เสียภาษี '+company.taxId,408,172,13,false,'center');
-    // ใบปกชุดใช้โครงเดียวกัน เปลี่ยนแค่หัวเรื่องกับชื่อช่อง
-    var cover=invoice.kind==='COVER';
-    text(cover?'หน้าปกชุดเอกสาร':((options&&options.title)||'ใบแจ้งหนี้ / INVOICE'),408,209,19,true,'center');
-    if(cover){
-      // หน้าปกชุด — มีแค่ข้อความส่งชุด ไม่มีตารางรายการหรือช่องยอด
-      wrapped(invoice.coverMessage||'',38,300,740,30,22);
-      if(images[1]){
-        var cscale=Math.min(177/images[1].width,116/images[1].height)*1.05;
-        ctx.save(); ctx.translate(659,996); ctx.rotate(-10*Math.PI/180);
-        ctx.drawImage(images[1],-images[1].width*cscale/2,-images[1].height*cscale/2,
-          images[1].width*cscale,images[1].height*cscale); ctx.restore();
-      }
-      var raw0=atob(canvas.toDataURL('image/jpeg',.94).split(',')[1]);
-      return {width:canvas.width,height:canvas.height,bytes:Uint8Array.from(raw0,function(char){return char.charCodeAt(0);})};
-    }
+    text((options&&options.title)||'ใบแจ้งหนี้ / INVOICE',408,209,19,true,'center');
     text('ชื่อลูกค้า : '+invoice.customerName,38,243,13,false,'left',453);
     text('ที่อยู่ : '+invoice.customerAddress,38,264,13,false,'left',453);
     text('เลขประจำตัวผู้เสียภาษี : '+invoice.customerTaxId,38,285,13,false,'left',453);
