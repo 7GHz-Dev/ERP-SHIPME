@@ -1,4 +1,3 @@
-import { dashboardOverview } from './dashboard';
 import { saveInvoicePairs } from './invoice-pairs';
 import {
   acceptDocs, clearDocFix, createInvoiceBatch, flagDocsForFix, issueReceipts,
@@ -463,11 +462,6 @@ const handlers: Record<string, Handler> = {
   issueReceipts: async (body) => {
     const session = await guard(body, ACCOUNT_ROLES);
     return session.error || issueReceipts(body);
-  },
-  dashboardOverview: async (body) => {
-    // ข้อมูลระดับฐานข้อมูล — เฉพาะ admin เท่านั้น
-    const session = await guard(body, ['admin']);
-    return session.error || dashboardOverview();
   },
   decideInvoice: async (body) => {
     const session = await guard(body, ['admin', 'manager-account']);

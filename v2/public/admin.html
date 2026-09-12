@@ -270,17 +270,6 @@
 
     <!-- DASH -->
     <section id="tab-dash">
-      <div class="toolbar" id="db-head" style="margin-bottom:10px">
-        <b>สถานะ sync ชีตงานขนส่ง</b>
-        <span id="db-at" class="muted"></span>
-        <span class="grow"></span>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px">
-          <input type="checkbox" id="db-auto" checked> รีเฟรชอัตโนมัติทุก 15 วิ</label>
-        <button id="db-reload" class="btn btn-ghost btn-sm">↻ รีเฟรชเดี๋ยวนี้</button>
-      </div>
-      <div class="stats" id="db-stats"></div>
-      <div id="db-grid" style="display:grid;gap:14px;margin:14px 0"></div>
-      <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
       <div class="stats" id="stats"></div>
       <h3 class="sec">การเข้างานล่าสุด</h3>
       <div class="tbl-wrap">
@@ -961,11 +950,6 @@ function enterApp(){
     document.querySelector('.navbtn[data-tab="emp"]').classList.toggle('hidden', isManager);
   }
   $('subbtn-sheet').classList.toggle('hidden', !canEditSheet());   // หน้าตารูปใบปิดบัญชี = เฉพาะ admin
-  // ส่วนสถานะ sync ชีต/ฐานข้อมูล — เฉพาะ admin (เซิร์ฟเวอร์กันอีกชั้น)
-  var dbOnly = state.user.role === 'admin';
-  ['db-head','db-stats','db-grid'].forEach(function(id){
-    var el = $(id); if(el) el.classList.toggle('hidden', !dbOnly);
-  });
   $('view-app').classList.remove('hidden');
   switchTab(isAccount ? 'invoice' : (isManager ? 'checkin' : 'dash'));
   if(isAccount) return;    // loadAll() ยิง action ที่ฝ่ายบัญชีไม่มีสิทธิ์ จะได้ forbidden เต็มหน้าจอ
@@ -979,7 +963,6 @@ Array.prototype.forEach.call(document.querySelectorAll('.navbtn'), function(t){
 function switchTab(name){
   Array.prototype.forEach.call(document.querySelectorAll('.navbtn'), function(t){ t.classList.toggle('active', t.getAttribute('data-tab')===name); });
   ['checkin','dash','attend','claim','settle','invoice','receipt','leave','emp','settings'].forEach(function(s){ $('tab-'+s).classList.toggle('hidden', s!==name); });
-  if(name==='dash'){ loadDbOverview(); startDbAuto(); } else { stopDbAuto(); }
   if(name==='checkin') initCheckin();   // ขอสิทธิ์ตำแหน่งเฉพาะตอนเปิดแท็บเข้างานจริง ๆ
   if(name==='claim') initClaimTab();    // โหลดใบเบิกของพนักงานตอนเปิดแท็บครั้งแรก
   if(name==='settle') initSettleTab();
@@ -1259,140 +1242,6 @@ function exportCSV(){
 
 // ---------- DASHBOARD ----------
 
-/* ---------- ภาพรวมข้อมูลใน Supabase (รีเฟรชเอง) ---------- */
-var dbState = { timer:null, busy:false };
-var DB_TABLE_TH = {
-  checkins:'บันทึกเข้างาน', leaves:'ใบลา', claims:'ใบเบิก', receipts:'ใบเสร็จพนักงาน',
-  settlements:'ใบปิดบัญชี', invoices:'ใบแจ้งหนี้', transport_jobs:'งานขนส่งจากชีต', users:'ผู้ใช้'
-};
-
-/** "3 นาทีที่แล้ว" — ดูออกทันทีว่าข้อมูลสดหรือค้าง */
-function agoText(iso){
-  if(!iso) return '—';
-  var diff = Date.now() - new Date(iso).getTime();
-  if(!isFinite(diff)) return '—';
-  var m = Math.floor(diff/60000);
-  if(m < 1) return 'เมื่อครู่';
-  if(m < 60) return m + ' นาทีที่แล้ว';
-  var h = Math.floor(m/60);
-  if(h < 24) return h + ' ชม.ที่แล้ว';
-  return Math.floor(h/24) + ' วันที่แล้ว';
-}
-function agoClass(iso, warnMin){
-  if(!iso) return 'muted';
-  var m = (Date.now() - new Date(iso).getTime())/60000;
-  return m > warnMin ? 'pill' : 'pill approved';
-}
-
-function loadDbOverview(){
-  if(dbState.busy) return;
-  if(!state.user || state.user.role !== 'admin') return;   // คนอื่นไม่มีสิทธิ์ ไม่ต้องยิงให้ได้ forbidden
-  dbState.busy = true;
-  api({ action:'dashboardOverview', token:state.token }).then(function(res){
-    dbState.busy = false;
-    if(!res.ok){
-      $('db-at').textContent = 'โหลดไม่สำเร็จ: ' + (res.error||'');
-      return;
-    }
-    renderDbOverview(res);
-  }).catch(function(){ dbState.busy = false; });
-}
-
-function renderDbOverview(r){
-  $('db-at').textContent = 'อัปเดตล่าสุด ' + new Date(r.at).toLocaleTimeString('th-TH');
-
-  var t = r.totals || {};
-  $('db-stats').innerHTML = [
-    { n:Number(t.rows||0).toLocaleString('th-TH'), l:'แถวทั้งหมด' },
-    { n:Number(t.bls||0).toLocaleString('th-TH'),  l:'เลข BL ไม่ซ้ำ' },
-    { n:Number(t.sheets||0),                        l:'แท็บที่ sync' },
-    { n:agoText(t.last_sync),                       l:'sync ล่าสุด' }
-  ].map(function(x){
-    return '<div class="stat"><div class="n" style="font-size:20px">'+x.n+'</div><div class="l">'+x.l+'</div></div>';
-  }).join('');
-
-  // ---- สถานะแต่ละแท็บ ----
-  var sheetTable = r.sheets.length
-    ? '<table class="grid"><thead><tr><th>ไฟล์ / แท็บ</th><th class="right">แถว</th><th class="right">BL</th>'
-      + '<th>ช่วงวันที่</th><th>sync ล่าสุด</th></tr></thead><tbody>'
-      + r.sheets.map(function(x){
-          return '<tr><td><b>'+esc(x.file)+'</b> <span class="muted">'+esc(x.sheet)+'</span></td>'
-            + '<td class="right">'+Number(x.rows).toLocaleString('th-TH')+'</td>'
-            + '<td class="right">'+Number(x.bls).toLocaleString('th-TH')+'</td>'
-            + '<td class="muted" style="font-size:12px">'+esc(x.firstDate||'—')+' → '+esc(x.lastDate||'—')+'</td>'
-            + '<td><span class="'+agoClass(x.lastSync,120)+'">'+agoText(x.lastSync)+'</span></td></tr>';
-        }).join('') + '</tbody></table>'
-    : '<div class="muted">ยังไม่มีข้อมูลจากชีต</div>';
-
-  // ---- รายละเอียดว่าแต่ละรอบเพิ่ม/ลบอะไร ----
-  var logTable = r.logs.length
-    ? '<table class="grid"><thead><tr><th>เวลา</th><th>แท็บ</th><th class="right">แถว</th>'
-      + '<th>รายละเอียดที่เปลี่ยน</th></tr></thead><tbody>'
-      + r.logs.map(function(g){
-          var head = [];
-          if(g.added)   head.push('<span class="pill approved">+'+g.added+' แถวใหม่</span>');
-          if(g.changed) head.push('<span class="pill">แก้ '+g.changed+' แถว</span>');
-          if(g.removed) head.push('<span class="pill">−'+g.removed+' แถว</span>');
-          if(g.removedBls.length) head.push('<span class="muted" style="font-size:12px">BL ที่หายไป: '
-            + esc(g.removedBls.slice(0,5).join(', '))
-            + (g.removedBls.length>5 ? ' และอีก '+(g.removedBls.length-5) : '') + '</span>');
-
-          // รายละเอียดรายแถว — ชื่อคอลัมน์จริงในฐานข้อมูลกับค่าที่เพิ่งเข้ามา
-          var detail = (g.details||[]).map(function(d){
-            var fields = (d.fields||[]).map(function(f){
-              // แถวที่แก้ค่าเดิม แสดงค่าก่อนหน้าด้วยจะได้รู้ว่าเปลี่ยนจากอะไร
-              return '<div style="margin-left:14px">'
-                + esc(f.column) + ' = '
-                + (d.kind==='changed' && String(f.from)!=='' ? '<span class="muted" style="text-decoration:line-through">'+esc(String(f.from))+'</span> → ' : '')
-                + '<b>'+esc(String(f.to))+'</b>'
-                + ' <span class="muted" style="font-size:11px">'+esc(f.label)+'</span></div>';
-            }).join('');
-            return '<div style="margin-top:8px;padding:8px 10px;background:#f8fafc;border-radius:6px;font-size:13px">'
-              + '<div>ที่ <b>bl=' + esc(d.bl||'(ไม่มี BL)') + '</b>'
-              + (d.container ? ' <span class="muted" style="font-size:12px">'+esc(d.container)+'</span>' : '')
-              + ' <span class="pill'+(d.kind==='added'?' approved':'')+'" style="font-size:11px">'
-              + (d.kind==='added'?'แถวใหม่':'แก้ค่า')+'</span></div>'
-              + (fields||'<div class="muted" style="margin-left:14px">—</div>') + '</div>';
-          }).join('');
-
-          var t = new Date(g.syncedAt);
-          var pad = function(n){ return String(n).padStart(2,'0'); };
-          var stamp = 'update ' + pad(t.getDate())+'/'+pad(t.getMonth()+1)+'/'+t.getFullYear()
-            + ' ' + pad(t.getHours())+':'+pad(t.getMinutes())+':'+pad(t.getSeconds())+'น.';
-          return '<tr><td style="white-space:nowrap;vertical-align:top">'
-            + '<b>'+esc(stamp)+'</b>'
-            + '<div class="muted" style="font-size:11px">'+agoText(g.syncedAt)+'</div></td>'
-            + '<td style="vertical-align:top">'+esc(g.file)+'<div class="muted" style="font-size:11px">'+esc(g.sheet)+'</div></td>'
-            + '<td class="right" style="vertical-align:top">'+g.rowsBefore+' → <b>'+g.rowsAfter+'</b></td>'
-            + '<td>'+(head.join(' ')||'<span class="muted">—</span>')+detail+'</td></tr>';
-        }).join('') + '</tbody></table>'
-    : '<div class="muted">ยังไม่มีการเปลี่ยนแปลงตั้งแต่เริ่มเก็บประวัติ — '
-      + 'ระบบบันทึกเฉพาะรอบที่มีแถวเพิ่มหรือหายจริง รอบที่ข้อมูลเหมือนเดิมจะไม่ถูกบันทึก</div>';
-
-  $('db-grid').innerHTML =
-      card('สถานะแต่ละแท็บ', sheetTable)
-    + card('ข้อมูลที่เพิ่ม/ลบเข้าตาราง transport_jobs', logTable);
-}
-
-var INV_STATUS_TEXT = { draft:'ร่าง', approved:'อนุมัติแล้ว', cancelled:'ยกเลิก' };
-function card(title, body){
-  return '<div class="card" style="padding:14px"><h3 class="sec" style="margin:0 0 10px;font-size:14px">'
-    + esc(title) + '</h3>' + body + '</div>';
-}
-
-function startDbAuto(){
-  stopDbAuto();
-  if(!$('db-auto').checked) return;
-  dbState.timer = setInterval(function(){
-    // ไม่ต้องยิงถ้าไม่ได้เปิดแท็บนี้อยู่ หรือสลับไปแท็บอื่นของเบราว์เซอร์
-    if(document.hidden) return;
-    if($('tab-dash').classList.contains('hidden')) return;
-    loadDbOverview();
-  }, 15000);
-}
-function stopDbAuto(){ if(dbState.timer){ clearInterval(dbState.timer); dbState.timer = null; } }
-$('db-reload').addEventListener('click', loadDbOverview);
-$('db-auto').addEventListener('change', startDbAuto);
 
 function renderDash(){
   var today=new Date().toISOString().slice(0,10);
