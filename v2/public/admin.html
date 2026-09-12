@@ -606,6 +606,8 @@
           <button id="invl-make-batch" class="btn btn-primary btn-sm" disabled>จัดชุด</button>
           <button id="invl-unbatch" class="btn btn-ghost btn-sm" disabled>ยกเลิกจัดชุด</button>
           <span class="grow"></span>
+          <button id="invl-reset" class="btn btn-danger btn-sm hidden" disabled
+            title="ลบใบทิ้งทั้งลูกหนี้และชุด แล้วส่ง BL กลับไปหน้าออกใบใหม่">↩ ถอยกลับไปออกใบใหม่</button>
           <button id="invl-cancel-picked" class="btn btn-danger btn-sm" disabled>ยกเลิกที่เลือก</button>
           <button id="invl-send-kola" class="btn btn-ok btn-sm" disabled>ส่ง KOLA</button>
         </div>
@@ -674,6 +676,7 @@
         <div class="toolbar" style="margin-top:10px">
           <span id="ar-picked" class="muted">เลือกไว้ 0 รายการ</span>
           <span class="grow"></span>
+          <button id="ar-unsettle" class="btn btn-danger btn-sm" disabled>ยกเลิกการชำระ</button>
           <button id="ar-receipt" class="btn btn-primary btn-sm" disabled>ออกใบเสร็จ</button>
         </div>
       </div>
@@ -3084,6 +3087,8 @@ function invlPickedRows(){
     return rows[Number(cb.getAttribute('data-i'))];
   }).filter(Boolean);
 }
+/** admin เท่านั้นที่ถอยใบกลับหน้าออกใบใหม่ได้ — จึงเลือกใบที่ส่ง KOLA แล้วได้ด้วย */
+function isAdminUser(){ return !!(state.user && state.user.role === 'admin'); }
 function updateInvlPicked(){
   var picked = invlPickedRows();
   var loose = picked.filter(function(r){ return !r.batchNo; });
@@ -3094,6 +3099,9 @@ function updateInvlPicked(){
   // ยกเลิกจัดชุดได้เฉพาะใบที่อยู่ในชุดและยังไม่ส่ง KOLA
   $('invl-unbatch').disabled = !batched.length || batched.length !== picked.length;
   $('invl-cancel-picked').disabled = !picked.length || !invState.canApprove;
+  // ถอยกลับไปออกใบใหม่ — โชว์เฉพาะ admin (เซิร์ฟเวอร์กันอีกชั้น)
+  $('invl-reset').classList.toggle('hidden', !isAdminUser());
+  $('invl-reset').disabled = !isAdminUser() || !picked.length;
   // ส่ง KOLA / พิมพ์ชุด — ทำทีละชุด จึงต้องเลือกใบที่อยู่ชุดเดียวกัน
   var keys = {};
   picked.forEach(function(r){ if(r.batchNo) keys[r.batchNo+'/'+r.batchPeriod] = 1; });
@@ -3104,6 +3112,44 @@ Array.prototype.forEach.call(document.querySelectorAll('#inv-pane-list th.sortab
   th.addEventListener('click', function(){ sortInvoiceList(th.getAttribute('data-sort')); });
 });
 $('invl-cancel-picked').addEventListener('click', cancelPickedInvoices);
+
+/**
+ * ถอยใบกลับไปหน้าออกใบใหม่ — เฉพาะ admin
+ * ลบใบทิ้งจึงล้างทั้งลูกหนี้ ชุด และสถานะรอรับในคราวเดียว แล้ว BL กลับไปออกใหม่ได้
+ */
+$('invl-reset').addEventListener('click', function(){
+  var picked = invlPickedRows();
+  if(!picked.length) return;
+  var withReceipt = picked.filter(function(r){ return r.receiptNo; });
+  var paid = picked.filter(function(r){ return Number(r.paidAmount) > 0; });
+  var msg = 'ถอย ' + picked.length + ' ใบกลับไปหน้า "ออกใบใหม่"?'
+    + String.fromCharCode(10,10)
+    + 'ใบเหล่านี้จะถูกลบทิ้งทั้งลูกหนี้ ชุดที่จัด และสถานะรอลูกค้ารับ'
+    + String.fromCharCode(10) + 'เลขใบที่ลบจะกลับมาใช้ซ้ำได้ และ BL จะกลับไปโผล่หน้าออกใบใหม่';
+  if(paid.length) msg += String.fromCharCode(10,10) + '⚠ มีใบที่รับชำระมาแล้ว ' + paid.length + ' ใบ';
+  if(withReceipt.length) msg += String.fromCharCode(10) + '⚠ มีใบที่ออกใบเสร็จแล้ว: '
+    + withReceipt.map(function(r){ return r.number + ' (' + r.receiptNo + ')'; }).join(', ');
+  if(!confirm(msg)) return;
+  if(withReceipt.length && !confirm('ยืนยันอีกครั้ง — ใบเสร็จที่ออกไปแล้วจะถูกลบด้วย')) return;
+  var btn = $('invl-reset'); btn.disabled = true;
+  api({ action:'resetInvoices', token:state.token,
+        numbers:picked.map(function(r){ return r.number; }),
+        confirmReceipt: withReceipt.length > 0 })
+    .then(function(res){
+      btn.disabled = false;
+      if(!res.ok){
+        alert('ถอยไม่สำเร็จ: ' + (res.error==='forbidden'
+          ? 'เฉพาะผู้ดูแล (admin) เท่านั้นที่ถอยได้' : res.error));
+        return;
+      }
+      $('invl-batch-msg').textContent = 'ถอยกลับหน้าออกใบใหม่แล้ว ' + res.count + ' ใบ'
+        + (res.bls && res.bls.length ? ' — BL: ' + res.bls.join(', ') : '');
+      loadInvoiceList();
+      loadInvoiceBatches();
+      loadInvoiceSources();
+      if(!$('inv-pane-wait').classList.contains('hidden')) loadPendingDocs();
+    });
+});
 $('invl-all').addEventListener('change', function(){
   var on = $('invl-all').checked;
   Array.prototype.forEach.call($('inv-list-body').querySelectorAll('.invl-pick:not(:disabled)'), function(cb){
@@ -3450,7 +3496,7 @@ function renderReceivables(){
     // จ่ายบางส่วน — บอกไว้ใต้ยอดค้างจะได้ไม่ต้องเทียบเลขเอง
     var partial = r.paidAmount > 0 && r.outstanding > 0;
     return '<tr'+(done?' style="opacity:.55"':'')+'>'
-      + '<td><input type="checkbox" class="ar-pick" data-i="'+i+'"'+(done&&r.receiptNo?' disabled':'')+'></td>'
+      + '<td><input type="checkbox" class="ar-pick" data-i="'+i+'"></td>'
       + '<td class="no">'+(i+1)+'</td>'
       + '<td><b class="mono">'+esc(r.number)+'</b><div class="sub">'+esc(r.issueDate)+'</div></td>'
       + '<td class="mono">'+esc(r.bl||'—')+'</td>'
@@ -3475,8 +3521,36 @@ function updateArPicked(){
   var picked = arPickedRows();
   $('ar-picked').textContent = 'เลือกไว้ ' + picked.length + ' รายการ';
   // ออกใบเสร็จได้เฉพาะที่ชำระครบแล้วและยังไม่มีใบเสร็จ
-  $('ar-receipt').disabled = !picked.length || picked.some(function(r){ return r.outstanding > 0; });
+  $('ar-receipt').disabled = !picked.length
+    || picked.some(function(r){ return r.outstanding > 0 || r.receiptNo; });
+  // ยกเลิกการชำระได้เฉพาะใบที่มียอดรับชำระมาแล้ว
+  $('ar-unsettle').disabled = !picked.length
+    || !picked.some(function(r){ return Number(r.paidAmount) > 0; });
 }
+
+$('ar-unsettle').addEventListener('click', function(){
+  var picked = arPickedRows().filter(function(r){ return Number(r.paidAmount) > 0; });
+  if(!picked.length) return;
+  var withReceipt = picked.filter(function(r){ return r.receiptNo; });
+  var msg = 'ยกเลิกการชำระ ' + picked.length + ' รายการ?'
+    + String.fromCharCode(10,10) + 'ยอดที่รับมาแล้วจะถูกล้าง ใบกลับไปค้างชำระตามเดิม';
+  if(withReceipt.length){
+    msg += String.fromCharCode(10,10) + 'ใบเหล่านี้ออกใบเสร็จไปแล้ว: '
+      + withReceipt.map(function(r){ return r.number + ' (' + r.receiptNo + ')'; }).join(', ')
+      + String.fromCharCode(10) + 'เลขใบเสร็จจะถูกล้างด้วย';
+  }
+  if(!confirm(msg)) return;
+  var btn = $('ar-unsettle'); btn.disabled = true;
+  api({ action:'unsettleReceivables', token:state.token,
+        numbers:picked.map(function(r){ return r.number; }),
+        alsoClearReceipt: withReceipt.length > 0 })
+    .then(function(res){
+      btn.disabled = false;
+      if(!res.ok){ alert('ยกเลิกไม่สำเร็จ: ' + res.error); return; }
+      $('ar-msg').textContent = 'ยกเลิกการชำระแล้ว ' + res.count + ' รายการ';
+      loadReceivables();
+    });
+});
 $('ar-all').addEventListener('change', function(){
   var on = $('ar-all').checked;
   Array.prototype.forEach.call($('ar-body').querySelectorAll('.ar-pick'), function(cb){ if(!cb.disabled) cb.checked = on; });
@@ -3736,7 +3810,7 @@ function renderInvoiceList(){
       + '<div class="sub">ก่อน VAT '+baht(r.subtotal)
       + (r.kind==='V' ? ' + VAT '+baht(r.vat) : ' (ไม่มี VAT)') + '</div>';
     return '<tr>'
-      + '<td><input type="checkbox" class="invl-pick" data-i="'+i+'"'+(r.sentToKola?' disabled title="ส่ง KOLA แล้ว"':'')+'></td>'
+      + '<td><input type="checkbox" class="invl-pick" data-i="'+i+'"'+((r.sentToKola&&!isAdminUser())?' disabled title="ส่ง KOLA แล้ว"':'')+'></td>'
       + '<td><b class="mono">'+esc(r.number)+'</b><div class="sub">'+esc(r.issueDate)+'</div></td>'
       + '<td class="mono">'+esc(r.bl||'—')+'</td>'
       + '<td class="num">'+money+'</td>'

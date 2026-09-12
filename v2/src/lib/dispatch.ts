@@ -3,7 +3,7 @@ import { saveInvoicePairs } from './invoice-pairs';
 import {
   acceptDocs, clearDocFix, createInvoiceBatch, flagDocsForFix, issueReceipts,
   listInvoiceBatches, listPendingDocs, listReceivables, matchReceivables, renameInvoiceBatch,
-  sendBatchToKola, settleReceivables, unbatchInvoices
+  resetInvoices, sendBatchToKola, settleReceivables, unbatchInvoices, unsettleReceivables
 } from './invoice-batches';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '@/db';
@@ -450,6 +450,15 @@ const handlers: Record<string, Handler> = {
   settleReceivables: async (body) => {
     const session = await guard(body, ACCOUNT_ROLES);
     return session.error || settleReceivables(body, session.user);
+  },
+  unsettleReceivables: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || unsettleReceivables(body, session.user);
+  },
+  // ถอยใบกลับไปหน้าออกใบใหม่ = ลบใบทิ้งทั้งชุด จำกัดไว้ที่ admin เท่านั้น
+  resetInvoices: async (body) => {
+    const session = await guard(body, ['admin']);
+    return session.error || resetInvoices(body, session.user);
   },
   issueReceipts: async (body) => {
     const session = await guard(body, ACCOUNT_ROLES);

@@ -363,6 +363,74 @@ export async function settleReceivables(body: ApiBody, actor: { username: string
   return { ok: true, updated, count: updated.length, paidAt, by: actor.username };
 }
 
+/**
+ * ยกเลิกการชำระ — คืนยอดที่รับมาแล้วให้กลับไปค้างตามเดิม
+ *
+ * ใบที่ออกเลขใบเสร็จไปแล้วยกเลิกการชำระเฉย ๆ ไม่ได้
+ * เพราะใบเสร็จออกไปข้างนอกแล้ว ต้องยกเลิกใบเสร็จก่อน (clearReceipt)
+ */
+export async function unsettleReceivables(body: ApiBody, actor: { username: string }): Promise<ApiResult> {
+  const numbers = Array.isArray(body.numbers)
+    ? [...new Set(body.numbers.map((n: unknown) => text(n, 40)).filter(Boolean))] : [];
+  if (!numbers.length) return { ok: false, error: 'no_invoices' };
+  if (numbers.length > 500) return { ok: false, error: 'too_many' };
+
+  const rows = await db.select({
+    number: invoices.number, paidAmount: invoices.paidAmount, receiptNo: invoices.receiptNo
+  }).from(invoices).where(inArray(invoices.number, numbers));
+  if (rows.length !== numbers.length) {
+    const found = new Set(rows.map(r => r.number));
+    return { ok: false, error: 'invoice_not_found', missing: numbers.filter(n => !found.has(n)) };
+  }
+  const withReceipt = rows.filter(r => r.receiptNo);
+  if (withReceipt.length && !body.alsoClearReceipt) {
+    return { ok: false, error: 'has_receipt', numbers: withReceipt.map(r => r.number) };
+  }
+  const unpaid = rows.filter(r => Number(r.paidAmount) <= 0);
+  if (unpaid.length === rows.length) return { ok: false, error: 'nothing_paid' };
+
+  const patch: Record<string, unknown> = { paidAmount: 0, paidAt: '', updatedAt: nowIso() };
+  if (body.alsoClearReceipt) patch.receiptNo = '';
+  await db.update(invoices).set(patch).where(inArray(invoices.number, numbers));
+  return { ok: true, count: rows.length, numbers: rows.map(r => r.number), by: actor.username };
+}
+
+/**
+ * ถอยใบแจ้งหนี้กลับไปหน้า "ออกใบใหม่" — เฉพาะ admin
+ *
+ * ลบแถวใบทิ้งทั้งชุด เหมือนการยกเลิกใบปกติ (decideInvoice → cancelled)
+ * จึงคืนทั้งเลขใบ ชุดที่จัด ลูกหนี้ และสถานะรอลูกค้ารับในคราวเดียว
+ * BL นั้นจึงกลับไปโผล่ในหน้าออกใบใหม่เอง (invoiceSources กรองจากใบที่ยังอยู่)
+ *
+ * ใบที่ออกใบเสร็จไปแล้วต้องยืนยันซ้ำ เพราะเป็นเอกสารที่ออกไปข้างนอกแล้ว
+ */
+export async function resetInvoices(body: ApiBody, actor: { username: string }): Promise<ApiResult> {
+  const numbers = Array.isArray(body.numbers)
+    ? [...new Set(body.numbers.map((n: unknown) => text(n, 40)).filter(Boolean))] : [];
+  if (!numbers.length) return { ok: false, error: 'no_invoices' };
+  if (numbers.length > 200) return { ok: false, error: 'too_many' };
+
+  const rows = await db.select({
+    number: invoices.number, bl: invoices.bl, receiptNo: invoices.receiptNo,
+    paidAmount: invoices.paidAmount, batchNo: invoices.batchNo, batchPeriod: invoices.batchPeriod
+  }).from(invoices).where(inArray(invoices.number, numbers));
+  if (rows.length !== numbers.length) {
+    const found = new Set(rows.map(r => r.number));
+    return { ok: false, error: 'invoice_not_found', missing: numbers.filter(n => !found.has(n)) };
+  }
+  const withReceipt = rows.filter(r => r.receiptNo);
+  if (withReceipt.length && !body.confirmReceipt) {
+    return { ok: false, error: 'has_receipt', numbers: withReceipt.map(r => r.number) };
+  }
+
+  await db.delete(invoices).where(inArray(invoices.number, numbers));
+  return {
+    ok: true, count: rows.length, by: actor.username,
+    numbers: rows.map(r => r.number),
+    bls: [...new Set(rows.map(r => r.bl).filter(Boolean))]
+  };
+}
+
 /** ออกเลขใบเสร็จให้ใบที่ชำระครบแล้ว */
 export async function issueReceipts(body: ApiBody): Promise<ApiResult> {
   const numbers = Array.isArray(body.numbers)
