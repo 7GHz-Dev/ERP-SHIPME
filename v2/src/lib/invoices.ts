@@ -318,9 +318,15 @@ export async function saveInvoice(body: ApiBody, actor: { username: string; name
 
 /** รายการใบแจ้งหนี้ — employee-account เห็นเฉพาะของตัวเอง, manager-account เห็นทั้งหมด */
 export async function listInvoices(body: ApiBody, actor: { username: string; role: string }): Promise<ApiResult> {
-  const all = actor.role === 'manager-account' || actor.role === 'admin' || actor.role === 'manager';
+  /**
+   * ทุกคนในฝ่ายบัญชีเห็นใบครบทุกใบ ไม่ใช่เฉพาะที่ตัวเองออก
+   * เดิมกรองด้วย createdBy ทำให้ employee-account เห็นไม่ครบ เช่น sai เห็น 30 ใบ
+   * ขณะที่ admin เห็น 43 ใบ ทั้งที่ควรเห็นชุดเดียวกัน เพราะทำงานกับเอกสารชุดเดียวกัน
+   *
+   * canApprove ยังแยกตามเดิม — ดูได้ทุกคน แต่ยกเลิกได้เฉพาะ admin / manager-account
+   */
+  const canApprove = actor.role === 'manager-account' || actor.role === 'admin' || actor.role === 'manager';
   const clauses = [];
-  if (!all) clauses.push(eq(invoices.createdBy, actor.username));
   if (validYmd(body.from)) clauses.push(sql`${invoices.issueDate} >= ${String(body.from)}`);
   if (validYmd(body.to)) clauses.push(sql`${invoices.issueDate} <= ${String(body.to)}`);
 
@@ -331,7 +337,7 @@ export async function listInvoices(body: ApiBody, actor: { username: string; rol
 
   return {
     ok: true,
-    canApprove: all,
+    canApprove,
     rows: rows.map((row) => ({
       ...row,
       items: (() => { try { return JSON.parse(row.itemsJson); } catch { return []; } })()
