@@ -149,9 +149,12 @@ export async function listInvoiceBatches(): Promise<ApiResult> {
   const rows = await db.select({
     batchNo: invoices.batchNo, period: invoices.batchPeriod,
     sentDate: invoices.batchSentDate, name: invoices.batchName,
-    sentToKola: invoices.sentToKola, total: invoices.total
+    sentToKola: invoices.sentToKola, total: invoices.total,
+    // หน้าปกชุดต้องแสดงรายการเลขใบกับ BL ด้วย
+    number: invoices.number, bl: invoices.bl
   }).from(invoices)
     .where(and(isNotNull(invoices.batchNo), ne(invoices.status, 'cancelled')))
+    .orderBy(asc(invoices.number))
     .limit(2000);
 
   const map = new Map<string, any>();
@@ -162,14 +165,30 @@ export async function listInvoiceBatches(): Promise<ApiResult> {
       batch = {
         key, batchNo: Number(row.batchNo), period: row.period, sentDate: row.sentDate,
         name: row.name || batchLabel(Number(row.batchNo), row.period),
-        count: 0, total: 0, sentToKola: true
+        count: 0, total: 0, sentToKola: true, items: []
       };
       map.set(key, batch);
     }
     batch.count += 1;
     batch.total = money(batch.total + Number(row.total));
+    batch.items.push({ number: row.number, bl: row.bl });
     // ชุดถือว่าส่งแล้วก็ต่อเมื่อทุกใบส่งแล้ว
     if (!row.sentToKola) batch.sentToKola = false;
+  }
+  /**
+   * เรียงตามเลขรันจริง ไม่ใช่เรียงตัวอักษร
+   * ถ้าเรียงตัวอักษร NV จะมาก่อน V ทั้งหมด (NV…17, NV…38, V…17) ทำให้ใบคู่ V/NV
+   * ของงานเดียวกันแยกกันคนละที่ เรียงแบบนี้ใบคู่กันจะอยู่ติดกัน โดย V มาก่อน NV
+   */
+  const sortKey = (number: string) => {
+    const match = String(number).match(/^(NV|V)(\d+)$/);
+    return match ? { run: match[2], kindOrder: match[1] === 'V' ? 0 : 1 } : { run: String(number), kindOrder: 0 };
+  };
+  for (const batch of map.values()) {
+    batch.items.sort((a: any, b: any) => {
+      const x = sortKey(a.number), y = sortKey(b.number);
+      return x.run.localeCompare(y.run) || x.kindOrder - y.kindOrder;
+    });
   }
   const batches = [...map.values()]
     .sort((a, b) => a.period.localeCompare(b.period) || a.batchNo - b.batchNo);

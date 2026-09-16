@@ -92,8 +92,28 @@
       // หน้าปกชุด — มีแค่ข้อความส่งชุดตัวใหญ่
       // ไม่มีหัวบริษัท ไม่มีตราประทับ ไม่มีตารางรายการหรือช่องยอด
       // ขนาดตัวอักษรใหญ่ขึ้น 3 เท่าจากของเดิม (หัวเรื่อง 19→57, ข้อความ 22→66)
-      text('หน้าปกชุดเอกสาร',408,150,57,true,'center',740);
-      wrapped(invoice.coverMessage||'',38,300,740,90,66);
+      text('หน้าปกชุดเอกสาร',408,110,44,true,'center',740);
+      // ข้อความสรุปชุด — ลดขนาดลงจากเดิมเพื่อเหลือที่ให้ตารางรายการ
+      var msgTop=210;
+      // wrapped คืน "ความสูงที่ใช้" ไม่ใช่พิกัด y ต้องบวกเองเพื่อหาขอบล่าง
+      var msgBottom=msgTop+wrapped(invoice.coverMessage||'',38,msgTop,740,64,42);
+      var list=invoice.coverItems||[];
+      if(list.length){
+        var y=(msgBottom||330)+46;
+        text('รายการในชุด ('+list.length+' ใบ)',38,y,22,true,'left',740);
+        y+=34;
+        // หัวตาราง
+        text('เลขที่ใบแจ้งหนี้',48,y,18,true,'left',260);
+        text('B/L',300,y,18,true,'left',460);
+        y+=8; rule(38,y,732,0); y+=26;
+        for(var li=0;li<list.length;li++){
+          // เต็มหน้าแล้วหยุด แล้วบอกว่าเหลืออีกกี่ใบ ดีกว่าวาดทะลุขอบกระดาษ
+          if(y>1000){ text('… และอีก '+(list.length-li)+' ใบ',48,y,17,false,'left',700); break; }
+          text(String(list[li].number||''),48,y,17,false,'left',250);
+          text(String(list[li].bl||''),300,y,17,false,'left',460);
+          y+=25;
+        }
+      }
       var raw0=atob(canvas.toDataURL('image/jpeg',.94).split(',')[1]);
       return {width:canvas.width,height:canvas.height,bytes:Uint8Array.from(raw0,function(char){return char.charCodeAt(0);})};
     }

@@ -3141,7 +3141,7 @@ $('invl-print-batch').addEventListener('click', function(){
 
 /**
  * หน้าปกชุด — หน้าเดียว ไม่มีใบแจ้งหนี้ต่อท้าย
- * ข้อความเหมือนตอนจัดชุด แล้วต่อท้ายด้วย "ส่งถึงคุณปอนด์"
+ * ข้อความเหมือนตอนจัดชุด แล้วต่อท้ายด้วยชื่อผู้รับ พร้อมรายการเลขใบ + BL
  */
 async function printBatchCover(batch){
   if(!invState.cfg){ alert('กำลังโหลดข้อมูลบริษัท โปรดลองอีกครั้ง'); return; }
@@ -3167,6 +3167,10 @@ function buildBatchCover(batch){
     issueDate: batch.sentDate || '',
     bl: batch.count + ' ใบ',
     coverMessage: batchCoverMessage(batch),
+    // เซิร์ฟเวอร์เรียงมาให้แล้วตามเลขรันจริง (V คู่กับ NV อยู่ติดกัน)
+    // ห้ามเรียงซ้ำด้วย localeCompare ตรงนี้ เพราะจะกลายเป็นเรียงตัวอักษร
+    // แล้ว NV ทั้งหมดจะไปกองอยู่ก่อน V ซึ่งไม่ใช่ลำดับที่ต้องการ
+    coverItems: (batch.items || []).slice(),
     items: [],
     subtotal: 0, vat: null, total: Number(batch.total || 0),
     customerName: cu.name || '', customerAddress: cu.address || '', customerTaxId: cu.taxId || '',
@@ -3180,7 +3184,7 @@ function batchCoverMessage(batch){
   var thai = d.length === 3 ? (d[2] + '/' + d[1] + '/' + d[0]) : (batch.sentDate || '');
   return batch.name + ' เอกสาร ' + batch.count + ' ชุด'
     + (thai ? ' ฝากส่งไปวันที่ ' + thai : '')
-    + ' ส่งถึงคุณปอนด์';
+    + ' ส่งถึง K.ข้าว ออฟฟิศโก่หล้าชิปปิ้ง';
 }
 
 $('invl-send-kola').addEventListener('click', function(){
