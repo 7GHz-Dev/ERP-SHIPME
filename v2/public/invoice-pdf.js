@@ -115,25 +115,42 @@
         text('รายการในชุด ('+list.length+' ใบ)',38,y,15,true,'left',740);
         y+=22;
         var COL=[38,410], CW=360, STEP=16, BOT=1035;
-        // หัวตารางทั้งสองคอลัมน์
+        // ความกว้างในคอลัมน์: ลำดับ 30 + เลขใบ 96 + BL 234 = 360 พอดี
+        // BL ยาวสุดที่เจอจริง 33 ตัว ≈ 218px จึงกัน 234 ไว้ ไม่ต้องบีบตัวอักษร
+        var W_NO=30, W_NUM=96;
+        var headTop=y-12, rowTop=y+8;
         for(var ci2=0;ci2<2;ci2++){
-          text('เลขที่ใบแจ้งหนี้',COL[ci2]+8,y,12,true,'left',100);
-          text('B/L',COL[ci2]+112,y,12,true,'left',248);
-          rule(COL[ci2],y+8,CW,0);
+          var cx=COL[ci2];
+          text('ลำดับ',cx+4,y,12,true,'left',W_NO-6);
+          text('เลขที่ใบแจ้งหนี้',cx+W_NO+6,y,12,true,'left',W_NUM-8);
+          text('B/L',cx+W_NO+W_NUM+6,y,12,true,'left',CW-W_NO-W_NUM-10);
         }
-        var startY=y+8+18;
+        var startY=rowTop+18;
         var perCol=Math.floor((BOT-startY)/STEP);
+        var leftCount=Math.min(perCol,list.length);
+        var rightCount=Math.max(0,Math.min(perCol,list.length-perCol));
         for(var li=0;li<list.length;li++){
           var col=li<perCol?0:1, row=li<perCol?li:li-perCol;
           // เกิน 2 คอลัมน์แล้วหยุด บอกว่าเหลืออีกกี่ใบ ดีกว่าวาดทะลุขอบกระดาษ
           if(col>1||(col===1&&row>=perCol)){
-            text('… และอีก '+(list.length-li)+' ใบ',COL[1]+10,BOT,12,false,'left',340);
+            text('… และอีก '+(list.length-li)+' ใบ',COL[1]+4,BOT,12,false,'left',CW);
             break;
           }
-          var ry=startY+row*STEP;
-          text(String(list[li].number||''),COL[col]+8,ry,12,false,'left',100);
-          // BL ยาวสุดที่เจอจริง 33 ตัว ≈ 218px จึงให้ช่องกว้าง 248 ไม่ต้องบีบ
-          text(String(list[li].bl||''),COL[col]+112,ry,12,false,'left',248);
+          var cx2=COL[col], ry=startY+row*STEP;
+          // ลำดับนับต่อเนื่องทั้งสองคอลัมน์ ไม่ใช่เริ่มใหม่ที่คอลัมน์ขวา
+          text(String(li+1),cx2+4,ry,12,false,'left',W_NO-6);
+          text(String(list[li].number||''),cx2+W_NO+6,ry,12,false,'left',W_NUM-8);
+          text(String(list[li].bl||''),cx2+W_NO+W_NUM+6,ry,12,false,'left',CW-W_NO-W_NUM-10);
+        }
+        // เส้นตาราง — วาดหลังข้อความ โดยกรอบสูงเท่าจำนวนแถวที่ใช้จริงของคอลัมน์นั้น
+        for(var gi=0;gi<2;gi++){
+          var n=gi===0?leftCount:rightCount;
+          if(!n) continue;
+          var gx=COL[gi], gh=rowTop-headTop+n*STEP;
+          rule(gx,headTop,CW,gh);                       // กรอบนอก
+          rule(gx,headTop,CW,rowTop-headTop);           // เส้นใต้หัวตาราง
+          rule(gx,headTop,W_NO,gh);                     // เส้นแบ่งลำดับ | เลขใบ
+          rule(gx,headTop,W_NO+W_NUM,gh);               // เส้นแบ่งเลขใบ | BL
         }
       }
       var raw0=atob(canvas.toDataURL('image/jpeg',.94).split(',')[1]);
