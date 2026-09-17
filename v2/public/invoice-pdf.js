@@ -118,7 +118,7 @@
         // ความกว้างในคอลัมน์: ลำดับ 30 + เลขใบ 96 + BL 234 = 360 พอดี
         // BL ยาวสุดที่เจอจริง 33 ตัว ≈ 218px จึงกัน 234 ไว้ ไม่ต้องบีบตัวอักษร
         var W_NO=30, W_NUM=96;
-        var headTop=y-12, rowTop=y+8;
+        var rowTop=y+8;
         for(var ci2=0;ci2<2;ci2++){
           var cx=COL[ci2];
           text('ลำดับ',cx+4,y,12,true,'left',W_NO-6);
@@ -142,15 +142,9 @@
           text(String(list[li].number||''),cx2+W_NO+6,ry,12,false,'left',W_NUM-8);
           text(String(list[li].bl||''),cx2+W_NO+W_NUM+6,ry,12,false,'left',CW-W_NO-W_NUM-10);
         }
-        // เส้นตาราง — วาดหลังข้อความ โดยกรอบสูงเท่าจำนวนแถวที่ใช้จริงของคอลัมน์นั้น
+        // ไม่ใช้เส้นแบ่งคอลัมน์และกรอบตาราง เหลือเส้นใต้หัวตารางอย่างเดียว
         for(var gi=0;gi<2;gi++){
-          var n=gi===0?leftCount:rightCount;
-          if(!n) continue;
-          var gx=COL[gi], gh=rowTop-headTop+n*STEP;
-          rule(gx,headTop,CW,gh);                       // กรอบนอก
-          rule(gx,headTop,CW,rowTop-headTop);           // เส้นใต้หัวตาราง
-          rule(gx,headTop,W_NO,gh);                     // เส้นแบ่งลำดับ | เลขใบ
-          rule(gx,headTop,W_NO+W_NUM,gh);               // เส้นแบ่งเลขใบ | BL
+          if(gi===0?leftCount:rightCount) rule(COL[gi],rowTop,CW,0);
         }
       }
       var raw0=atob(canvas.toDataURL('image/jpeg',.94).split(',')[1]);
