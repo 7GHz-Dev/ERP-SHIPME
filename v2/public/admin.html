@@ -3167,6 +3167,7 @@ function buildBatchCover(batch){
     issueDate: batch.sentDate || '',
     bl: batch.count + ' ใบ',
     coverMessage: batchCoverMessage(batch),
+    coverLines: batchCoverLines(batch),
     // เซิร์ฟเวอร์เรียงมาให้แล้วตามเลขรันจริง (V คู่กับ NV อยู่ติดกัน)
     // ห้ามเรียงซ้ำด้วย localeCompare ตรงนี้ เพราะจะกลายเป็นเรียงตัวอักษร
     // แล้ว NV ทั้งหมดจะไปกองอยู่ก่อน V ซึ่งไม่ใช่ลำดับที่ต้องการ
@@ -3180,11 +3181,21 @@ function buildBatchCover(batch){
 
 /** ข้อความบนหน้าปก — เหมือนตอนจัดชุด แล้วต่อท้ายด้วยผู้รับ */
 function batchCoverMessage(batch){
+  return batchCoverLines(batch).join(' ');
+}
+
+/**
+ * แยกข้อความหน้าปกเป็นบรรทัด เพื่อให้ควบคุมขนาด/ตำแหน่งแต่ละบรรทัดได้
+ * บรรทัดแรก (ชุดที่…) กับบรรทัดสุดท้าย (ผู้รับ) ต้องตัวใหญ่และอยู่กึ่งกลาง
+ * ส่วนบรรทัดกลางเล็กลงครึ่งหนึ่ง จึงส่งเป็น array ไม่ใช่ก้อนเดียว
+ */
+function batchCoverLines(batch){
   var d = String(batch.sentDate || '').split('-');
   var thai = d.length === 3 ? (d[2] + '/' + d[1] + '/' + d[0]) : (batch.sentDate || '');
-  return batch.name + ' เอกสาร ' + batch.count + ' ชุด'
-    + (thai ? ' ฝากส่งไปวันที่ ' + thai : '')
-    + ' ส่งถึง K.ข้าว ออฟฟิศโก่หล้าชิปปิ้ง';
+  var lines = [batch.name];
+  lines.push('เอกสาร ' + batch.count + ' ชุด' + (thai ? ' ฝากส่งไปวันที่ ' + thai : ''));
+  lines.push('ส่งถึง K.ข้าว ออฟฟิศโก่หล้าชิปปิ้ง');
+  return lines;
 }
 
 $('invl-send-kola').addEventListener('click', function(){

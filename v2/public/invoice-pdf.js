@@ -76,10 +76,12 @@
       ctx.textAlign = align||'left';
       ctx.fillText(String(value == null?'':value),x,y,maxWidth||720);
     }
-    function wrapped(value,x,y,width,lineHeight,size){
-      ctx.font = (size||13)+'px "Sarabun", sans-serif';
+    function wrapped(value,x,y,width,lineHeight,size,align,bold){
+      ctx.font = (bold?'700 ':'')+(size||13)+'px "Sarabun", sans-serif';
       var lines=wrapLines(ctx,value,width);
-      lines.forEach(function(v,i){ text(v,x,y+i*lineHeight,size); });
+      // จัดกึ่งกลางต้องวาดที่กึ่งกลางกรอบ ไม่ใช่ขอบซ้าย
+      var drawX = align==='center' ? x+width/2 : x;
+      lines.forEach(function(v,i){ text(v,drawX,y+i*lineHeight,size,bold,align,width); });
       return lines.length*lineHeight;
     }
     function rule(x,y,w,h,fill){
@@ -89,29 +91,33 @@
     function money(n){ return Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
     var cover=invoice.kind==='COVER';
     if(cover){
-      // หน้าปกชุด — มีแค่ข้อความส่งชุดตัวใหญ่
-      // ไม่มีหัวบริษัท ไม่มีตราประทับ ไม่มีตารางรายการหรือช่องยอด
-      // ขนาดตัวอักษรใหญ่ขึ้น 3 เท่าจากของเดิม (หัวเรื่อง 19→57, ข้อความ 22→66)
-      text('หน้าปกชุดเอกสาร',408,110,44,true,'center',740);
-      // ข้อความสรุปชุด — ลดขนาดลงจากเดิมเพื่อเหลือที่ให้ตารางรายการ
-      var msgTop=210;
-      // wrapped คืน "ความสูงที่ใช้" ไม่ใช่พิกัด y ต้องบวกเองเพื่อหาขอบล่าง
-      var msgBottom=msgTop+wrapped(invoice.coverMessage||'',38,msgTop,740,64,42);
+      // หน้าปกชุด — ไม่มีหัวเรื่อง ไม่มีหัวบริษัท ไม่มีตราประทับ
+      // บรรทัดแรก (ชุดที่…) กับบรรทัดสุดท้าย (ผู้รับ) ตัวใหญ่ 42 อยู่กึ่งกลาง
+      // บรรทัดกลางกับตารางรายการ เล็กลงครึ่งหนึ่ง
+      var lines=invoice.coverLines||[invoice.coverMessage||''];
+      var BIG=42, SMALL=21;
+      var y=110;
+      for(var ci=0;ci<lines.length;ci++){
+        var first=ci===0, last=ci===lines.length-1;
+        var size=(first||last)?BIG:SMALL;
+        // ข้อความยาวเกินหน้าให้ตัดบรรทัดเอง แล้วเลื่อน y ตามจำนวนบรรทัดที่ใช้จริง
+        y+=wrapped(lines[ci],38,y,740,Math.round(size*1.45),size,'center',first||last);
+        y+=(first||last)?26:14;
+      }
       var list=invoice.coverItems||[];
       if(list.length){
-        var y=(msgBottom||330)+46;
-        text('รายการในชุด ('+list.length+' ใบ)',38,y,22,true,'left',740);
-        y+=34;
-        // หัวตาราง
-        text('เลขที่ใบแจ้งหนี้',48,y,18,true,'left',260);
-        text('B/L',300,y,18,true,'left',460);
-        y+=8; rule(38,y,732,0); y+=26;
+        y+=30;
+        text('รายการในชุด ('+list.length+' ใบ)',38,y,SMALL,true,'left',740);
+        y+=30;
+        text('เลขที่ใบแจ้งหนี้',48,y,17,true,'left',260);
+        text('B/L',300,y,17,true,'left',460);
+        y+=8; rule(38,y,732,0); y+=22;
         for(var li=0;li<list.length;li++){
           // เต็มหน้าแล้วหยุด แล้วบอกว่าเหลืออีกกี่ใบ ดีกว่าวาดทะลุขอบกระดาษ
-          if(y>1000){ text('… และอีก '+(list.length-li)+' ใบ',48,y,17,false,'left',700); break; }
-          text(String(list[li].number||''),48,y,17,false,'left',250);
-          text(String(list[li].bl||''),300,y,17,false,'left',460);
-          y+=25;
+          if(y>1030){ text('… และอีก '+(list.length-li)+' ใบ',48,y,16,false,'left',700); break; }
+          text(String(list[li].number||''),48,y,16,false,'left',250);
+          text(String(list[li].bl||''),300,y,16,false,'left',460);
+          y+=22;
         }
       }
       var raw0=atob(canvas.toDataURL('image/jpeg',.94).split(',')[1]);
