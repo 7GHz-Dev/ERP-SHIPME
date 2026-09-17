@@ -106,18 +106,34 @@
       }
       var list=invoice.coverItems||[];
       if(list.length){
-        y+=30;
-        text('รายการในชุด ('+list.length+' ใบ)',38,y,SMALL,true,'left',740);
-        y+=30;
-        text('เลขที่ใบแจ้งหนี้',48,y,17,true,'left',260);
-        text('B/L',300,y,17,true,'left',460);
-        y+=8; rule(38,y,732,0); y+=22;
+        /**
+         * ตารางรายการ 2 คอลัมน์ — ชุดหนึ่งมีได้ถึง 60 ใบ
+         * คอลัมน์เดียวที่ระยะอ่านง่ายใส่ได้แค่ ~28 แถว จึงต้องแบ่งซ้าย/ขวา
+         * ไล่เต็มคอลัมน์ซ้ายก่อนแล้วขึ้นคอลัมน์ขวา อ่านจากบนลงล่างตามปกติ
+         */
+        y+=24;
+        text('รายการในชุด ('+list.length+' ใบ)',38,y,15,true,'left',740);
+        y+=22;
+        var COL=[38,410], CW=360, STEP=16, BOT=1035;
+        // หัวตารางทั้งสองคอลัมน์
+        for(var ci2=0;ci2<2;ci2++){
+          text('เลขที่ใบแจ้งหนี้',COL[ci2]+8,y,12,true,'left',100);
+          text('B/L',COL[ci2]+112,y,12,true,'left',248);
+          rule(COL[ci2],y+8,CW,0);
+        }
+        var startY=y+8+18;
+        var perCol=Math.floor((BOT-startY)/STEP);
         for(var li=0;li<list.length;li++){
-          // เต็มหน้าแล้วหยุด แล้วบอกว่าเหลืออีกกี่ใบ ดีกว่าวาดทะลุขอบกระดาษ
-          if(y>1030){ text('… และอีก '+(list.length-li)+' ใบ',48,y,16,false,'left',700); break; }
-          text(String(list[li].number||''),48,y,16,false,'left',250);
-          text(String(list[li].bl||''),300,y,16,false,'left',460);
-          y+=22;
+          var col=li<perCol?0:1, row=li<perCol?li:li-perCol;
+          // เกิน 2 คอลัมน์แล้วหยุด บอกว่าเหลืออีกกี่ใบ ดีกว่าวาดทะลุขอบกระดาษ
+          if(col>1||(col===1&&row>=perCol)){
+            text('… และอีก '+(list.length-li)+' ใบ',COL[1]+10,BOT,12,false,'left',340);
+            break;
+          }
+          var ry=startY+row*STEP;
+          text(String(list[li].number||''),COL[col]+8,ry,12,false,'left',100);
+          // BL ยาวสุดที่เจอจริง 33 ตัว ≈ 218px จึงให้ช่องกว้าง 248 ไม่ต้องบีบ
+          text(String(list[li].bl||''),COL[col]+112,ry,12,false,'left',248);
         }
       }
       var raw0=atob(canvas.toDataURL('image/jpeg',.94).split(',')[1]);
