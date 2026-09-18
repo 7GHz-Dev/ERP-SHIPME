@@ -2951,11 +2951,12 @@ function isAdminUser(){ return !!(state.user && state.user.role === 'admin'); }
 function updateInvlPicked(){
   var picked = invlPickedRows();
   var loose = picked.filter(function(r){ return !r.batchNo; });
-  var batched = picked.filter(function(r){ return r.batchNo && !r.sentToKola; });
+  // ส่ง KOLA แล้วก็ถอดชุดได้ (ส่งผิดชุด/ผิดวัน ต้องย้อนได้) ยกเว้นใบที่รับชำระแล้ว
+  var batched = picked.filter(function(r){ return r.batchNo && !(Number(r.paidAmount) > 0); });
   $('invl-picked').textContent = 'เลือกไว้ ' + picked.length + ' ใบ';
   // จัดชุดได้เฉพาะใบที่ยังไม่มีชุด ไม่งั้นเลขชุดจะเดินโดยไม่ตั้งใจ
   $('invl-make-batch').disabled = !loose.length || loose.length !== picked.length;
-  // ยกเลิกจัดชุดได้เฉพาะใบที่อยู่ในชุดและยังไม่ส่ง KOLA
+  // ยกเลิกจัดชุดได้ทุกใบที่อยู่ในชุด รวมที่ส่ง KOLA ไปแล้ว
   $('invl-unbatch').disabled = !batched.length || batched.length !== picked.length;
   $('invl-cancel-picked').disabled = !picked.length || !invState.canApprove;
   // ถอยกลับไปออกใบใหม่ — โชว์เฉพาะ admin (เซิร์ฟเวอร์กันอีกชั้น)
@@ -3045,19 +3046,26 @@ $('invl-make-batch').addEventListener('click', function(){
 });
 /* ---------- ยกเลิกจัดชุด / เปลี่ยนชื่อชุด / พิมพ์ชุด ---------- */
 $('invl-unbatch').addEventListener('click', function(){
-  var picked = invlPickedRows().filter(function(r){ return r.batchNo && !r.sentToKola; });
+  var picked = invlPickedRows().filter(function(r){ return r.batchNo && !(Number(r.paidAmount) > 0); });
   if(!picked.length) return;
-  if(!confirm('ยกเลิกจัดชุด ' + picked.length + ' ใบ?\n\nใบเหล่านี้จะกลับไปอยู่นอกชุด นำไปจัดชุดใหม่ได้')) return;
+  var kola = picked.filter(function(r){ return r.sentToKola; });
+  var warn = 'ยกเลิกจัดชุด ' + picked.length + ' ใบ?\n\nใบเหล่านี้จะกลับไปอยู่นอกชุด นำไปจัดชุดใหม่ได้';
+  // ถอดใบที่ส่ง KOLA แล้วจะหายจากลูกหนี้สำรองจ่ายด้วย (แถบนั้นกรองด้วย sentToKola)
+  if(kola.length) warn += '\n\nมี ' + kola.length + ' ใบที่ส่ง KOLA ไปแล้ว'
+    + ' จะถูกดึงออกจากลูกหนี้สำรองจ่ายคงค้าง และต้องส่ง KOLA ใหม่อีกครั้ง';
+  if(!confirm(warn)) return;
   var btn = $('invl-unbatch'); btn.disabled = true;
   api({ action:'unbatchInvoices', token:state.token, numbers:picked.map(function(r){ return r.number; }) })
     .then(function(res){
       btn.disabled = false;
       if(!res.ok){
-        alert('ยกเลิกไม่สำเร็จ: ' + (res.error==='already_sent_to_kola'
-          ? ('ใบเหล่านี้ส่ง KOLA ไปแล้ว: '+(res.numbers||[]).join(', ')) : res.error));
+        alert('ยกเลิกไม่สำเร็จ: ' + (res.error==='already_paid'
+          ? ('ใบเหล่านี้รับชำระไปแล้ว ต้องถอนรับชำระก่อน: '+(res.numbers||[]).join(', ')) : res.error));
         return;
       }
-      $('invl-batch-msg').textContent = 'ยกเลิกจัดชุดแล้ว ' + res.count + ' ใบ';
+      var back = (res.revertedFromKola||[]).length;
+      $('invl-batch-msg').textContent = 'ยกเลิกจัดชุดแล้ว ' + res.count + ' ใบ'
+        + (back ? ' (ดึงกลับจาก KOLA ' + back + ' ใบ)' : '');
       loadInvoiceList();
       loadInvoiceBatches();
     });
@@ -3664,7 +3672,7 @@ function renderInvoiceList(){
     var batch = r.batchNo
       ? esc(r.batchName || ('ชุดที่ '+String(r.batchNo).padStart(2,'0')+'/'+String(r.batchPeriod||'').slice(4,6)))
       : '<span class="muted">—</span>';
-    // เหลือแค่ ดู กับ ยกเลิก — ยกเลิกเฉพาะ admin/manager-account (เซิร์ฟเวอร์กันอีกชั้น)
+    // เหลือแค่ ดู กับ ยกเลิก — ฝ่ายบัญชียกเลิกได้ทุกคน (เซิร์ฟเวอร์กันอีกชั้น)
     var act = '<button class="btn btn-ghost btn-sm invl-view" data-i="'+i+'">ดู</button>';
     if(invState.canApprove){
       act += ' <button class="btn btn-danger btn-sm invl-cancel" data-i="'+i+'">ยกเลิก</button>';
@@ -3674,7 +3682,7 @@ function renderInvoiceList(){
       + '<div class="sub">ก่อน VAT '+baht(r.subtotal)
       + (r.kind==='V' ? ' + VAT '+baht(r.vat) : ' (ไม่มี VAT)') + '</div>';
     return '<tr>'
-      + '<td><input type="checkbox" class="invl-pick" data-i="'+i+'"'+((r.sentToKola&&!isAdminUser())?' disabled title="ส่ง KOLA แล้ว"':'')+'></td>'
+      + '<td><input type="checkbox" class="invl-pick" data-i="'+i+'"'+((Number(r.paidAmount)>0)?' disabled title="รับชำระแล้ว"':'')+'></td>'
       + '<td><b class="mono">'+esc(r.number)+'</b><div class="sub">'+esc(r.issueDate)+'</div></td>'
       + '<td class="mono">'+esc(r.bl||'—')+'</td>'
       + '<td class="num">'+money+'</td>'

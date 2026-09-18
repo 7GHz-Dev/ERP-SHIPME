@@ -91,21 +91,38 @@ export async function unbatchInvoices(body: ApiBody): Promise<ApiResult> {
   if (!numbers.length) return { ok: false, error: 'no_invoices' };
   if (numbers.length > 200) return { ok: false, error: 'too_many' };
 
-  const rows = await db.select({ number: invoices.number, batchNo: invoices.batchNo, sentToKola: invoices.sentToKola })
-    .from(invoices).where(inArray(invoices.number, numbers));
+  const rows = await db.select({
+    number: invoices.number, batchNo: invoices.batchNo,
+    sentToKola: invoices.sentToKola, paidAmount: invoices.paidAmount
+  }).from(invoices).where(inArray(invoices.number, numbers));
   if (rows.length !== numbers.length) {
     const found = new Set(rows.map(r => r.number));
     return { ok: false, error: 'invoice_not_found', missing: numbers.filter(n => !found.has(n)) };
   }
-  const sent = rows.filter(r => r.sentToKola);
-  if (sent.length) return { ok: false, error: 'already_sent_to_kola', numbers: sent.map(r => r.number) };
   const loose = rows.filter(r => r.batchNo == null);
   if (loose.length) return { ok: false, error: 'not_batched', numbers: loose.map(r => r.number) };
 
+  /**
+   * ยกเลิกจัดชุดได้แม้ส่ง KOLA ไปแล้ว — ต้องล้าง sentToKola ด้วย
+   * ไม่งั้นใบจะค้างสถานะ "ส่งแล้ว" โดยไม่มีชุด แล้วยังโผล่ในลูกหนี้สำรองจ่าย
+   * ทั้งที่ยังไม่ได้ส่งเอกสารจริง (listReceivables กรองด้วย sentToKola)
+   *
+   * ใบที่รับชำระไปแล้วห้ามถอด เพราะมีเงินเข้าผูกกับใบนั้นแล้ว
+   * ต้องถอนรับชำระก่อน (unsettleReceivables) จึงจะยกเลิกชุดได้
+   */
+  const paid = rows.filter(r => Number(r.paidAmount) > 0);
+  if (paid.length) return { ok: false, error: 'already_paid', numbers: paid.map(r => r.number) };
+
+  const revertedFromKola = rows.filter(r => r.sentToKola).map(r => r.number);
   await db.update(invoices)
-    .set({ batchNo: null, batchPeriod: '', batchSentDate: '', batchName: '', updatedAt: nowIso() })
+    .set({
+      batchNo: null, batchPeriod: '', batchSentDate: '', batchName: '',
+      // docStatus ต้องล้างด้วย — sendBatchToKola ตั้งเป็น 'waiting' ไว้
+      // ถ้าค้างไว้ ใบจะโผล่ในคิวรอ KOLA ตอบรับ ทั้งที่ไม่มีชุดแล้ว
+      sentToKola: false, docStatus: '', needsFix: false, fixNote: '', updatedAt: nowIso()
+    })
     .where(inArray(invoices.number, numbers));
-  return { ok: true, count: numbers.length, numbers };
+  return { ok: true, count: numbers.length, numbers, revertedFromKola };
 }
 
 /** เปลี่ยนชื่อชุด — เลขชุดยังเป็นตัวเดิม แค่ชื่อที่แสดงเปลี่ยน */

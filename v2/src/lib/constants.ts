@@ -152,3 +152,10 @@ export const INVOICE_CUSTOMER = {
   address: '567 หมู่ 7 ตำบลท่าสายลวด อำเภอแม่สอด จังหวัดตาก 63110',
   taxId: '0635561000980'
 } as const;
+
+/**
+ * ใครเข้าเมนูใบแจ้งหนี้ได้บ้าง — admin/manager เดิมยังเข้าได้เพื่อดูแลระบบ
+ * อยู่ที่นี่เพราะทั้ง dispatch (ด่านสิทธิ์) และ invoices (canApprove ส่งให้หน้าเว็บ) ใช้ชุดเดียวกัน
+ * ถ้าปล่อยไว้ใน dispatch แล้วให้ invoices นำเข้า จะกลายเป็น import วนกัน
+ */
+export const ACCOUNT_ROLES = ['admin', 'manager', 'manager-account', 'employee-account'];

@@ -2,6 +2,7 @@ import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { invoices, settlements, transportJobs } from '@/db/schema';
 import {
+  ACCOUNT_ROLES,
   INVOICE_COMPANY, INVOICE_CUSTOMER, INVOICE_NO_VAT_ITEMS, INVOICE_VAT_ITEMS,
   INVOICE_VAT_EXEMPT_LABELS, INVOICE_DIVISOR, VAT_RATE
 } from './constants';
@@ -323,9 +324,10 @@ export async function listInvoices(body: ApiBody, actor: { username: string; rol
    * เดิมกรองด้วย createdBy ทำให้ employee-account เห็นไม่ครบ เช่น sai เห็น 30 ใบ
    * ขณะที่ admin เห็น 43 ใบ ทั้งที่ควรเห็นชุดเดียวกัน เพราะทำงานกับเอกสารชุดเดียวกัน
    *
-   * canApprove ยังแยกตามเดิม — ดูได้ทุกคน แต่ยกเลิกได้เฉพาะ admin / manager-account
+   * ยกเลิกใบได้ทุกคนในฝ่ายบัญชี รวม employee-account — ทีมเดียวกันแก้งานกันเองได้
+   * (ยังมีด่านฝั่งเซิร์ฟเวอร์: decideInvoice ห้ามยกเลิกใบที่รับชำระแล้ว)
    */
-  const canApprove = actor.role === 'manager-account' || actor.role === 'admin' || actor.role === 'manager';
+  const canApprove = ACCOUNT_ROLES.includes(actor.role);
   const clauses = [];
   if (validYmd(body.from)) clauses.push(sql`${invoices.issueDate} >= ${String(body.from)}`);
   if (validYmd(body.to)) clauses.push(sql`${invoices.issueDate} <= ${String(body.to)}`);

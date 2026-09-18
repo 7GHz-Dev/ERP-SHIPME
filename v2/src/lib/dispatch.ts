@@ -9,7 +9,7 @@ import { db } from '@/db';
 import { checkins, geocodeCache, settlements, users } from '@/db/schema';
 import { guard, login } from './auth';
 import { claimConfig, listClaims, saveClaim, saveClaimRates } from './claims';
-import { AUTO_MIN_CONTAINERS } from './constants';
+import { ACCOUNT_ROLES, AUTO_MIN_CONTAINERS } from './constants';
 import { env } from './env';
 import {
   appOptionsPayload, readAppOptions, sheetLayoutDefault, writeAppOption
@@ -142,9 +142,6 @@ async function checkin(body: ApiBody): Promise<ApiResult> {
   }
   return { ok: true, record: checkinRecord(row as CheckinRow) };
 }
-
-/** ใครเข้าเมนูใบแจ้งหนี้ได้บ้าง — admin/manager เดิมยังเข้าได้เพื่อดูแลระบบ */
-const ACCOUNT_ROLES = ['admin', 'manager', 'manager-account', 'employee-account'];
 
 const handlers: Record<string, Handler> = {
   // ---- เช็กอิน ----
@@ -464,7 +461,8 @@ const handlers: Record<string, Handler> = {
     return session.error || issueReceipts(body);
   },
   decideInvoice: async (body) => {
-    const session = await guard(body, ['admin', 'manager-account']);
+    // ฝ่ายบัญชีทุกคนยกเลิกใบได้ (เดิมเฉพาะ admin / manager-account)
+    const session = await guard(body, ACCOUNT_ROLES);
     return session.error || decideInvoice(body, session.user);
   }
 };
