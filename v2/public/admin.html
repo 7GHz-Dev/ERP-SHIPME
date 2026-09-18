@@ -175,6 +175,10 @@
 .inv-source-table{min-width:1450px;width:100%;border-collapse:collapse}.inv-source-table td{vertical-align:top;padding:14px 10px;border-bottom:1px solid #dbe3ed}.inv-source-table th{text-align:left;background:#edf2f7}
 .inv-cost-heading{width:31%}
 /* ตารางใบที่ออกแล้ว / ลูกหนี้ — อ่านง่ายขึ้น ไม่รก */
+.invl-flt{display:inline-flex;align-items:center;gap:5px;cursor:pointer;user-select:none;
+  font-size:12px;color:#475569;border:1px solid #e2e8f0;border-radius:999px;padding:3px 10px;background:#fff}
+.invl-flt:hover{border-color:#cbd5e1;background:#f8fafc}
+.invl-flt input{cursor:pointer;margin:0}
 .inv-tbl{border-collapse:separate;border-spacing:0;width:100%;font-size:13px}
 .inv-tbl thead th{position:sticky;top:0;z-index:1;background:#f1f5f9;color:#475569;font-size:12px;
   font-weight:600;text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
@@ -579,10 +583,17 @@
       <!-- ---------- ใบที่ออกแล้ว ---------- -->
       <div id="inv-pane-list" class="hidden">
         <div class="toolbar">
-          <input id="invl-search" type="text" placeholder="ค้นหา เลขที่ใบ / BL" class="grow">
+          <input id="invl-search" type="text" placeholder="ค้นหา เลขที่ใบ / BL / ชุดเอกสาร (พิมพ์ ชุดที่ 05 หรือ 05/09)" class="grow">
           <input id="invl-from" type="date" title="วันที่ออกใบ ตั้งแต่">
           <input id="invl-to" type="date" title="วันที่ออกใบ ถึง">
           <button id="invl-reload" class="btn btn-ghost btn-sm">โหลดใหม่</button>
+        </div>
+        <div class="toolbar" style="margin-top:-6px">
+          <span class="muted">แสดง</span>
+          <label class="invl-flt"><input type="checkbox" id="invl-show-loose" checked> ยังไม่จัดชุด</label>
+          <label class="invl-flt"><input type="checkbox" id="invl-show-batched" checked> จัดชุดแล้ว</label>
+          <label class="invl-flt"><input type="checkbox" id="invl-show-kola" checked> ส่ง KOLA แล้ว</label>
+          <span id="invl-count" class="muted"></span>
         </div>
         <div class="toolbar" style="margin-top:-6px">
           <span id="invl-picked" class="muted">เลือกไว้ 0 ใบ</span>
@@ -2722,6 +2733,9 @@ $('inv-reload').addEventListener('click', loadInvoiceSources);
 $('invl-reload').addEventListener('click', loadInvoiceList);
 $('inv-search').addEventListener('input', renderInvoiceSources);
 $('invl-search').addEventListener('input', renderInvoiceList);
+['invl-show-loose','invl-show-batched','invl-show-kola'].forEach(function(id){
+  $(id).addEventListener('change', renderInvoiceList);
+});
 
 function openInvoiceForm(src, kind){
   invState.editing = { src:src, kind:kind };
@@ -3656,18 +3670,66 @@ function sortArrow(key){
   return '<span style="font-size:10px"> ' + (st.dir === 'asc' ? '▲' : '▼') + '</span>';
 }
 
+/**
+ * ค้นด้วยเลขชุด — แยกจากการค้นข้อความทั่วไป
+ *
+ * เดิมคิดจะโยนเลขชุดเปล่า ๆ ("05") รวมไปกับ number/bl แล้วค้นแบบ substring
+ * แต่ลองกับข้อมูลจริงแล้วพัง: BL อย่าง 011GX05003 กับเลขใบ V20260905
+ * มี "05" อยู่ในตัว ค้น "05" เลยได้ 40 ใบ ทั้งที่ชุด 05 มีจริง 23 ใบ
+ *
+ * จึงจับเฉพาะรูปแบบที่ "ตั้งใจพิมพ์เลขชุด" แล้วเทียบกับเลขชุดตรง ๆ:
+ *   "ชุดที่ 05/09" / "ชุดที่ 05" / "ชุด 5" / "05/09" / "5/9"
+ * ส่วนคำค้นอื่น ๆ ยังค้น เลขใบ / BL / ชื่อลูกค้า เหมือนเดิม
+ */
+function invBatchQuery(q){
+  var m = /^(?:ชุดที่\s*|ชุด\s*)?(\d{1,2})\s*(?:\/\s*(\d{1,2}))?$/.exec(q.trim());
+  if(!m) return null;
+  // ตัวเลขล้วนสั้น ๆ ไม่มีคำว่า "ชุด" และไม่มีเดือน = คลุมเครือ ปล่อยให้ค้นแบบปกติด้วย
+  var explicit = /ชุด/.test(q) || !!m[2];
+  return { no: Number(m[1]), month: m[2] ? Number(m[2]) : null, explicit: explicit };
+}
+
+/** ใบนี้อยู่ในชุดที่ผู้ใช้พิมพ์มาไหม */
+function invMatchesBatch(r, bq){
+  if(!r.batchNo || Number(r.batchNo) !== bq.no) return false;
+  if(bq.month == null) return true;
+  return Number(String(r.batchPeriod || '').slice(4, 6)) === bq.month;
+}
+
 function renderInvoiceList(){
   var q = $('invl-search').value.trim().toLowerCase();
+  var showLoose = $('invl-show-loose').checked;
+  var showBatched = $('invl-show-batched').checked;
+  var showKola = $('invl-show-kola').checked;
+  var total = invState.list.length;
   var rows = invState.list.filter(function(r){
+    // 3 สถานะแยกกันชัดเจน: ยังไม่จัดชุด / จัดชุดแล้วแต่ยังไม่ส่ง / ส่ง KOLA แล้ว
+    var state = r.sentToKola ? 'kola' : (r.batchNo ? 'batched' : 'loose');
+    if(state === 'loose' && !showLoose) return false;
+    if(state === 'batched' && !showBatched) return false;
+    if(state === 'kola' && !showKola) return false;
     if(!q) return true;
-    return [r.number, r.bl, r.customerName].join(' ').toLowerCase().indexOf(q) >= 0;
+    var plain = [r.number, r.bl, r.customerName].join(' ').toLowerCase().indexOf(q) >= 0;
+    var bq = invBatchQuery(q);
+    if(!bq) return plain;
+    // พิมพ์ "ชุดที่ 05" หรือ "05/09" = เจาะจงเลขชุด ไม่เอาที่บังเอิญมี 05 ใน BL
+    return bq.explicit ? invMatchesBatch(r, bq) : (plain || invMatchesBatch(r, bq));
   });
+  $('invl-count').textContent = rows.length === total
+    ? ('ทั้งหมด ' + total + ' ใบ')
+    : ('แสดง ' + rows.length + ' จาก ' + total + ' ใบ');
   rows = applyInvoiceSort(rows);
   invState.listRows = rows;
   ['number','bl','total','batch'].forEach(function(k){
     var el = $('sa-'+k); if(el) el.innerHTML = sortArrow(k);
   });
-  if(!rows.length){ $('inv-list-body').innerHTML = '<tr><td colspan="7" class="muted" style="padding:20px">ยังไม่มีใบแจ้งหนี้</td></tr>'; updateInvlPicked(); return; }
+  if(!rows.length){
+    var why = invState.list.length
+      ? 'ไม่พบใบที่ตรงกับการค้นหาหรือตัวกรอง'
+      : 'ยังไม่มีใบแจ้งหนี้';
+    $('inv-list-body').innerHTML = '<tr><td colspan="7" class="muted" style="padding:20px">'+why+'</td></tr>';
+    updateInvlPicked(); return;
+  }
   $('inv-list-body').innerHTML = rows.map(function(r, i){
     var batch = r.batchNo
       ? esc(r.batchName || ('ชุดที่ '+String(r.batchNo).padStart(2,'0')+'/'+String(r.batchPeriod||'').slice(4,6)))
