@@ -471,6 +471,29 @@
               <button type="button" id="st-slip-confirm" class="btn btn-ghost">✔️ ยืนยันค่าจากสลิป</button>
             </div>
           </div>
+
+          <!-- สลิปโอนเพิ่ม: แก้ใบที่แนบสลิปแล้ว แต่ยอดเพิ่มขึ้น → โอนแค่ส่วนต่าง แนบได้หลายใบ -->
+          <div id="st-extra-wrap" class="hidden">
+            <label>สลิปโอนเพิ่ม <span class="muted">(ยอดเพิ่มขึ้นหลังแนบสลิปเดิม — โอนเฉพาะส่วนต่าง)</span></label>
+            <div id="st-extra-list"></div>
+            <div id="st-extra-add" class="slip-box">
+              <div id="st-extra-need" class="status wait" style="margin:0 0 10px"></div>
+              <label>วันที่โอนเพิ่ม</label>
+              <input id="st-extra-date" type="date" class="date-fit" style="margin-bottom:8px">
+              <label>ยอดที่โอนครั้งนี้ (บาท) <span class="muted">— โอนไม่ครบในครั้งเดียว แก้ยอดแล้วแนบใบถัดไปได้</span></label>
+              <input id="st-extra-expect" type="number" inputmode="decimal" min="0" step="0.01" style="margin-bottom:8px">
+              <input id="st-extra-file" type="file" accept="image/*" style="margin:0">
+              <div id="st-extra-status" class="status wait hidden" style="margin:10px 0 0"></div>
+              <div id="st-extra-manual" class="hidden" style="margin-top:10px; border-top:1px dashed #cbd5e1; padding-top:10px">
+                <div class="muted" style="margin-bottom:8px">อ่านสลิปไม่ออก — <b>กรอกค่าจากสลิปเอง</b> แล้วผู้ดูแลจะตรวจย้อนหลังให้</div>
+                <label>ยอดเงินในสลิป (บาท)</label>
+                <input id="st-extra-amt" type="number" inputmode="decimal" min="0" step="0.01" style="margin-bottom:8px">
+                <label>เลขที่รายการในสลิป</label>
+                <input id="st-extra-txn" type="text" maxlength="60" style="margin-bottom:10px">
+                <button type="button" id="st-extra-confirm" class="btn btn-ghost">✔️ ยืนยันค่าจากสลิป</button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div id="st-company-wrap" class="hidden">
@@ -746,6 +769,10 @@ var ERR_TH = {
   slip_mismatch:'สลิปไม่ตรงกับยอด/วันที่ที่ต้องโอนคืน',
   slip_unreadable:'อ่านข้อมูลในสลิปไม่ออก — ถ่าย/แคปสลิปให้ชัดแล้วแนบใหม่',
   slip_recheck_required:'ยอดหรือวันที่เปลี่ยนไปจากสลิปเดิม — แนบสลิปใหม่ให้ตรงก่อน',
+  slip_extra_required:'ยอดเพิ่มขึ้นจากสลิปเดิม — แนบสลิปโอนเพิ่มให้ครบยอดก่อน',
+  slip_extra_too_much:'ยอดสลิปโอนเพิ่มเกินยอดที่ต้องโอนคืน',
+  extra_slip_date_required:'เลือกวันที่โอนเพิ่มก่อน',
+  too_many_slips:'แนบสลิปโอนเพิ่มได้ไม่เกิน 10 ใบ',
   slip_txn_duplicate:'สลิปใบนี้ (เลขที่รายการเดิม) ถูกใช้กับใบปิดบัญชีอื่นไปแล้ว',
   slip_not_verified:'ยังไม่ได้ตรวจสลิปใบนี้ — แนบสลิปใหม่อีกครั้ง',
   slip_not_found:'ไม่พบไฟล์สลิปในระบบ — แนบใหม่อีกครั้ง',
@@ -2137,7 +2164,7 @@ window.claimCopy=function(i){
 var settle = { cols:[], dates:[], form:null, list:[], loaded:false, lastText:'', lastSaved:null, canCompany:false,
                specialLabel:'ค่าบริการเพิ่มเติมพิเศษ', presets:[], autoRates:{}, autoMin:{}, autoPorts:{},
                options:{ ports:[], sealValues:[], knockValues:[], overtime:{ perSet:400, maxSets:20 }, knockLabel:'ค่าน็อคตู้' },
-               sourceStyles:{}, slipStrict:false, slip:null,
+               sourceStyles:{}, slipStrict:false, slip:null, extras:[], extraPending:null, slipTolerance:1,
                keysByDate:{}, claimDates:0, dateKeys:[], showAll:false };
 
 // ---- ตัวช่วยของช่องแบบ dropdown ในใบปิดบัญชี ----
@@ -2269,6 +2296,7 @@ function loadSettleConfig(){
     if(res.options && res.options.sheet) sheetLayout=res.options.sheet;
     settle.sourceStyles=res.sourceStyles||{};
     settle.slipStrict=!!res.slipStrict;
+    if(res.slipTolerance!=null) settle.slipTolerance=Number(res.slipTolerance)||0;
     settle.keysByDate=res.keysByDate||{};
     settle.claimDates=Number(res.claimDates)||0;
     settle.loaded=true;
@@ -2319,6 +2347,9 @@ function newSettleForm(rec){
       slipInfoRow('เลขที่รายการ', rec.slipTxn||'—', !!rec.slipTxn)+
       '<div class="slip-row"><span>ไฟล์สลิป</span><b><a href="'+esc(rec.slipUrl)+'" target="_blank"'+vwAttr('img', photoFull(rec.slipUrl), 'สลิปโอนคืนบริษัท')+'>เปิดดู</a></b></div>';
     $('st-slip-info').classList.remove('hidden');
+    settle.extras=(rec.extraSlips||[]).map(function(x){
+      return { fileId:'', url:x.url, txn:x.txn||'', amount:Number(x.amount)||0, date:x.date||'', label:x.status||'', saved:true };
+    });
   }
   $('st-date').value=f.inspectDate;
   $('st-returned').value=f.returnedDate;
@@ -2741,6 +2772,7 @@ function updateSettleSummary(){
       if(!sp.ok) miss.push(sp.why);
     }
   }
+  renderExtraSlips(bal, f.returnedDate);
   $('st-need').classList.toggle('hidden', !(ready && miss.length));
   if(miss.length) $('st-need').textContent='ต้องทำก่อนบันทึก: '+miss.join(' • ');
 
@@ -2771,6 +2803,7 @@ function resetSlip(){
   $('st-slip-manual').classList.add('hidden');
   $('st-slip-amt').value=''; $('st-slip-date').value=''; $('st-slip-txn').value='';
   setSlipStatus('wait','แนบสลิปโอนเงินของยอดที่ต้องโอนคืน');
+  resetExtraSlips();
 }
 
 // ลองอ่านสลิปใบเดิมอีกครั้ง (ไม่ต้องอัปรูปใหม่) — ใช้เมื่อบริการ OCR ติดขัดชั่วคราว
@@ -2805,6 +2838,9 @@ function slipState(bal, date){
   var stale = (sp.expectAmount!==bal) || (sp.expectDate!==date);
   if(!stale) return { ok:!!sp.canSave, why: sp.canSave ? '' : ('สลิปยังไม่ผ่านการตรวจ — '+(sp.label||'')) };
   if(sp.fileId){ scheduleSlipRecheck(); return { ok:false, why:'กำลังตรวจสลิปกับยอด/วันที่ใหม่' }; }
+  // สลิปเดิมที่บันทึกไว้: วันที่เดิม + ยอดเพิ่มขึ้น = แนบสลิปโอนเพิ่มเฉพาะส่วนต่างได้ ไม่ต้องแนบใหม่ทั้งหมด
+  var ex=extraSlipState(bal, date);
+  if(ex) return ex;
   return { ok:false, why:'ยอดหรือวันที่เปลี่ยน — ต้องแนบสลิปใหม่' };
 }
 
@@ -2825,6 +2861,152 @@ function recheckSlip(){
     .then(function(res){ applySlipResult(res, bal, date); })
     .catch(function(){ setSlipStatus('err','ตรวจสลิปไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต'); });
 }
+
+// ---------- สลิปโอนเพิ่ม ----------
+// ใช้เฉพาะตอนแก้ใบที่มีสลิปบันทึกไว้แล้ว และวันที่โอนคืนยังเป็นวันเดิม แต่ยอดคงเหลือเพิ่มขึ้น
+// แต่ละใบตรวจกับยอดที่ยังขาด ณ ตอนแนบ แล้วเก็บยอดนั้นไว้ — ตอนบันทึกเซิร์ฟเวอร์เช็กว่ารวมกันพอดียอดคงเหลือ
+var EXTRA_MAX=10;
+function extraTol(){ return Number(settle.slipTolerance)||0; }
+function resetExtraSlips(){
+  settle.extras=[];
+  settle.extraPending=null;
+  $('st-extra-file').value='';
+  $('st-extra-status').classList.add('hidden');
+  $('st-extra-manual').classList.add('hidden');
+  $('st-extra-amt').value=''; $('st-extra-txn').value=''; $('st-extra-expect').value='';
+}
+function savedSlip(){ var sp=settle.slip; return (sp && !sp.fileId && sp.status==='saved') ? sp : null; }
+function extraTotal(){ return r2((settle.extras||[]).reduce(function(t,x){ return t+(Number(x.amount)||0); },0)); }
+function extraShort(bal){ var sp=savedSlip(); return sp ? r2(bal-(Number(sp.amount)||0)-extraTotal()) : 0; }
+
+/** ใช้สลิปโอนเพิ่มกับใบนี้ได้ไหม — null = ไม่เข้าเงื่อนไข ให้ slipState ตัดสินแบบเดิม */
+function extraSlipState(bal, date){
+  var sp=savedSlip();
+  if(!sp || !(Number(sp.amount)>0) || sp.date!==date) return null;
+  var short=extraShort(bal);
+  if(short>extraTol()) return { ok:false, why:'แนบสลิปโอนเพิ่มอีก '+fmtM(short)+' บาท' };
+  if(short<-extraTol()){
+    return { ok:false, why: (settle.extras||[]).length
+      ? 'ยอดสลิปรวมเกินยอดคงเหลือ — ลบสลิปโอนเพิ่มออก'
+      : 'ยอดลดลงจากสลิปเดิม — ต้องแนบสลิปใหม่' };
+  }
+  return { ok:true, why:'' };
+}
+
+function renderExtraSlips(bal, date){
+  var sp=savedSlip();
+  var usable = !!sp && Number(sp.amount)>0 && sp.date===date && bal>0;
+  var list=settle.extras||[];
+  var short=usable ? extraShort(bal) : 0;
+  $('st-extra-wrap').classList.toggle('hidden', !(usable && (short>extraTol() || list.length)));
+  if(!usable) return;
+  $('st-extra-list').innerHTML=list.map(function(x, i){
+    return '<div class="slip-box" style="padding:10px">'+
+      slipInfoRow('ยอดโอนเพิ่ม', fmtM(x.amount)+' บาท', true)+
+      slipInfoRow('วันที่โอน', fmtD(x.date), true)+
+      slipInfoRow('เลขที่รายการ', x.txn||'—', !!x.txn)+
+      '<div class="slip-row"><span>'+(x.saved?'บันทึกไว้แล้ว':esc(x.label||'แนบใหม่'))+'</span><b>'+
+        '<a href="'+esc(x.url)+'" target="_blank"'+vwAttr('img', photoFull(x.url), 'สลิปโอนเพิ่ม')+'>เปิดดู</a> · '+
+        '<a href="#" class="st-extra-del" data-i="'+i+'" style="color:#b91c1c">ลบ</a></b></div>'+
+    '</div>';
+  }).join('');
+  Array.prototype.forEach.call($('st-extra-list').querySelectorAll('.st-extra-del'), function(a){
+    a.addEventListener('click', function(e){
+      e.preventDefault();
+      settle.extras.splice(Number(a.getAttribute('data-i')), 1);
+      updateSettleSummary();
+    });
+  });
+  var canAdd = short>extraTol() && list.length<EXTRA_MAX;
+  $('st-extra-add').classList.toggle('hidden', !canAdd);
+  if(canAdd){
+    $('st-extra-need').textContent='ต้องโอนเพิ่มอีก '+fmtM(short)+' บาท (สลิปเดิม '+fmtM(sp.amount)+
+      (list.length?(' + โอนเพิ่มแล้ว '+fmtM(extraTotal())):'')+' / คงเหลือ '+fmtM(bal)+')';
+    if(!$('st-extra-date').value) $('st-extra-date').value=todayYmd();
+    var ex=Number($('st-extra-expect').value)||0;
+    if(!(ex>0) || ex-short>extraTol()) $('st-extra-expect').value=short;
+  }
+}
+function todayYmd(){
+  var d=new Date(), p=function(n){ return (n<10?'0':'')+n; };
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+}
+function setExtraStatus(kind, html){
+  var el=$('st-extra-status');
+  el.className='status '+(kind||'wait'); el.innerHTML=html; el.classList.remove('hidden');
+}
+
+$('st-extra-file').addEventListener('change', function(){
+  var file=this.files && this.files[0], input=this;
+  if(!file) return;
+  var f=settle.form; if(!f) return;
+  var date=$('st-extra-date').value;
+  var short=extraShort(settleBalance());
+  var amount=r2(Number($('st-extra-expect').value)||0);
+  if(!date){ toast('เลือกวันที่โอนเพิ่มก่อน'); input.value=''; return; }
+  if(!(short>extraTol())){ toast('ไม่ต้องโอนเพิ่มแล้ว'); input.value=''; return; }
+  if(!(amount>0)){ toast('กรอกยอดที่โอนครั้งนี้'); input.value=''; return; }
+  if(amount-short>extraTol()){ toast('ยอดที่โอนครั้งนี้เกินยอดที่ต้องโอนเพิ่ม ('+fmtM(short)+' บาท)'); input.value=''; return; }
+  if(file.size>10*1024*1024){ toast('ไฟล์ใหญ่เกิน 10MB — ถ่าย/แคปใหม่ให้เล็กลงก่อน'); input.value=''; return; }
+  $('st-extra-manual').classList.add('hidden');
+  var reader=new FileReader();
+  reader.onload=function(){
+    setExtraStatus('wait','<span class="spinner"></span> กำลังอัปโหลดและอ่านสลิป…');
+    resizeImage(String(reader.result||''), SLIP_W_START, 0.92, false).then(function(out){
+      return uploadLarge(dataUrlToBlob(out.dataUrl), { purpose:'slip', expectDate:date });
+    }).then(function(up){
+      settle.extraPending={ date:date, amount:amount };
+      return api({ action:'verifySlip', token:state.token, key:up.key, expectDate:date, expectAmount:amount });
+    }).then(function(res){ applyExtraResult(res); })
+      .catch(function(err){
+        setExtraStatus('err','อัปโหลดสลิปไม่สำเร็จ'+((err&&err.error)?(': '+errTH(err.error)):' ตรวจสอบอินเทอร์เน็ต'));
+        input.value='';
+      });
+  };
+  reader.onerror=function(){ toast('อ่านไฟล์รูปไม่สำเร็จ'); };
+  reader.readAsDataURL(file);
+});
+
+/** ผลตรวจสลิปโอนเพิ่ม — ผ่าน (อ่านได้หรือกรอกเอง) ถึงจะเข้ารายการ อ่านไม่ออกเฉย ๆ ใช้ไม่ได้เพราะต้องรู้ยอดจริง */
+function applyExtraResult(res){
+  var pend=settle.extraPending;
+  if(!res || !res.ok || !pend){
+    if(res && (res.error==='session_expired'||res.error==='invalid_token')){ toast(errTH(res.error)); return logout(); }
+    setExtraStatus('err','ตรวจสลิปไม่สำเร็จ: '+errTH((res&&res.error)||'bad_request'));
+    $('st-extra-file').value='';
+    return;
+  }
+  pend.fileId=res.fileId; pend.url=res.url;
+  if(res.status==='verified' || res.status==='manual'){
+    settle.extras.push({ fileId:res.fileId, url:res.url, txn:res.txn||'', amount:pend.amount,
+                         date:pend.date, label:res.label||'', saved:false });
+    settle.extraPending=null;
+    $('st-extra-file').value='';
+    $('st-extra-expect').value='';
+    $('st-extra-manual').classList.add('hidden');
+    $('st-extra-status').classList.add('hidden');
+    toast('แนบสลิปโอนเพิ่มแล้ว ✓');
+    updateSettleSummary();
+    return;
+  }
+  setExtraStatus(res.status==='mismatch'?'err':'wait',
+    (res.status==='mismatch'?'❌ ':'⚠️ ')+esc(res.label||'')+' — ต้องโอนเพิ่ม '+fmtM(pend.amount)+' บาท • '+esc(fmtD(pend.date)));
+  // อ่านไม่ออก = กรอกยอด/เลขที่รายการเองได้ (เติมยอดที่ควรจะเป็นไว้ให้)
+  $('st-extra-manual').classList.toggle('hidden', !res.canManual);
+  if(res.canManual && !$('st-extra-amt').value) $('st-extra-amt').value=pend.amount;
+}
+
+$('st-extra-confirm').addEventListener('click', function(){
+  var pend=settle.extraPending;
+  if(!pend || !pend.fileId){ toast('แนบสลิปก่อน'); return; }
+  var manual={ amount:Number($('st-extra-amt').value)||0, date:pend.date, txn:$('st-extra-txn').value.trim() };
+  if(!manual.txn){ toast('กรอกเลขที่รายการในสลิปด้วย'); return; }
+  setExtraStatus('wait','<span class="spinner"></span> กำลังตรวจค่าที่กรอก…');
+  api({ action:'verifySlip', token:state.token, fileId:pend.fileId, manual:manual,
+        expectDate:pend.date, expectAmount:pend.amount })
+    .then(function(res){ applyExtraResult(res); })
+    .catch(function(){ setExtraStatus('err','ส่งค่าไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต'); });
+});
 
 // ปรับขนาดรูปสลิปก่อนอัป — allowUpscale = ขยายให้ใหญ่กว่าต้นฉบับได้ (ใช้ตอนกดเพิ่มความละเอียดให้ OCR อ่านง่ายขึ้น)
 function resizeImage(dataUrl, maxW, quality, allowUpscale){
@@ -2950,6 +3132,7 @@ function applySlipResult(res, bal, date){
   settle.slip={ fileId:res.fileId, url:res.url, txn:res.txn||'', amount:Number(res.amount)||0,
                 date:res.date||'', status:res.status, label:res.label||'', canSave:!!res.canSave,
                 expectAmount:bal, expectDate:date };
+  resetExtraSlips();      // สลิปหลักใบใหม่ต้องครบยอดเอง สลิปโอนเพิ่มของสลิปเดิมไม่เกี่ยวแล้ว
   var icon = (res.status==='verified') ? '✅ ' : (res.status==='mismatch' ? '❌ ' : (res.status==='manual' ? '📝 ' : '⚠️ '));
   var kind = (res.status==='verified'||res.status==='manual') ? 'ok' : (res.status==='mismatch' ? 'err' : 'wait');
   setSlipStatus(kind, icon+esc(res.label||''));
@@ -3180,6 +3363,9 @@ function settleText(editCountOverride){
                 : ('คงเหลือ '+fmtM(-bal)+' บาท (บริษัทโอนคืนพนักงาน)'));
   if(f.returnedDate) L.push('วันที่โอนคืนบริษัท: '+fmtD(f.returnedDate));
   if(settle.slip && settle.slip.txn) L.push('เลขที่รายการสลิป: '+settle.slip.txn);
+  (settle.extras||[]).forEach(function(x){
+    L.push('สลิปโอนเพิ่ม: '+fmtM(x.amount)+' บาท • '+fmtD(x.date)+(x.txn?(' • เลขที่ '+x.txn):''));
+  });
   if(f.companyReturnedDate) L.push('วันที่บริษัทโอนคืน: '+fmtD(f.companyReturnedDate));
   var ec=(editCountOverride==null)?f.editCount:editCountOverride;
   if(ec>0) L.push('(แก้ไขครั้งที่ '+ec+')');
@@ -3211,7 +3397,11 @@ $('st-save').addEventListener('click', function(){
     id:f.id, inspectDate:f.inspectDate, rows:f.rows,
     returnedDate:f.returnedDate, companyReturnedDate:f.companyReturnedDate,
     // ส่งแค่ id ของไฟล์สลิป — เซิร์ฟเวอร์ไปอ่านผลตรวจของไฟล์นั้นเอง ไม่เชื่อค่าที่หน้าเว็บส่งมา
-    slip: (settle.slip && settle.slip.fileId) ? { fileId:settle.slip.fileId } : null
+    slip: (settle.slip && settle.slip.fileId) ? { fileId:settle.slip.fileId } : null,
+    // สลิปโอนเพิ่ม: ใบเดิมส่งแค่ url ให้เซิร์ฟเวอร์คงไว้ / ใบใหม่ส่ง id ให้เซิร์ฟเวอร์ตรวจเอง
+    extraSlips: (settle.slip && settle.slip.fileId) ? [] : (settle.extras||[]).map(function(x){
+      return x.fileId ? { fileId:x.fileId, date:x.date, amount:x.amount } : { url:x.url };
+    })
   }}).then(function(res){
     b.disabled=false; b.textContent=old;
     if(!res.ok){

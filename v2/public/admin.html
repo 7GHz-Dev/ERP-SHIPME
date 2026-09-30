@@ -2030,7 +2030,23 @@ function slipCell(r){
      (r.slipDate?(' • '+esc(fmtD(r.slipDate))):'')+(r.slipBank?(' • '+esc(r.slipBank)):'')+'</div>';
   h+='<div style="margin-top:3px"><span class="pill '+(okAuto?'approved':'pending')+'">'+esc(r.slipStatus||'รอตรวจ')+'</span></div>';
   if(r.slipUrl) h+='<div style="margin-top:3px"><a href="'+esc(r.slipUrl)+'" target="_blank"'+vwAttr('img', photoFull(r.slipUrl), 'สลิปโอนคืนบริษัท')+'>เปิดสลิป</a></div>';
+  // สลิปโอนเพิ่ม (ยอดเพิ่มขึ้นตอนแก้ใบ) — แยกบรรทัดละใบ
+  (r.extraSlips||[]).forEach(function(x, n){
+    h+='<div style="margin-top:6px;padding-top:4px;border-top:1px dashed #e2e8f0">'+
+       '<span class="muted">โอนเพิ่ม #'+(n+1)+':</span> <b>'+fmtM(x.amount)+' บาท</b>'+
+       '<div class="muted">'+esc(x.txn||'(ไม่มีเลขที่รายการ)')+(x.date?(' • '+esc(fmtD(x.date))):'')+'</div>'+
+       (x.url?('<a href="'+esc(x.url)+'" target="_blank"'+vwAttr('img', photoFull(x.url), 'สลิปโอนเพิ่ม')+'>เปิดสลิป</a>'):'')+
+       '</div>';
+  });
   return h;
+}
+
+function extraSlipText(r){
+  return (r.extraSlips||[]).map(function(x, n){
+    return '<br>➕ <b>สลิปโอนเพิ่ม #'+(n+1)+'</b>: '+fmtM(x.amount)+' บาท • '+(x.date?esc(fmtD(x.date)):'—')+
+      ' • เลขที่ '+esc(x.txn||'—')+' • '+esc(x.status||'')+
+      (x.url?(' • <a href="'+esc(x.url)+'" target="_blank"'+vwAttr('img', photoFull(x.url), 'สลิปโอนเพิ่ม')+'>เปิดรูป</a>'):'');
+  }).join('');
 }
 
 window.smView=function(i){
@@ -2042,7 +2058,8 @@ window.smView=function(i){
        '<br>ยอดในสลิป: <b>'+(r.slipAmount?fmtM(r.slipAmount)+' บาท':'—')+'</b> • วันที่ในสลิป: <b>'+(r.slipDate?esc(fmtD(r.slipDate)):'—')+'</b>'+
        (r.slipBank?('<br>ธนาคาร: '+esc(r.slipBank)):'')+
        '<br>ผลตรวจ: '+esc(r.slipStatus||'—')+
-       (r.slipUrl?('<br><a href="'+esc(r.slipUrl)+'" target="_blank"'+vwAttr('img', photoFull(r.slipUrl), 'สลิปโอนคืนบริษัท')+'>เปิดรูปสลิป</a>'):''))
+       (r.slipUrl?('<br><a href="'+esc(r.slipUrl)+'" target="_blank"'+vwAttr('img', photoFull(r.slipUrl), 'สลิปโอนคืนบริษัท')+'>เปิดรูปสลิป</a>'):'')+
+       extraSlipText(r))
     : ((Number(r.balance)>0) ? '🧾 ใบนี้ต้องโอนคืนบริษัท แต่ยังไม่มีสลิปในระบบ (ใบเก่าก่อนเปิดใช้ระบบสลิป)'
                              : '🧾 ใบนี้ไม่ต้องโอนคืนบริษัท จึงไม่มีสลิป');
   $('sm-image').innerHTML = r.imageUrl
@@ -2072,6 +2089,11 @@ $('sm-save').addEventListener('click', function(){
   }).catch(function(){ b.disabled=false; b.textContent='บันทึกวันที่โอนคืน'; toast('บันทึกไม่สำเร็จ'); });
 });
 
+function extraSlipSum(r){
+  var list=r.extraSlips||[];
+  if(!list.length) return '';
+  return Math.round(list.reduce(function(t,x){ return t+(Number(x.amount)||0); },0)*100)/100;
+}
 function exportSettleCSV(){
   var rows=filteredSettlements();
   if(!rows.length){ toast('ไม่มีข้อมูลให้ส่งออก'); return; }
@@ -2080,6 +2102,7 @@ function exportSettleCSV(){
   head.push('ค่าบริการเพิ่มเติมพิเศษ (ยอดรวม)','ค่าบริการเพิ่มเติมพิเศษ (หัวข้อย่อย)',
             'รายละเอียดค่าใช้จ่ายอื่นๆ','ที่มาของงาน','รวม(แถว)','รวมค่าใช้จ่าย(ใบ)','ยอดเบิก','คงเหลือ','วันที่โอนคืนบริษัท',
             'เลขที่รายการสลิป','ยอดในสลิป','วันที่ในสลิป','ธนาคาร','ผลตรวจสลิป','ลิงก์สลิป',
+            'สลิปโอนเพิ่ม (ยอดรวม)','สลิปโอนเพิ่ม (เลขที่รายการ)','สลิปโอนเพิ่ม (ลิงก์)',
             'วันที่บริษัทโอนคืน','ครั้งที่แก้ไข','ลิงก์รูปใบปิดบัญชี');
   var out=[];
   rows.forEach(function(r){
@@ -2092,6 +2115,9 @@ function exportSettleCSV(){
                 idx===0?fmtD(r.returnedDate):'',
                 idx===0?(r.slipTxn||''):'', idx===0?(r.slipAmount||''):'', idx===0?fmtD(r.slipDate):'',
                 idx===0?(r.slipBank||''):'', idx===0?(r.slipStatus||''):'', idx===0?(r.slipUrl||''):'',
+                idx===0?extraSlipSum(r):'',
+                idx===0?(r.extraSlips||[]).map(function(x){ return x.txn; }).filter(Boolean).join(' | '):'',
+                idx===0?(r.extraSlips||[]).map(function(x){ return x.url; }).join(' | '):'',
                 idx===0?fmtD(r.companyReturnedDate):'', idx===0?r.editCount:'',
                 idx===0?(r.imageUrl||''):'');
       out.push(line);

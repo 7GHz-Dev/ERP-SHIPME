@@ -77,6 +77,8 @@ export async function settleConfig(user: { username: string; role: string }) {
     options,
     sourceStyles: TRANSPORT_SOURCE_STYLE,
     slipStrict: env.slipStrict,
+    // หน้าเว็บใช้เทียบยอดรวมสลิปโอนเพิ่มกับยอดคงเหลือ ให้ตรงกับที่เซิร์ฟเวอร์ใช้ตอนบันทึก
+    slipTolerance: env.slipAmountTolerance,
     autoRates: await readSettleRates(),
     autoMin: AUTO_MIN_CONTAINERS,
     // ช่องที่คิดให้เฉพาะบางท่า — ท่าอื่นปล่อยว่างให้กรอกเอง
@@ -125,6 +127,7 @@ type SettleRecord = {
   claimTotal: number; rows: SettleRow[]; totalExpense: number; balance: number; editCount: number;
   returnedDate: string; companyReturnedDate: string;
   slipUrl: string; slipTxn: string; slipAmount: number; slipDate: string; slipStatus: string; slipBank: string;
+  extraSlips: SlipValues[];
   imageUrl: string; detail?: string;
 };
 
@@ -169,6 +172,10 @@ function detail(record: SettleRecord) {
     : `คงเหลือ ${fmtBaht(-record.balance)} บาท (บริษัทโอนคืนพนักงาน)`);
   if (record.returnedDate) lines.push(`วันที่โอนคืนบริษัท: ${fmtDateStr(record.returnedDate)}`);
   if (record.slipTxn) lines.push(`เลขที่รายการสลิป: ${record.slipTxn}`);
+  for (const extra of record.extraSlips) {
+    lines.push(`สลิปโอนเพิ่ม: ${fmtBaht(extra.amount)} บาท • ${fmtDateStr(extra.date)}`
+      + (extra.txn ? ` • เลขที่ ${extra.txn}` : ''));
+  }
   if (record.companyReturnedDate) lines.push(`วันที่บริษัทโอนคืน: ${fmtDateStr(record.companyReturnedDate)}`);
   if (record.editCount > 0) lines.push(`(แก้ไขครั้งที่ ${record.editCount})`);
   return lines.join('\n');
@@ -176,6 +183,92 @@ function detail(record: SettleRecord) {
 
 type SlipValues = { url: string; txn: string; amount: number; date: string; status: string; bank: string };
 const emptySlip = (): SlipValues => ({ url: '', txn: '', amount: 0, date: '', status: '', bank: '' });
+const MAX_EXTRA_SLIPS = 10;
+
+/** สลิปโอนเพิ่มที่เก็บไว้ในใบ — ค่าเสียหรือว่างให้ถือเป็นไม่มี */
+function readExtraSlips(json: unknown): SlipValues[] {
+  return safeJson<SlipValues[]>(json, []).filter((slip) => slip && slip.url).map((slip) => ({
+    url: String(slip.url), txn: String(slip.txn || ''), amount: round2(slip.amount),
+    date: String(slip.date || ''), status: String(slip.status || ''), bank: String(slip.bank || '')
+  }));
+}
+const slipTotal = (slips: SlipValues[]) => round2(slips.reduce((sum, slip) => sum + (Number(slip.amount) || 0), 0));
+
+/**
+ * เลขที่รายการนี้ถูกใช้กับใบปิดบัญชีอื่นแล้วหรือยัง — ทั้งสลิปหลักและสลิปโอนเพิ่ม
+ * unique index กันได้แค่สลิปหลัก สลิปโอนเพิ่มอยู่ใน JSON จึงต้องค้นเอง
+ */
+async function txnUsedElsewhere(txn: string, selfId: string) {
+  const [main] = await db.select({ inspectDate: settlements.inspectDate }).from(settlements)
+    .where(and(sql`upper(${settlements.slipTxn}) = upper(${txn})`, ne(settlements.id, selfId || '')))
+    .limit(1);
+  if (main) return main.inspectDate;
+  // "txn":"xxx" — escape % _ \\ ไม่งั้นเลขที่รายการที่มีอักขระพวกนี้จะกลายเป็น wildcard
+  const needle = `%${JSON.stringify({ txn }).slice(1, -1).replace(/[\\%_]/g, '\\$&')}%`;
+  const [extra] = await db.select({ inspectDate: settlements.inspectDate }).from(settlements)
+    .where(and(sql`${settlements.extraSlipsJson} ilike ${needle}`, ne(settlements.id, selfId || '')))
+    .limit(1);
+  return extra ? extra.inspectDate : null;
+}
+
+/**
+ * สลิปโอนเพิ่ม — ใช้ตอนแก้ใบที่แนบสลิปไปแล้ว แล้วยอดที่ต้องโอนคืนเพิ่มขึ้น
+ * พนักงานโอนแค่ส่วนต่าง (อาจหลายครั้ง) แต่ละใบจึงพิสูจน์ "ยอดของตัวเอง"
+ * แล้ว transferGate ค่อยเช็กว่ารวมทุกใบเท่ายอดคงเหลือพอดี
+ *
+ * ไม่ตรวจกับ "ยอดที่ยังขาด" ทีละใบ เพราะแบบนั้นใบแรกต้องครอบส่วนต่างทั้งหมด
+ * ใบที่สองจะไม่มีวันผ่าน เช่น ขาด 700 โอน 500 แล้วโอนอีก 200
+ *
+ * ส่งมาเป็นลำดับ: { fileId, date, amount } = ใบใหม่ต้องตรวจ / { url } = ใบเดิมที่เก็บไว้แล้ว
+ * ไม่ส่งมาเลย (หน้าเว็บรุ่นเก่า) = คงสลิปโอนเพิ่มเดิมไว้ทั้งหมด
+ */
+async function gateExtraSlips(
+  balance: number, main: SlipValues, input: unknown, previous: SlipValues[], owner: string, selfId: string
+): Promise<{ error?: ApiResult; extras?: SlipValues[] }> {
+  if (!Array.isArray(input)) return { extras: previous };
+  if (input.length > MAX_EXTRA_SLIPS) return { error: { ok: false, error: 'too_many_slips' } };
+
+  const extras: SlipValues[] = [];
+  const seenTxn = new Set([main.txn.toUpperCase()].filter(Boolean));
+  for (const item of input as any[]) {
+    const fileId = String(item?.fileId || '').trim();
+    if (!fileId) {
+      const kept = previous.find((slip) => slip.url === String(item?.url || ''));
+      if (kept) extras.push(kept);
+      continue;
+    }
+
+    const date = String(item?.date || '').trim();
+    if (!validYmd(date)) return { error: { ok: false, error: 'extra_slip_date_required' } };
+    const amount = round2(item?.amount);
+    if (!(amount > 0)) return { error: { ok: false, error: 'slip_mismatch', detail: 'สลิปโอนเพิ่มไม่มียอดเงิน' } };
+    const remaining = round2(balance - main.amount - slipTotal(extras));
+    if (amount - remaining > env.slipAmountTolerance) return { error: { ok: false, error: 'slip_extra_too_much' } };
+
+    const stored = await getSlip(fileId, owner);
+    if (!stored.ok) return { error: stored };
+    // ยอดที่ส่งมาต้องมีอยู่ในสลิปจริง (OCR อ่านเจอ หรือพนักงานกรอกเองแล้วรอผู้ดูแลตรวจ)
+    const checked = checkStoredSlip(stored.info, date, amount);
+    // ต่างจากสลิปหลักตรงที่ "อ่านไม่ออก" ใช้ไม่ได้ เพราะต้องรู้ยอดจริงเพื่อรวมให้ครบยอดคงเหลือ
+    if (checked.status !== 'verified' && checked.status !== 'manual') {
+      return { error: { ok: false, error: 'slip_mismatch', detail: `สลิปโอนเพิ่ม: ${checked.label}` } };
+    }
+
+    const values = (checked.manual ? (stored.info.manual || {}) : stored.info) as { txn?: string };
+    const txn = String(values.txn || '').trim();
+    if (txn) {
+      if (seenTxn.has(txn.toUpperCase())) return { error: { ok: false, error: 'slip_txn_duplicate', detail: 'แนบสลิปใบเดียวกันซ้ำ' } };
+      const usedOn = await txnUsedElsewhere(txn, selfId);
+      if (usedOn) return { error: { ok: false, error: 'slip_txn_duplicate', detail: `ใช้กับใบปิดบัญชีวันที่ ${fmtDateStr(usedOn)} ไปแล้ว` } };
+      seenTxn.add(txn.toUpperCase());
+    }
+    extras.push({
+      // เก็บยอดที่ตรวจผ่าน ไม่ใช่ยอดแรกที่ OCR หยิบมา (อาจเป็นค่าธรรมเนียมหรือยอดคงเหลือในบัญชี)
+      url: stored.row.url, txn, amount, date, status: checked.label, bank: String(stored.info.bank || '')
+    });
+  }
+  return { extras };
+}
 
 /**
  * คงเหลือเป็นบวก = พนักงานต้องโอนคืนบริษัท จึงบังคับวันที่โอนคืน + สลิปที่ตรวจแล้ว
@@ -187,21 +280,30 @@ async function transferGate(
   slipInput: any,
   owner: string,
   selfId: string,
-  previous: SlipValues | null
-): Promise<{ error?: ApiResult; returnedDate?: string; slip?: SlipValues }> {
-  if (!(balance > 0)) return { returnedDate: '', slip: emptySlip() };
+  previous: SlipValues | null,
+  extraInput: unknown = null,
+  previousExtras: SlipValues[] = []
+): Promise<{ error?: ApiResult; returnedDate?: string; slip?: SlipValues; extras?: SlipValues[] }> {
+  if (!(balance > 0)) return { returnedDate: '', slip: emptySlip(), extras: [] };
   if (!returnedDate) return { error: { ok: false, error: 'returned_date_required' } };
 
   const fileId = String(slipInput?.fileId || '').trim();
   if (!fileId) {
-    // แก้ใบเดิมโดยไม่แนบสลิปใหม่ = ใช้สลิปเดิม แต่ยอด/วันที่ต้องยังตรงอยู่
+    // แก้ใบเดิมโดยไม่แนบสลิปใหม่ = ใช้สลิปเดิม + สลิปโอนเพิ่ม รวมกันต้องเท่ายอดคงเหลือ
     if (!previous?.url) return { error: { ok: false, error: 'slip_required' } };
-    if ((previous.amount || previous.date)
-      && (Math.abs((Number(previous.amount) || 0) - balance) > env.slipAmountTolerance
-        || String(previous.date || '') !== returnedDate)) {
-      return { error: { ok: false, error: 'slip_recheck_required' } };
+    const gate = await gateExtraSlips(balance, previous, extraInput, previousExtras, owner, selfId);
+    if (gate.error) return gate;
+    const extras = gate.extras!;
+    // สลิปเก่าที่ไม่มียอด/วันที่ (ย้ายมาจากระบบเดิม) ตรวจยอดไม่ได้ — ปล่อยผ่านเหมือนเดิม
+    if (previous.amount || previous.date) {
+      if (String(previous.date || '') !== returnedDate) return { error: { ok: false, error: 'slip_recheck_required' } };
+      const short = round2(balance - (Number(previous.amount) || 0) - slipTotal(extras));
+      if (short > env.slipAmountTolerance) {
+        return { error: { ok: false, error: 'slip_extra_required', detail: `ยังขาดอีก ${fmtBaht(short)} บาท` } };
+      }
+      if (short < -env.slipAmountTolerance) return { error: { ok: false, error: 'slip_recheck_required' } };
     }
-    return { returnedDate, slip: previous };
+    return { returnedDate, slip: previous, extras };
   }
 
   const stored = await getSlip(fileId, owner);
@@ -216,12 +318,9 @@ async function transferGate(
   const txn = String(values.txn || '').trim();
   if (txn) {
     // สลิปใบเดียวเอาไปปิดหลายวันไม่ได้
-    const [duplicate] = await db.select({ id: settlements.id, inspectDate: settlements.inspectDate })
-      .from(settlements)
-      .where(and(sql`upper(${settlements.slipTxn}) = upper(${txn})`, ne(settlements.id, selfId || '')))
-      .limit(1);
-    if (duplicate) {
-      return { error: { ok: false, error: 'slip_txn_duplicate', detail: `ใช้กับใบปิดบัญชีวันที่ ${fmtDateStr(duplicate.inspectDate)} ไปแล้ว` } };
+    const usedOn = await txnUsedElsewhere(txn, selfId);
+    if (usedOn) {
+      return { error: { ok: false, error: 'slip_txn_duplicate', detail: `ใช้กับใบปิดบัญชีวันที่ ${fmtDateStr(usedOn)} ไปแล้ว` } };
     }
   }
 
@@ -230,7 +329,9 @@ async function transferGate(
     slip: {
       url: stored.row.url, txn, amount: round2(values.amount), date: String(values.date || ''),
       status: checked.label, bank: String(stored.info.bank || '')
-    }
+    },
+    // แนบสลิปหลักใบใหม่ = ใบนั้นต้องครบยอดเอง สลิปโอนเพิ่มเดิมไม่เกี่ยวแล้ว
+    extras: []
   };
 }
 
@@ -245,7 +346,8 @@ export function settlementRow(row: SettlementDbRow) {
     returnedDate: row.returnedDate || '', companyReturnedDate: row.companyReturnedDate || '',
     rows: safeJson<SettleRow[]>(row.rowsJson, []), detail: row.detail || '', imageUrl: row.imageUrl || '',
     slipUrl: row.slipUrl || '', slipTxn: row.slipTxn || '', slipAmount: Number(row.slipAmount) || 0,
-    slipDate: row.slipDate || '', slipStatus: row.slipStatus || '', slipBank: row.slipBank || ''
+    slipDate: row.slipDate || '', slipStatus: row.slipStatus || '', slipBank: row.slipBank || '',
+    extraSlips: readExtraSlips(row.extraSlipsJson)
   };
 }
 
@@ -287,7 +389,7 @@ export async function saveSettlement(
     const gate = await transferGate(balance, returnedDate, input?.slip, old.username, settlementId, {
       url: old.slipUrl, txn: old.slipTxn, amount: old.slipAmount, date: old.slipDate,
       status: old.slipStatus, bank: old.slipBank
-    });
+    }, input?.extraSlips, readExtraSlips(old.extraSlipsJson));
     if (gate.error) return gate.error;
 
     const record: SettleRecord = {
@@ -296,6 +398,7 @@ export async function saveSettlement(
       returnedDate: gate.returnedDate!, companyReturnedDate: isBoss ? companyDate : old.companyReturnedDate,
       slipUrl: gate.slip!.url, slipTxn: gate.slip!.txn, slipAmount: gate.slip!.amount,
       slipDate: gate.slip!.date, slipStatus: gate.slip!.status, slipBank: gate.slip!.bank,
+      extraSlips: gate.extras || [],
       imageUrl: old.imageUrl || ''
     };
     record.detail = detail(record);
@@ -307,7 +410,7 @@ export async function saveSettlement(
         companyReturnedDate: record.companyReturnedDate, rowsJson: JSON.stringify(rows),
         detail: record.detail, slipUrl: record.slipUrl, slipTxn: record.slipTxn,
         slipAmount: record.slipAmount, slipDate: record.slipDate, slipStatus: record.slipStatus,
-        slipBank: record.slipBank
+        slipBank: record.slipBank, extraSlipsJson: JSON.stringify(record.extraSlips)
       }).where(eq(settlements.id, settlementId));
     } catch (error) {
       const message = String(error);
@@ -333,7 +436,8 @@ export async function saveSettlement(
     claimTotal: claim.total, rows, totalExpense, balance, editCount: 0,
     returnedDate: gate.returnedDate!, companyReturnedDate: isBoss ? companyDate : '',
     slipUrl: gate.slip!.url, slipTxn: gate.slip!.txn, slipAmount: gate.slip!.amount,
-    slipDate: gate.slip!.date, slipStatus: gate.slip!.status, slipBank: gate.slip!.bank, imageUrl: ''
+    slipDate: gate.slip!.date, slipStatus: gate.slip!.status, slipBank: gate.slip!.bank,
+    extraSlips: [], imageUrl: ''
   };
   record.detail = detail(record);
 
