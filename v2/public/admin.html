@@ -3622,6 +3622,7 @@ function viewInvoicePopup(row){
     var inv = res.invoice;
     return InvoicePDF.create([{
       kind: inv.kind, number: inv.number, issueDate: inv.issueDate, bl: inv.bl,
+      jobType: inv.jobType, transportDate: inv.transportDate,
       items: inv.items || [], subtotal: inv.subtotal, vat: inv.vat, total: inv.total,
       customerName: inv.customerName, customerAddress: inv.customerAddress,
       customerTaxId: inv.customerTaxId, preparedBy: inv.preparedBy
@@ -3817,8 +3818,9 @@ function renderInvoiceList(){
 /** เปิดหน้าต่างใหม่แล้ววาดใบแจ้งหนี้ตามฟอร์มในชีต — สั่งพิมพ์หรือ Save as PDF ได้เลย */
 function printInvoice(saved){
   var co = (invState.cfg && invState.cfg.company) || {};
-  var kind, number, date, cust, addr, tax, bl, items, subtotal, vat, total;
+  var kind, number, date, cust, addr, tax, bl, items, subtotal, vat, total, jobType, jobDate;
   if(saved){
+    jobType = saved.jobType; jobDate = saved.transportDate;
     kind = saved.kind; number = saved.number; date = saved.issueDate;
     cust = saved.customerName; addr = saved.customerAddress; tax = saved.customerTaxId;
     bl = saved.bl; items = saved.items || [];
@@ -3827,12 +3829,16 @@ function printInvoice(saved){
     kind = $('inv-kind').value; number = $('inv-no').value; date = $('inv-date').value;
     cust = $('inv-cust').value; addr = $('inv-addr').value; tax = $('inv-tax').value;
     bl = $('inv-bl').value; items = readInvoiceItems();
+    var src = (invState.editing && invState.editing.src) || {};
+    jobType = src.jobType; jobDate = src.inspectDate;
     subtotal = Math.round(items.reduce(function(s,i){ return s+i.amount; },0)*100)/100;
     vat = kind === 'V' ? Math.round(invVatBase(items)*0.07*100)/100 : 0;
     total = Math.round((subtotal+vat)*100)/100;
   }
   var d = date ? date.split('-') : [];
   var thDate = d.length===3 ? (d[2]+'/'+d[1]+'/'+d[0]) : date;
+  var jd = jobDate ? String(jobDate).split('-') : [];
+  var jobDateTh = jd.length===3 ? (jd[2]+'/'+jd[1]+'/'+jd[0]) : (jobDate||'');
 
   // ฟอร์มมี 15 บรรทัดเสมอเหมือนในชีต เติมบรรทัดว่างให้ครบ
   var lines = '';
@@ -3892,7 +3898,10 @@ function printInvoice(saved){
     + '<tr><td>ที่อยู่ : '+esc(addr||'')+'</td>'
     +   '<td class="r">ใบแจ้งหนี้เลขที่ &nbsp;</td><td><b>'+esc(number||'')+'</b></td></tr>'
     + '<tr><td>เลขประจำตัวผู้เสียภาษี : '+esc(tax||'')+'</td>'
-    +   '<td class="r">B/L &nbsp;</td><td>'+esc(bl||'')+'</td></tr></table><br>'
+    +   '<td class="r">B/L &nbsp;</td><td>'+esc(bl||'')+'</td></tr>'
+    // ประเภทงานย่อ (MSFZ / TRNS) ไม่มีหัวข้อ Job Type ตามด้วยวันที่ตรวจปล่อย
+    + ((jobType||jobDateTh) ? '<tr><td></td><td class="r">'+esc(jobType||'')+' &nbsp;</td><td>'+esc(jobDateTh)+'</td></tr>' : '')
+    + '</table><br>'
     + '<table><thead><tr>'
     +   '<th style="width:50px">ลำดับ</th><th>รายการ</th><th style="width:60px">จำนวน</th>'
     +   '<th style="width:90px">ราคา/หน่วย</th><th style="width:110px">จำนวนเงิน</th><th style="width:110px">หมายเหตุ</th>'

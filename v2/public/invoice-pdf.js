@@ -156,15 +156,23 @@
     text(company.address,408,155,13,false,'center');
     text('เลขประจำตัวผู้เสียภาษี '+company.taxId,408,172,13,false,'center');
     text((options&&options.title)||'ใบแจ้งหนี้ / INVOICE',408,209,19,true,'center');
-    text('ชื่อลูกค้า : '+invoice.customerName,38,243,13,false,'left',453);
-    text('ที่อยู่ : '+invoice.customerAddress,38,264,13,false,'left',453);
-    text('เลขประจำตัวผู้เสียภาษี : '+invoice.customerTaxId,38,285,13,false,'left',453);
-    text('วันที่',612,243,13,false,'right');
-    text(String(invoice.issueDate).split('-').reverse().join('/'),619,243,13);
-    text('ใบแจ้งหนี้เลขที่',612,264,13,false,'right');
-    text(invoice.number,619,264,13,true,'left',158);
-    text('B/L',612,285,13,false,'right');
-    text(invoice.bl,619,285,13,false,'left',158);
+    // หัวใบฝั่งขวามี 4 บรรทัด (วันที่ / เลขที่ / B/L / ประเภทงาน+วันที่ตรวจปล่อย) จึงบีบระยะบรรทัดเหลือ 19
+    // ตารางรายการยังเริ่มที่ y=307 เท่าเดิม ความจุหน้าไม่เปลี่ยน
+    var hy=[239,258,277,296];
+    text('ชื่อลูกค้า : '+invoice.customerName,38,hy[0],13,false,'left',453);
+    text('ที่อยู่ : '+invoice.customerAddress,38,hy[1],13,false,'left',453);
+    text('เลขประจำตัวผู้เสียภาษี : '+invoice.customerTaxId,38,hy[2],13,false,'left',453);
+    text('วันที่',612,hy[0],13,false,'right');
+    text(String(invoice.issueDate).split('-').reverse().join('/'),619,hy[0],13);
+    text('ใบแจ้งหนี้เลขที่',612,hy[1],13,false,'right');
+    text(invoice.number,619,hy[1],13,true,'left',158);
+    text('B/L',612,hy[2],13,false,'right');
+    text(invoice.bl,619,hy[2],13,false,'left',158);
+    // ประเภทงานแบบย่อ (MSFZ / TRNS) อยู่ช่องหัวข้อ ไม่มีคำว่า Job Type — ตามด้วยวันที่ตรวจปล่อย
+    if(invoice.jobType||invoice.transportDate){
+      text(invoice.jobType||'',612,hy[3],13,false,'right');
+      text(invoice.transportDate?String(invoice.transportDate).split('-').reverse().join('/'):'',619,hy[3],13,false,'left',158);
+    }
     var y=307, widths=[65,245,75,105,125,125], xs=[38,103,348,423,528,653];
     var heads=['ลำดับ','รายการ','จำนวน','ราคา/หน่วย','จำนวนเงิน','หมายเหตุ'];
     widths.forEach(function(w,i){ rule(xs[i],y,w,28,'#d9d9d9'); text(heads[i],xs[i]+w/2,y+20,13,true,'center',w-8); });

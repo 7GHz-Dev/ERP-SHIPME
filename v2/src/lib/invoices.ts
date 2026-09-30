@@ -132,6 +132,44 @@ export async function buildItems(kind: string, settlementId: string, bl: string)
   };
 }
 
+/**
+ * ประเภทงานของ BL แบบย่อที่พิมพ์ใต้ B/L — MAESOT FREEZONE → MSFZ, TRANSIT → TRNS
+ * แถวในใบปิดบัญชีจำ source ไว้ตอนดึงจากงานขนส่ง ใบปิดบัญชีเก่าที่ไม่มี source ให้ไปหาในงานขนส่งแทน
+ */
+export function jobTypeCode(source: unknown) {
+  const value = String(source ?? '').toUpperCase();
+  if (value.includes('MAESOT FREEZONE')) return 'MSFZ';
+  if (value.includes('TRANSIT')) return 'TRNS';
+  return '';
+}
+
+/** ประเภทงาน + วันที่ตรวจปล่อย (Transport) ของ BL ในใบแจ้งหนี้ */
+export async function invoiceJobInfo(settlementId: string, bl: string) {
+  const wanted = text(bl).toUpperCase();
+  let jobType = '', transportDate = '';
+  if (settlementId) {
+    const [settlement] = await db.select({ inspectDate: settlements.inspectDate, rowsJson: settlements.rowsJson })
+      .from(settlements).where(eq(settlements.id, settlementId)).limit(1);
+    if (settlement) {
+      transportDate = settlement.inspectDate;
+      let rows: any[] = [];
+      try { rows = JSON.parse(settlement.rowsJson || '[]'); } catch { rows = []; }
+      const row = rows.find((r) => String(r?.bl || '').toUpperCase() === wanted && jobTypeCode(r?.source));
+      if (row) jobType = jobTypeCode(row.source);
+    }
+  }
+  if ((!jobType || !transportDate) && wanted) {
+    const jobs = await db.select({ sourceName: transportJobs.sourceName, transportDate: transportJobs.transportDate })
+      .from(transportJobs).where(eq(sql`upper(${transportJobs.bl})`, wanted)).orderBy(asc(transportJobs.id));
+    const job = jobs.find((j) => jobTypeCode(j.sourceName)) || jobs[0];
+    if (job) {
+      if (!jobType) jobType = jobTypeCode(job.sourceName);
+      if (!transportDate) transportDate = job.transportDate;
+    }
+  }
+  return { jobType, transportDate };
+}
+
 /** หน้าออกใบแจ้งหนี้เปิดมา — ส่งค่าตั้งต้นทั้งหมดที่ฟอร์มต้องใช้ */
 export async function invoiceConfig(): Promise<ApiResult> {
   const period = ymd().slice(0, 7).replace('-', '');
@@ -194,7 +232,7 @@ export async function invoiceSources(body: ApiBody): Promise<ApiResult> {
       if (!key) continue;
       const group = byBl.get(key) || {
         bl: String(row.bl), customer: String(row.customer || ''), port: String(row.port || ''),
-        containers: 0, vatBase: 0, costs: {}
+        containers: 0, vatBase: 0, costs: {}, jobType: ''
       };
       group.containers += Number(row?.containers) || 0;
       for (const item of [...INVOICE_VAT_ITEMS, ...INVOICE_NO_VAT_ITEMS]) {
@@ -202,6 +240,7 @@ export async function invoiceSources(body: ApiBody): Promise<ApiResult> {
       }
       for (const item of INVOICE_VAT_ITEMS) group.vatBase += Number(row?.costs?.[item.key]) || 0;
       if (!group.customer && row?.customer) group.customer = String(row.customer);
+      if (!group.jobType) group.jobType = jobTypeCode(row?.source);
       byBl.set(key, group);
     }
     for (const [key, group] of byBl) {
@@ -216,6 +255,7 @@ export async function invoiceSources(body: ApiBody): Promise<ApiResult> {
         bl: group.bl,
         customer: group.customer,
         port: group.port,
+        jobType: group.jobType,
         containers: group.containers,
         costs: group.costs,
         vatBase: money(group.vatBase),
@@ -226,14 +266,17 @@ export async function invoiceSources(body: ApiBody): Promise<ApiResult> {
   }
 
   const bls = [...new Set(out.map(row => String(row.bl).toUpperCase()))];
-  const jobs = bls.length ? await db.select({ bl: transportJobs.bl, doFee: transportJobs.doFee })
+  const jobs = bls.length ? await db.select({ bl: transportJobs.bl, doFee: transportJobs.doFee, sourceName: transportJobs.sourceName })
     .from(transportJobs).where(inArray(sql`upper(${transportJobs.bl})`, bls)) : [];
   const doFees = new Map<string, number>();
+  const jobTypes = new Map<string, string>();
   for (const job of jobs) {
     const key = String(job.bl).toUpperCase();
+    if (!jobTypes.get(key)) jobTypes.set(key, jobTypeCode(job.sourceName));
     doFees.set(key, (doFees.get(key) || 0) + (Number(job.doFee) || 0));
   }
   for (const row of out) {
+    if (!row.jobType) row.jobType = jobTypes.get(String(row.bl).toUpperCase()) || '';
     row.invoiceItems = {};
     for (const kind of ['V', 'NV']) {
       const catalog = kind === 'V' ? INVOICE_VAT_ITEMS : INVOICE_NO_VAT_ITEMS;
@@ -514,5 +557,6 @@ export async function getInvoice(body: ApiBody): Promise<ApiResult> {
   if (!row) return { ok: false, error: 'invoice_not_found' };
   let items: InvoiceItem[] = [];
   try { items = JSON.parse(row.itemsJson || '[]'); } catch { items = []; }
-  return { ok: true, invoice: { ...row, items } };
+  const job = await invoiceJobInfo(row.settlementId, row.bl);
+  return { ok: true, invoice: { ...row, items, ...job } };
 }
