@@ -213,18 +213,28 @@ async function fetchIssuedDocuments(row){
     var inv=res.invoice;
     loaded.push({number:inv.number,kind:inv.kind,issueDate:inv.issueDate,bl:inv.bl,settlementId:inv.settlementId,
       items:inv.items,subtotal:Number(inv.subtotal),vat:Number(inv.vat),total:Number(inv.total),
-      customerName:inv.customerName,customerAddress:inv.customerAddress,customerTaxId:inv.customerTaxId,preparedBy:inv.preparedBy});
+      customerName:inv.customerName,customerAddress:inv.customerAddress,customerTaxId:inv.customerTaxId,preparedBy:inv.preparedBy,
+      jobType:inv.jobType,transportDate:inv.transportDate});
   }
   return loaded;
 }
 async function invoicePairDocuments(rows){
   var customer=invState.cfg.customer,documents=[];
   for(var r=0;r<rows.length;r++){
-    var row=rows[r];
+    var row=rows[r],from=documents.length;
+    await pushRowDocuments(row);
+    // ประเภทงาน (MSFZ/TRNS) + วันที่ตรวจปล่อย พิมพ์ใต้ B/L — ใช้ของแถวนี้ถ้าใบไหนยังไม่มี
+    documents.slice(from).forEach(function(doc){
+      if(!doc.jobType) doc.jobType=row.jobType||'';
+      if(!doc.transportDate) doc.transportDate=row.inspectDate||'';
+    });
+  }
+  return documents;
+  async function pushRowDocuments(row){
     // ออกใบไปแล้ว — ใช้ค่าที่บันทึกไว้เสมอ (createdPair คือชุดที่เพิ่งบันทึกในรอบนี้)
-    if(row.createdPair){documents.push.apply(documents,row.createdPair);continue;}
+    if(row.createdPair){documents.push.apply(documents,row.createdPair);return;}
     if(row.issued&&(row.issued.V||row.issued.NV)){
-      documents.push.apply(documents,await fetchIssuedDocuments(row));continue;
+      documents.push.apply(documents,await fetchIssuedDocuments(row));return;
     }
     ['V','NV'].forEach(function(kind){
       var items=inlineInvoiceItems(row,kind),subtotal=Math.round(items.reduce(function(sum,item){return sum+item.amount;},0)*100)/100;
@@ -236,7 +246,6 @@ async function invoicePairDocuments(rows){
         subtotal:subtotal,vat:vat,total:Math.round((subtotal+vat)*100)/100,customerName:customer.name,customerAddress:customer.address,customerTaxId:customer.taxId,preparedBy:state.user.name});
     });
   }
-  return documents;
 }
 function showInvoicePDF(popup,blob,filename,download){
   var url=URL.createObjectURL(blob);
