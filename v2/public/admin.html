@@ -3899,8 +3899,8 @@ function printInvoice(saved){
     +   '<td class="r">ใบแจ้งหนี้เลขที่ &nbsp;</td><td><b>'+esc(number||'')+'</b></td></tr>'
     + '<tr><td>เลขประจำตัวผู้เสียภาษี : '+esc(tax||'')+'</td>'
     +   '<td class="r">B/L &nbsp;</td><td>'+esc(bl||'')+'</td></tr>'
-    // ประเภทงานย่อ (MSFZ / TRNS) ไม่มีหัวข้อ Job Type ตามด้วยวันที่ตรวจปล่อย
-    + ((jobType||jobDateTh) ? '<tr><td></td><td class="r">'+esc(jobType||'')+' &nbsp;</td><td>'+esc(jobDateTh)+'</td></tr>' : '')
+    // "วันที่ตรวจปล่อย 26/08/2026 TRNS" — ประเภทงานย่อต่อท้ายวันที่ ไม่มีหัวข้อ Job Type แยก
+    + ((jobType||jobDateTh) ? '<tr><td></td><td class="r">วันที่ตรวจปล่อย &nbsp;</td><td>'+esc([jobDateTh,jobType].filter(Boolean).join(' '))+'</td></tr>' : '')
     + '</table><br>'
     + '<table><thead><tr>'
     +   '<th style="width:50px">ลำดับ</th><th>รายการ</th><th style="width:60px">จำนวน</th>'

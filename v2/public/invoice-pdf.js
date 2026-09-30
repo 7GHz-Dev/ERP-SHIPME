@@ -168,10 +168,11 @@
     text(invoice.number,619,hy[1],13,true,'left',158);
     text('B/L',612,hy[2],13,false,'right');
     text(invoice.bl,619,hy[2],13,false,'left',158);
-    // ประเภทงานแบบย่อ (MSFZ / TRNS) อยู่ช่องหัวข้อ ไม่มีคำว่า Job Type — ตามด้วยวันที่ตรวจปล่อย
+    // "วันที่ตรวจปล่อย 26/08/2026 TRNS" — ประเภทงานย่อ (MSFZ / TRNS) ต่อท้ายวันที่ ไม่มีหัวข้อ Job Type แยก
     if(invoice.jobType||invoice.transportDate){
-      text(invoice.jobType||'',612,hy[3],13,false,'right');
-      text(invoice.transportDate?String(invoice.transportDate).split('-').reverse().join('/'):'',619,hy[3],13,false,'left',158);
+      var jobDate=invoice.transportDate?String(invoice.transportDate).split('-').reverse().join('/'):'';
+      text('วันที่ตรวจปล่อย',612,hy[3],13,false,'right');
+      text([jobDate,invoice.jobType].filter(Boolean).join(' '),619,hy[3],13,false,'left',158);
     }
     var y=307, widths=[65,245,75,105,125,125], xs=[38,103,348,423,528,653];
     var heads=['ลำดับ','รายการ','จำนวน','ราคา/หน่วย','จำนวนเงิน','หมายเหตุ'];
