@@ -197,14 +197,18 @@ export async function listInvoiceBatches(): Promise<ApiResult> {
    * ถ้าเรียงตัวอักษร NV จะมาก่อน V ทั้งหมด (NV…17, NV…38, V…17) ทำให้ใบคู่ V/NV
    * ของงานเดียวกันแยกกันคนละที่ เรียงแบบนี้ใบคู่กันจะอยู่ติดกัน โดย V มาก่อน NV
    */
+  // V → NV → NV…-D (มัดจำตู้) ของเลขรันเดียวกันอยู่ติดกัน
+  // เทียบเดือนแล้วเลขรันแบบตัวเลข — เทียบเป็นข้อความ เลข 100 จะมาก่อน 99
   const sortKey = (number: string) => {
-    const match = String(number).match(/^(NV|V)(\d+)$/);
-    return match ? { run: match[2], kindOrder: match[1] === 'V' ? 0 : 1 } : { run: String(number), kindOrder: 0 };
+    const match = String(number).match(/^(NV|V)(\d{6})(\d+)(-D)?$/);
+    return match
+      ? { period: match[2], seq: Number(match[3]), kindOrder: match[4] ? 2 : (match[1] === 'V' ? 0 : 1) }
+      : { period: String(number), seq: 0, kindOrder: 0 };
   };
   for (const batch of map.values()) {
     batch.items.sort((a: any, b: any) => {
       const x = sortKey(a.number), y = sortKey(b.number);
-      return x.run.localeCompare(y.run) || x.kindOrder - y.kindOrder;
+      return x.period.localeCompare(y.period) || x.seq - y.seq || x.kindOrder - y.kindOrder;
     });
   }
   const batches = [...map.values()]

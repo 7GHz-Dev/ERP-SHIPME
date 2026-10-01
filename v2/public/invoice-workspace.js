@@ -14,6 +14,25 @@ function invVatBase(items){
 }
 function invoicePeriod(){ return $('inv-issue-date').value.slice(0,7).replace('-',''); }
 /**
+ * ใบค่ามัดจำตู้ (ชนิด D) — ใช้เลขรันเดียวกับ NV ของ BL นั้นแล้วต่อท้าย -D เช่น NV20261005-D
+ * รายการเดียว ชื่อตายตัว ไม่คิด VAT (เซิร์ฟเวอร์บังคับชื่อและเลขรันอีกชั้น)
+ */
+var INV_KINDS=['V','NV','D'];
+function invDepositLabel(){ return (invState.cfg&&invState.cfg.depositLabel)||'ADV - ค่ามัดจำตู้'; }
+function invNumberPattern(kind,period){
+  return new RegExp(kind==='D' ? '^NV'+period+'([0-9]{2,6})-D$' : '^'+kind+period+'([0-9]{2,6})$');
+}
+/** เลขรันของใบ (ไม่สนชนิด) — ใช้เทียบว่า V/NV/D ของ BL เดียวกันเป็นเลขเดียวกัน */
+function invSeqOf(number){
+  var m=String(number||'').match(/^N?V[0-9]{6}([0-9]+)(-D)?$/);
+  return m?Number(m[1]):0;
+}
+/** เดือนของเลขที่ใบ (yyyymm) */
+function invPeriodOf(number){
+  var m=String(number||'').match(/^N?V([0-9]{6})/);
+  return m?m[1]:'';
+}
+/**
  * เลขเริ่มต้นมีชุดเดียว — V กับ NV ใช้ลำดับเดียวกันเสมอ
  * รับได้ทั้ง V20260901 / NV20260901 / 20260901 / 1
  */
@@ -56,7 +75,20 @@ function assignInvoiceNumbers(){
       var el=$('inv-number-'+i+'-'+kind);
       if(el&&el.value!==row.numbers[kind]&&document.activeElement!==el) el.value=row.numbers[kind]||'';
     });
+    // ใบมัดจำตู้ใช้เลขชุดเดียวกับ NV เสมอ (แก้เลขเองไม่ได้ — แก้ที่เลข NV แทน)
+    row.numbers.D=(row.issued&&row.issued.D) ? row.issued.D : depositNumberFor(row);
+    var dEl=$('inv-number-'+i+'-D');
+    if(dEl) dEl.value=row.numbers.D||'';
   });
+}
+/**
+ * เลขใบมัดจำตู้ของแถวนี้ — ถ้า BL ออกใบ V/NV ไปแล้วต้องใช้เลขรันของใบนั้น
+ * (ไม่ใช่เลขรันใหม่จากช่องเลขเริ่มต้น) ไม่งั้นจะได้คนละชุดกับ V/NV
+ */
+function depositNumberFor(row){
+  var base=(row.issued&&(row.issued.NV||row.issued.V)) || (row.numbers&&row.numbers.NV) || '';
+  var seq=invSeqOf(base), period=invPeriodOf(base)||invoicePeriod();
+  return seq ? 'NV'+period+String(seq).padStart(2,'0')+'-D' : '';
 }
 /**
  * จำเงื่อนไขค้นหาไว้ — สลับแท็บแล้วกลับมาต้องได้ค่าเดิม รวมถึงเปิดหน้าใหม่ด้วย
@@ -101,12 +133,37 @@ function initInvoiceWorkspace(){
   $('inv-create-picked').addEventListener('click',function(){runInvoicePair(true,pickedInvoiceRows());});
 }
 function inlineInvoiceItems(row,kind){
+  if(kind==='D'){
+    if(!row.deposit) return [];
+    return [{no:1,label:invDepositLabel(),amount:Math.round(Number(row.deposit.amount)*100)/100,qty:0,unitPrice:0,note:''}];
+  }
   return ((row.invoiceItems||{})[kind]||[]).filter(function(item){return item.selected;}).map(function(item,i){
     return {no:i+1,label:item.label.trim(),amount:Math.round(Number(item.amount)*100)/100,qty:0,unitPrice:0,note:''};
   });
 }
 function invoiceRowIssued(row){
-  return !!(row.createdPair || (row.issued && (row.issued.V || row.issued.NV)));
+  return !!(row.createdPair || (row.issued && (row.issued.V || row.issued.NV || row.issued.D)));
+}
+/** ส่วนใบค่ามัดจำตู้ ใต้ช่อง NON VAT — ปุ่มเพิ่ม / ช่องยอด / สร้างแยกเมื่อ V/NV ออกไปแล้ว */
+function renderDepositBlock(row,index){
+  var issuedD=row.issued&&row.issued.D;
+  var head='<div class="inv-deposit" style="margin-top:12px;padding-top:10px;border-top:1px dashed #cbd5e1">';
+  if(issuedD){
+    return head+'<div class="muted" style="font-size:12px;margin-bottom:4px">ใบแจ้งหนี้ค่ามัดจำตู้</div>'
+      +'<span class="pill approved">'+esc(issuedD)+'</span></div>';
+  }
+  if(!row.deposit){
+    return head+'<button class="btn btn-ghost btn-sm inv-dep-add" data-row="'+index+'">+ ใบแจ้งหนี้ค่ามัดจำตู้</button></div>';
+  }
+  var amt=Number(row.deposit.amount);
+  var pairIssued=invoiceRowIssued(row);
+  return head+'<div class="muted" style="font-size:12px;margin-bottom:4px">ใบแจ้งหนี้ค่ามัดจำตู้ (ไม่มี VAT)</div>'
+    +'<input type="text" class="inv-row-number" id="inv-number-'+index+'-D" disabled aria-label="เลขที่ใบแจ้งหนี้ค่ามัดจำตู้" value="'+esc(row.numbers&&row.numbers.D||'')+'">'
+    +'<div class="inv-cost-row"><input type="checkbox" checked disabled aria-hidden="true"><label>'+esc(invDepositLabel())+'</label>'
+    +'<input type="number" min="0" max="1000000000" step="0.01" class="inv-dep-amt" data-row="'+index+'" value="'+(Number.isFinite(amt)?amt:'')+'" aria-label="ยอดค่ามัดจำตู้" placeholder="ยอดมัดจำ"></div>'
+    +'<div class="inv-row-actions" style="margin-top:8px">'
+    +(pairIssued?'<button class="btn btn-primary btn-sm inv-dep-create" data-row="'+index+'">สร้างใบมัดจำตู้</button>':'')
+    +'<button class="btn btn-ghost btn-sm inv-dep-del" data-row="'+index+'">ลบใบมัดจำตู้</button></div></div>';
 }
 function renderInlineInvoiceItems(row,index,kind){
   // ออกใบไปแล้วห้ามแก้ยอดหรือเลข — ต้องให้ admin ยกเลิกใบเดิมก่อน
@@ -141,9 +198,9 @@ function renderInvoiceSources(){
   });
   invState.visible=rows;
   $('inv-src-body').innerHTML=rows.map(function(row,i){
-    var issued=['V','NV'].map(function(kind){return row.issued&&row.issued[kind]?'<span class="pill approved">'+esc(row.issued[kind])+'</span>':'';}).join('');
+    var issued=INV_KINDS.map(function(kind){return row.issued&&row.issued[kind]?'<span class="pill approved">'+esc(row.issued[kind])+'</span>':'';}).join('');
     return '<tr><td><input type="checkbox" class="inv-pick" data-row="'+i+'"'+(row.picked?' checked':'')+'></td><td>'+esc(row.inspectDate)+'</td><td>'+esc(row.name||row.username)+'</td><td><b>'+esc(row.bl)+'</b></td><td class="right">'+(row.containers||0)+'</td>'
-      +'<td>'+renderInlineInvoiceItems(row,i,'V')+'</td><td>'+renderInlineInvoiceItems(row,i,'NV')+'</td><td>'+(issued||'<span class="muted">ยังไม่ออก</span>')+'</td>'
+      +'<td>'+renderInlineInvoiceItems(row,i,'V')+'</td><td>'+renderInlineInvoiceItems(row,i,'NV')+renderDepositBlock(row,i)+'</td><td>'+(issued||'<span class="muted">ยังไม่ออก</span>')+'</td>'
       +'<td><div class="inv-row-actions"><button class="btn btn-ghost btn-sm inv-row-preview" data-row="'+i+'">Preview</button><button class="btn btn-primary btn-sm inv-row-create" data-row="'+i+'"'+(invoiceRowIssued(row)?' disabled':'')+'>สร้างใบแจ้งหนี้</button></div></td></tr>';
   }).join('')||'<tr><td colspan="9" class="muted">ไม่มีรายการ</td></tr>';
   $('inv-src-body').querySelectorAll('.inv-pick').forEach(function(cb){cb.onchange=function(){rows[Number(cb.dataset.row)].picked=cb.checked;updateInvoicePicked();};});
@@ -179,6 +236,25 @@ function renderInvoiceSources(){
     var fields=$('inv-src-body').querySelectorAll('input[type=text][data-row="'+btn.dataset.row+'"][data-kind="'+btn.dataset.kind+'"]');
     if(fields.length) fields[fields.length-1].focus();
   };});
+  // ใบค่ามัดจำตู้
+  $('inv-src-body').querySelectorAll('.inv-dep-add').forEach(function(btn){btn.onclick=function(){
+    var row=rows[Number(btn.dataset.row)];
+    row.deposit={amount:NaN};renderInvoiceSources();
+    var el=$('inv-src-body').querySelector('.inv-dep-amt[data-row="'+btn.dataset.row+'"]');
+    if(el) el.focus();
+  };});
+  $('inv-src-body').querySelectorAll('.inv-dep-del').forEach(function(btn){btn.onclick=function(){
+    rows[Number(btn.dataset.row)].deposit=null;renderInvoiceSources();
+  };});
+  $('inv-src-body').querySelectorAll('.inv-dep-amt').forEach(function(input){
+    input.addEventListener('input',function(){
+      var row=rows[Number(input.dataset.row)];
+      if(row.deposit) row.deposit.amount=input.value===''?NaN:Number(input.value);
+    });
+  });
+  $('inv-src-body').querySelectorAll('.inv-dep-create').forEach(function(btn){btn.onclick=function(){
+    runDepositOnly(rows[Number(btn.dataset.row)]);
+  };});
   ['preview','create'].forEach(function(action){$('inv-src-body').querySelectorAll('.inv-row-'+action).forEach(function(btn){btn.onclick=function(){runInvoicePair(action==='create',[rows[Number(btn.dataset.row)]]);};});});
   rows.forEach(function(row,i){['V','NV'].forEach(function(kind){updateInlineInvoiceTotal(row,i,kind);});});
   assignInvoiceNumbers();updateInvoicePicked();
@@ -205,7 +281,7 @@ function updateInvoicePicked(){
  * ไม่ใช่เลขที่รันใหม่จากช่อง "เลขเริ่มต้น" — ใช้ได้แม้รีโหลดหน้าไปแล้ว
  */
 async function fetchIssuedDocuments(row){
-  var numbers=['V','NV'].map(function(kind){return row.issued&&row.issued[kind];}).filter(Boolean);
+  var numbers=INV_KINDS.map(function(kind){return row.issued&&row.issued[kind];}).filter(Boolean);
   var loaded=[];
   for(var i=0;i<numbers.length;i++){
     var res=await api({action:'getInvoice',token:state.token,number:numbers[i]});
@@ -232,19 +308,22 @@ async function invoicePairDocuments(rows){
   return documents;
   async function pushRowDocuments(row){
     // ออกใบไปแล้ว — ใช้ค่าที่บันทึกไว้เสมอ (createdPair คือชุดที่เพิ่งบันทึกในรอบนี้)
-    if(row.createdPair){documents.push.apply(documents,row.createdPair);return;}
-    if(row.issued&&(row.issued.V||row.issued.NV)){
-      documents.push.apply(documents,await fetchIssuedDocuments(row));return;
+    if(row.createdPair||invoiceRowIssued(row)){
+      documents.push.apply(documents,row.createdPair||await fetchIssuedDocuments(row));
+      // V/NV ออกแล้ว แต่ใบมัดจำตู้ยังเป็นร่าง — Preview ให้เห็นด้วย
+      if(row.deposit&&!(row.issued&&row.issued.D)) pushDraft(row,'D');
+      return;
     }
-    ['V','NV'].forEach(function(kind){
-      var items=inlineInvoiceItems(row,kind),subtotal=Math.round(items.reduce(function(sum,item){return sum+item.amount;},0)*100)/100;
-      // BL ที่ไม่มีค่าใช้จ่ายฝั่งนั้น (ส่วนใหญ่คือ NON VAT ที่ยังไม่มีค่าแลก DO)
-      // ให้ข้ามใบนั้นไปเลย ออกเฉพาะฝั่งที่มียอดจริง ไม่ใช่บล็อกทั้ง BL
-      if(!items.length) return;
-      var vat=kind==='V'?Math.round(invVatBase(items)*7)/100:0;
-      documents.push({number:row.numbers[kind],kind:kind,issueDate:$('inv-issue-date').value,bl:row.bl,settlementId:row.settlementId,items:items,
-        subtotal:subtotal,vat:vat,total:Math.round((subtotal+vat)*100)/100,customerName:customer.name,customerAddress:customer.address,customerTaxId:customer.taxId,preparedBy:state.user.name});
-    });
+    INV_KINDS.forEach(function(kind){ pushDraft(row,kind); });
+  }
+  function pushDraft(row,kind){
+    var items=inlineInvoiceItems(row,kind),subtotal=Math.round(items.reduce(function(sum,item){return sum+item.amount;},0)*100)/100;
+    // BL ที่ไม่มีค่าใช้จ่ายฝั่งนั้น (ส่วนใหญ่คือ NON VAT ที่ยังไม่มีค่าแลก DO)
+    // ให้ข้ามใบนั้นไปเลย ออกเฉพาะฝั่งที่มียอดจริง ไม่ใช่บล็อกทั้ง BL
+    if(!items.length) return;
+    var vat=kind==='V'?Math.round(invVatBase(items)*7)/100:0;
+    documents.push({number:row.numbers[kind],kind:kind,issueDate:$('inv-issue-date').value,bl:row.bl,settlementId:row.settlementId,items:items,
+      subtotal:subtotal,vat:vat,total:Math.round((subtotal+vat)*100)/100,customerName:customer.name,customerAddress:customer.address,customerTaxId:customer.taxId,preparedBy:state.user.name});
   }
 }
 function showInvoicePDF(popup,blob,filename,download){
@@ -271,6 +350,9 @@ async function runInvoicePair(save,rows){
   if(save&&rows.some(invoiceRowIssued)){
     $('inv-inline-msg').textContent='BL ที่เลือกมีใบที่ออกไปแล้ว — ต้องให้ผู้ดูแลยกเลิกใบเดิมก่อนจึงจะออกใหม่ได้';return;
   }
+  // เปิดใบมัดจำตู้ไว้แต่ยังไม่กรอกยอด — บอกให้ชัด ดีกว่าปล่อยให้ใบหายไปเงียบ ๆ
+  var noDeposit=rows.find(function(row){return row.deposit&&!(row.issued&&row.issued.D)&&!(Number(row.deposit.amount)>0);});
+  if(noDeposit){$('inv-inline-msg').textContent=noDeposit.bl+' — กรอกยอดค่ามัดจำตู้ หรือกด "ลบใบมัดจำตู้"';return;}
   var docs;
   try{ docs=await invoicePairDocuments(rows); }
   catch(error){ $('inv-inline-msg').textContent='ไม่สำเร็จ: '+error.message; return; }
@@ -279,20 +361,21 @@ async function runInvoicePair(save,rows){
   // เลขที่แก้เองต้องอยู่ในรูปแบบเดียวกับที่เซิร์ฟเวอร์รับ (เช่น V20260901) ไม่งั้นบันทึกไม่ผ่าน
   // เช็คเฉพาะตอนบันทึก — Preview ของใบเก่าอาจเป็นคนละเดือนกับวันที่ออกใบที่ตั้งอยู่ตอนนี้
   var badNumber=save&&docs.find(function(doc){
-    return !new RegExp('^'+doc.kind+invoicePeriod()+'[0-9]{2,6}$').test(String(doc.number||''));
+    return !invNumberPattern(doc.kind,invoicePeriod()).test(String(doc.number||''));
   });
   if(badNumber){
-    $('inv-inline-msg').textContent=badNumber.bl+' — เลขที่ใบ '+badNumber.kind+' ไม่ถูกต้อง ต้องเป็นรูปแบบ '+badNumber.kind+invoicePeriod()+'01';return;
+    var sample=badNumber.kind==='D'?'NV'+invoicePeriod()+'01-D':badNumber.kind+invoicePeriod()+'01';
+    $('inv-inline-msg').textContent=badNumber.bl+' — เลขที่ใบ '+badNumber.kind+' ไม่ถูกต้อง ต้องเป็นรูปแบบ '+sample;return;
   }
   // ใบคู่ V/NV ของ BL เดียวกันต้องใช้เลขลำดับเดียวกัน (กติกาเดิมฝั่งเซิร์ฟเวอร์)
   if(save){
-    var seqOf=function(doc){ return String(doc.number).slice((doc.kind+invoicePeriod()).length); };
     var mismatch=rows.find(function(row){
-      var pair=docs.filter(function(doc){return doc.settlementId===row.settlementId&&doc.bl===row.bl;});
-      return pair.length===2 && Number(seqOf(pair[0]))!==Number(seqOf(pair[1]));
+      var seqs=docs.filter(function(doc){return doc.settlementId===row.settlementId&&doc.bl===row.bl;})
+        .map(function(doc){return invSeqOf(doc.number);});
+      return seqs.some(function(n){return n!==seqs[0];});
     });
     if(mismatch){
-      $('inv-inline-msg').textContent=mismatch.bl+' — เลขใบ V และ NV ของ BL เดียวกันต้องเป็นลำดับเดียวกัน';return;
+      $('inv-inline-msg').textContent=mismatch.bl+' — เลขใบ V, NV และมัดจำตู้ของ BL เดียวกันต้องเป็นลำดับเดียวกัน';return;
     }
   }
   // ทุก BL ต้องมีอย่างน้อยฝั่งใดฝั่งหนึ่ง ไม่งั้นไม่มีอะไรให้ออก
@@ -312,7 +395,7 @@ async function runInvoicePair(save,rows){
   // เตือนเลขที่ออกไปแล้วในระบบ (ดูจากรายการที่โหลดมา)
   var used=[];
   (invState.sources||[]).forEach(function(r){
-    ['V','NV'].forEach(function(k){ if(r.issued&&r.issued[k]) used.push(r.issued[k]); });
+    INV_KINDS.forEach(function(k){ if(r.issued&&r.issued[k]) used.push(r.issued[k]); });
   });
   var clashNumbers=!save?[]:docs.filter(function(d){return used.indexOf(d.number)>=0;}).map(function(d){return d.number;});
   if(clashNumbers.length){
@@ -324,7 +407,7 @@ async function runInvoicePair(save,rows){
   if(save){
     var dupBl=[];
     rows.forEach(function(row){
-      ['V','NV'].forEach(function(k){
+      INV_KINDS.forEach(function(k){
         var has=docs.some(function(d){return d.settlementId===row.settlementId&&d.bl===row.bl&&d.kind===k;});
         if(has&&row.issued&&row.issued[k]) dupBl.push(row.bl+' ('+k+' = '+row.issued[k]+')');
       });
@@ -342,7 +425,7 @@ async function runInvoicePair(save,rows){
     if(popup){popup.document.body.textContent='กำลังจัดเตรียม PDF…';popup.document.body.style.margin='0';}
   }
   invState.saving=true;updateInvoicePicked();
-  $('inv-inline-msg').textContent=save?'กำลังบันทึกใบแจ้งหนี้ V และ NV…':'กำลังสร้าง Preview…';
+  $('inv-inline-msg').textContent=save?'กำลังบันทึกใบแจ้งหนี้…':'กำลังสร้าง Preview…';
   var saved=false;
   try{
     if(save){
@@ -356,7 +439,7 @@ async function runInvoicePair(save,rows){
       if(!res.ok){
         if(res.error==='invoice_number_used') throw new Error('เลขใบแจ้งหนี้ซ้ำ: '+(res.numbers||[]).join(', ')+' — กด "โหลดใหม่" แล้วเปลี่ยนเลขเริ่มต้น');
         if(res.error==='bl_already_invoiced') throw new Error('BL นี้ออกใบไปแล้ว: '+(res.duplicates||[]).map(function(d){return d.bl+' ('+d.kind+' = '+d.number+')';}).join(', '));
-        throw new Error(res.error);
+        throw new Error(invSaveError(res));
       }
       saved=true;
       rows.forEach(function(row){row.createdPair=res.created.filter(function(doc){return doc.settlementId===row.settlementId&&doc.bl===row.bl;});row.issued=row.issued||{};row.createdPair.forEach(function(doc){row.issued[doc.kind]=doc.number;});});
@@ -377,5 +460,52 @@ async function runInvoicePair(save,rows){
     var message=(saved?'บันทึกแล้ว แต่ปรับหน้าจอไม่สำเร็จ กด "โหลดใหม่" อีกครั้ง: ':'ไม่สำเร็จ: ')+error.message;
     $('inv-inline-msg').textContent=message;if(popup&&!popup.closed)popup.document.body.textContent=message;
     if(saved){renderInvoiceSources();loadInvoiceList();}
+  }finally{invState.saving=false;updateInvoicePicked();}
+}
+
+/** ข้อความ error ของการบันทึกใบที่เพิ่มมากับใบมัดจำตู้ */
+function invSaveError(res){
+  if(res.error==='seq_used_by_other_bl') return 'เลข '+(res.number||'')+' ใช้กับ BL อื่นไปแล้ว'+(res.other?(' ('+res.other+(res.otherBl?(' / '+res.otherBl):'')+')'):'')+' — กด "โหลดใหม่" แล้วเปลี่ยนเลขเริ่มต้น';
+  if(res.error==='deposit_seq_mismatch') return 'ใบมัดจำตู้ของ '+(res.bl||'')+' ต้องใช้เลขรันเดียวกับใบ V/NV ('+String(res.expected||'').padStart(2,'0')+')';
+  if(res.error==='bad_deposit') return 'ใบมัดจำตู้ของ '+(res.bl||'')+' ต้องมียอดมากกว่า 0';
+  if(res.error==='bad_invoice_number') return 'เลขที่ใบไม่ถูกต้อง: '+(res.number||'');
+  return res.error;
+}
+
+/**
+ * สร้างใบมัดจำตู้อย่างเดียว ให้ BL ที่ออกใบ V/NV ไปแล้ว
+ * ใช้เลขรันของใบเดิม จึงต้องออกในเดือนเดียวกับใบเดิม (เลขที่ใบผูกกับเดือน)
+ */
+async function runDepositOnly(row){
+  if(invState.saving||!row||!row.deposit) return;
+  var amount=Math.round(Number(row.deposit.amount)*100)/100;
+  if(!(amount>0)){$('inv-inline-msg').textContent=row.bl+' — กรอกยอดค่ามัดจำตู้ก่อน';return;}
+  var number=depositNumberFor(row);
+  if(!number){$('inv-inline-msg').textContent=row.bl+' — หาเลขรันของใบ V/NV ไม่เจอ กด "โหลดใหม่" แล้วลองอีกครั้ง';return;}
+  var period=invPeriodOf(number);
+  if(period!==invoicePeriod()){
+    $('inv-inline-msg').textContent=row.bl+' — ใบมัดจำตู้ใช้เลข '+number+' ต้องออกในเดือนเดียวกับใบ V/NV ('+period.slice(4)+'/'+period.slice(0,4)+') เปลี่ยน "วันที่ออกใบ" ก่อน';
+    return;
+  }
+  if(!confirm('สร้างใบแจ้งหนี้ค่ามัดจำตู้ '+number+'\nBL '+row.bl+'\nยอด '+baht(amount)+' บาท (ไม่มี VAT)?')) return;
+  invState.saving=true;updateInvoicePicked();
+  $('inv-inline-msg').textContent='กำลังบันทึกใบมัดจำตู้…';
+  try{
+    var res=await api({action:'saveInvoiceBatch',token:state.token,kind:'BOTH',issueDate:$('inv-issue-date').value,targets:[{
+      settlementId:row.settlementId,bl:row.bl,numbers:{D:number},
+      items:{D:[{label:invDepositLabel(),amount:amount}]}
+    }]});
+    if(!res.ok){
+      if(res.error==='invoice_number_used') throw new Error('เลข '+number+' ถูกใช้ไปแล้ว');
+      if(res.error==='bl_already_invoiced') throw new Error('BL นี้มีใบมัดจำตู้แล้ว');
+      throw new Error(invSaveError(res));
+    }
+    row.issued=row.issued||{};
+    res.created.forEach(function(doc){ row.issued[doc.kind]=doc.number; });
+    row.createdPair=(row.createdPair||[]).concat(res.created);
+    renderInvoiceSources();loadInvoiceList();
+    $('inv-inline-msg').textContent='บันทึกใบมัดจำตู้แล้ว — เลขที่ '+number+' (กด Preview เพื่อดูไฟล์)';
+  }catch(error){
+    $('inv-inline-msg').textContent='ไม่สำเร็จ: '+error.message;
   }finally{invState.saving=false;updateInvoicePicked();}
 }

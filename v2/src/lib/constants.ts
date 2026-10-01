@@ -122,6 +122,12 @@ export const INVOICE_VAT_ITEMS = [
   { key: 'insurance', code: 'Ins', label: 'ADV - ค่าพรบ.' }
 ] as const;
 
+/**
+ * ใบแจ้งหนี้ค่ามัดจำตู้ — ชนิด D ใช้เลขรันเดียวกับ NV ของ BL นั้นแล้วต่อท้าย -D (NV20261005-D)
+ * มีรายการเดียวเสมอ และไม่คิด VAT
+ */
+export const INVOICE_DEPOSIT_LABEL = 'ADV - ค่ามัดจำตู้';
+
 export const INVOICE_NO_VAT_ITEMS = [
   { key: 'do_fee', code: 'Dv', label: 'ADV - ค่าแลก DO' },
   { key: 'order_form', code: 'Of', label: 'ADV - ค่า ORDER FORM' }

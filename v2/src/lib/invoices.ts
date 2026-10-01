@@ -2,7 +2,7 @@ import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { invoices, settlements, transportJobs } from '@/db/schema';
 import {
-  ACCOUNT_ROLES,
+  ACCOUNT_ROLES, INVOICE_DEPOSIT_LABEL,
   INVOICE_COMPANY, INVOICE_CUSTOMER, INVOICE_NO_VAT_ITEMS, INVOICE_VAT_ITEMS,
   INVOICE_VAT_EXEMPT_LABELS, INVOICE_DIVISOR, VAT_RATE
 } from './constants';
@@ -44,9 +44,19 @@ export function isVatExempt(label: unknown) {
   return INVOICE_VAT_EXEMPT_LABELS.some((exempt) => exempt === value);
 }
 
-/** V20260901 — kind + yyyymm + เลขรัน 2 หลัก */
+/** V20260901 — kind + yyyymm + เลขรัน 2 หลัก / ค่ามัดจำตู้ใช้เลข NV ต่อท้าย -D (NV20260901-D) */
 export function invoiceNumber(kind: string, period: string, seq: number) {
-  return `${kind}${period}${String(seq).padStart(2, '0')}`;
+  const run = String(seq).padStart(2, '0');
+  return kind === 'D' ? `NV${period}${run}-D` : `${kind}${period}${run}`;
+}
+
+/** อ่านเลขรันกลับจากเลขที่ใบ — ไม่ตรงรูปแบบของชนิดนั้น = 0 */
+export function invoiceSeqOf(kind: string, period: string, number: string) {
+  const pattern = kind === 'D' ? `^NV${period}([0-9]{2,6})-D$` : `^${kind}${period}([0-9]{2,6})$`;
+  const match = String(number).match(new RegExp(pattern));
+  const seq = match ? Number(match[1]) : 0;
+  // 0 นำหน้าเกิน (V2026090005) ไม่นับ ต้องเป็นรูปแบบเดียวกับที่ระบบออกเอง
+  return seq && invoiceNumber(kind, period, seq) === number ? seq : 0;
 }
 
 /**
@@ -184,9 +194,11 @@ export async function invoiceConfig(): Promise<ApiResult> {
     vatItems: INVOICE_VAT_ITEMS,
     noVatItems: INVOICE_NO_VAT_ITEMS,
     period,
+    depositLabel: INVOICE_DEPOSIT_LABEL,
     next: {
       V: invoiceNumber('V', period, seq),
-      NV: invoiceNumber('NV', period, seq)
+      NV: invoiceNumber('NV', period, seq),
+      D: invoiceNumber('D', period, seq)
     }
   };
 }
@@ -213,11 +225,11 @@ export async function invoiceSources(body: ApiBody): Promise<ApiResult> {
 
   const issued = await db.select({ bl: invoices.bl, kind: invoices.kind, number: invoices.number })
     .from(invoices).where(sql`${invoices.status} <> 'cancelled'`);
-  const issuedMap = new Map<string, { V?: string; NV?: string }>();
+  const issuedMap = new Map<string, { V?: string; NV?: string; D?: string }>();
   for (const row of issued) {
     const key = String(row.bl || '').toUpperCase();
     const entry = issuedMap.get(key) || {};
-    entry[row.kind as 'V' | 'NV'] = row.number;
+    entry[row.kind as 'V' | 'NV' | 'D'] = row.number;
     issuedMap.set(key, entry);
   }
 

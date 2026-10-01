@@ -1,8 +1,8 @@
 import { and, inArray, ne, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { invoices, settlements } from '@/db/schema';
-import { INVOICE_CUSTOMER } from './constants';
-import { invoiceTotals, type InvoiceItem } from './invoices';
+import { INVOICE_CUSTOMER, INVOICE_DEPOSIT_LABEL } from './constants';
+import { invoiceSeqOf, invoiceTotals, type InvoiceItem } from './invoices';
 import { nowIso, validYmd } from './utils';
 import type { ApiBody, ApiResult } from './types';
 
@@ -23,7 +23,8 @@ export async function saveInvoicePairs(body: ApiBody, actor: { username: string;
     // เก็บ seq ของ V ไว้แล้วบังคับให้ NV ตรงกัน ไม่งั้นคู่ที่ออกพร้อมกันจะได้คนละเลข
     let pairSeq = 0;
     let issuedForTarget = 0;
-    for (const kind of ['V', 'NV']) {
+    // D = ใบค่ามัดจำตู้ ใช้เลขรันเดียวกับ V/NV ของ BL นี้ (NV20261005-D)
+    for (const kind of ['V', 'NV', 'D']) {
       const input = target.items?.[kind];
       // BL ที่ไม่มีค่าใช้จ่ายฝั่งนี้ (เจอบ่อยกับ NON VAT ที่ยังไม่มีค่าแลก DO)
       // ให้ข้ามใบนั้นไป ออกเฉพาะฝั่งที่มียอดจริง — เลข NV ที่ข้ามจะหายไปตามกฎเดิม
@@ -32,9 +33,8 @@ export async function saveInvoicePairs(body: ApiBody, actor: { username: string;
         return { ok: false, error: 'no_items', bl, kind };
       }
       const number = clean(target.numbers?.[kind], 40);
-      const match = number.match(new RegExp('^' + kind + period + '([0-9]{2,6})$'));
-      const seq = match ? Number(match[1]) : 0;
-      if (!seq || number !== kind + period + String(seq).padStart(2, '0') || seen.has(number)) {
+      const seq = invoiceSeqOf(kind, period, number);
+      if (!seq || seen.has(number)) {
         return { ok: false, error: 'bad_invoice_number', number };
       }
       // เลขคู่ต้องตรงกันเมื่อออกทั้งสองฝั่ง (V เป็นตัวตั้ง ถ้าออกเฉพาะ NV ก็ใช้เลขตัวเองได้)
@@ -51,9 +51,20 @@ export async function saveInvoicePairs(body: ApiBody, actor: { username: string;
         items.push({ no: items.length + 1, label, amount: Math.round(amount * 100) / 100,
           qty: 0, unitPrice: 0, note: clean(item.note, 200) });
       }
+      // ใบมัดจำตู้มีรายการเดียว ชื่อตายตัว ยอดต้องมากกว่า 0 — ไม่เชื่อชื่อที่หน้าเว็บส่งมา
+      if (kind === 'D') {
+        if (items.length !== 1 || !(items[0].amount > 0)) return { ok: false, error: 'bad_deposit', bl };
+        items[0].label = INVOICE_DEPOSIT_LABEL;
+      }
       prepared.push({ kind, number, seq, settlementId, bl, items });
     }
     if (!issuedForTarget) return { ok: false, error: 'no_items', bl };
+  }
+  const seqOwner = new Map<number, string>();
+  for (const entry of prepared) {
+    const owner = seqOwner.get(entry.seq);
+    if (owner && owner !== entry.bl.toUpperCase()) return { ok: false, error: 'seq_used_by_other_bl', number: entry.number };
+    seqOwner.set(entry.seq, entry.bl.toUpperCase());
   }
   const sourceIds = [...new Set(prepared.map(entry => entry.settlementId))];
   const sources = await db.select({ id: settlements.id, rowsJson: settlements.rowsJson })
@@ -92,6 +103,24 @@ export async function saveInvoicePairs(body: ApiBody, actor: { username: string;
       // ถ้าต้องออกใหม่หรือใช้เลขเดิม ผู้ดูแลต้องยกเลิกใบเดิมก่อน (ยกเลิก = ลบ คืนเลขให้ว่าง)
       if (clash.length) {
         return { ok: false, error: 'bl_already_invoiced', duplicates: clash };
+      }
+      // เลขรันหนึ่งเป็นของ BL เดียว — V/NV/D ของเลขเดียวกันต้องเป็น BL เดียวกัน
+      // (เลขที่ใบต่างกันจึงไม่ชน primary key แต่จะทำให้ชุด V/NV/D ปนกันข้าม BL)
+      const seqList = [...new Set(prepared.map(entry => entry.seq))];
+      const sameSeq = await tx.select({ bl: invoices.bl, seq: invoices.seq, number: invoices.number }).from(invoices)
+        .where(and(sql`${invoices.period} = ${period}`, inArray(invoices.seq, seqList), ne(invoices.status, 'cancelled')));
+      for (const entry of prepared) {
+        const other = sameSeq.find(row => Number(row.seq) === entry.seq && row.bl.toUpperCase() !== entry.bl.toUpperCase());
+        if (other) return { ok: false, error: 'seq_used_by_other_bl', number: entry.number, other: other.number, otherBl: other.bl };
+      }
+      // ใบมัดจำตู้ที่ออกทีหลัง ต้องใช้เลขรันเดียวกับ V/NV ที่ BL นี้ออกไปแล้ว
+      const seqRows = already.length ? await tx.select({ bl: invoices.bl, kind: invoices.kind, seq: invoices.seq })
+        .from(invoices).where(and(inArray(sql`upper(${invoices.bl})`, blList), ne(invoices.status, 'cancelled'))) : [];
+      for (const entry of prepared.filter(item => item.kind === 'D')) {
+        const pair = seqRows.find(row => row.bl.toUpperCase() === entry.bl.toUpperCase() && row.kind !== 'D');
+        if (pair && Number(pair.seq) !== entry.seq) {
+          return { ok: false, error: 'deposit_seq_mismatch', bl: entry.bl, number: entry.number, expected: Number(pair.seq) };
+        }
       }
       const created = [];
       for (const entry of prepared) {
