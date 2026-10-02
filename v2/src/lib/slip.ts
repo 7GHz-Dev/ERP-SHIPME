@@ -2,6 +2,7 @@ import { desc, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { slips } from '@/db/schema';
 import { driveOcrConfigured, driveOcrText, driveServiceAccount } from './drive-ocr';
+import { SLIP_PAYEE_LABEL, SLIP_PAYEE_PATTERNS } from './constants';
 import { env } from './env';
 import { createSignedUpload, downloadAsDataUrl, fileExists, saveDataImage } from './storage';
 import type { ApiBody, ApiResult } from './types';
@@ -23,6 +24,7 @@ export type SlipInfo = {
   ocr?: string; detail?: string; sample?: string;
   amounts?: number[]; dates?: string[];
   amount?: number; date?: string; txn?: string; bank?: string;
+  payeeOk?: boolean;
   manual?: { amount: number; date: string; txn: string };
   manualBy?: string; manualAt?: string;
 };
@@ -111,6 +113,12 @@ function parseDates(text: unknown) {
   return out;
 }
 
+/** ผู้รับโอนเป็นบัญชีบริษัทไหม — ดูจากข้อความ OCR (ตัดช่องว่างก่อน เพราะ OCR เว้นวรรคไม่แน่นอน) */
+export function payeeMatches(text: unknown) {
+  const compact = String(text || '').replace(/\s+/g, '');
+  return SLIP_PAYEE_PATTERNS.some((pattern) => pattern.test(compact));
+}
+
 export function parseText(text: unknown) {
   const source = String(text || '');
   const amounts = parseAmounts(source);
@@ -126,7 +134,11 @@ export function parseText(text: unknown) {
     'i'
   ).exec(source);
   const bank = BANKS.find(([pattern]) => pattern.test(source))?.[1] || '';
-  return { amounts, dates, amount: amounts[0] || 0, date: dates[0] || '', txn: txnMatch?.[1] || '', bank };
+  return {
+    amounts, dates, amount: amounts[0] || 0, date: dates[0] || '', txn: txnMatch?.[1] || '', bank,
+    // เช็กจากข้อความเต็มตอนอ่าน — sample ที่เก็บไว้ตัดเหลือแค่ช่วงต้น
+    payeeOk: payeeMatches(source)
+  };
 }
 
 const fromText = (text: string): Partial<SlipInfo> => ({
@@ -216,7 +228,7 @@ async function runOcr(image: string): Promise<Partial<SlipInfo>> {
 
 export type SlipCheck = {
   status: 'verified' | 'manual' | 'mismatch' | 'unreadable';
-  label: string; amountOk: boolean; dateOk: boolean; manual?: boolean;
+  label: string; amountOk: boolean; dateOk: boolean; payeeOk?: boolean; manual?: boolean;
 };
 
 function checkSlip(info: SlipInfo, expectDate: unknown, expectAmount: unknown): SlipCheck {
@@ -225,6 +237,8 @@ function checkSlip(info: SlipInfo, expectDate: unknown, expectAmount: unknown): 
   const amountOk = amounts.some((amount) => Math.abs(amount - Number(expectAmount)) <= env.slipAmountTolerance);
   const dateOk = dates.includes(String(expectDate || ''));
   const readable = info.ocr === 'ok' && (amounts.length > 0 || dates.length > 0);
+  // สลิปที่อ่านไว้ก่อนมีการเช็กนี้ไม่มี payeeOk — เช็กจาก sample ที่เก็บไว้แทน (ผู้รับอยู่ช่วงต้นของสลิป)
+  const payeeOk = info.payeeOk ?? payeeMatches(info.sample);
 
   // OCR อ่านไม่ออกแต่พนักงานกรอกค่าจากสลิปเอง — ยอมให้บันทึกได้ แต่ติดสถานะรอผู้ดูแลตรวจ
   if (!readable && info.manual) {
@@ -242,13 +256,21 @@ function checkSlip(info: SlipInfo, expectDate: unknown, expectAmount: unknown): 
     };
   }
   if (!readable) {
-    return { status: 'unreadable', label: 'อ่านข้อมูลในสลิปอัตโนมัติไม่ได้ (กรอกค่าจากสลิปเองได้)', amountOk: false, dateOk: false };
+    return { status: 'unreadable', label: 'อ่านข้อมูลในสลิปอัตโนมัติไม่ได้ (กรอกค่าจากสลิปเองได้)', amountOk: false, dateOk: false, payeeOk: false };
+  }
+  // ผู้รับโอนต้องเป็นบัญชีบริษัท — เคยมีคนแนบสลิปเติม GrabPay และสลิปโอนเข้าบัญชีตัวเอง
+  // บอกเรื่องนี้ก่อนเรื่องยอด/วันที่ เพราะต่อให้ยอดตรงก็ใช้สลิปนี้ไม่ได้อยู่ดี
+  if (!payeeOk) {
+    return {
+      status: 'mismatch', amountOk, dateOk, payeeOk,
+      label: `ผู้รับโอนในสลิปไม่ใช่ ${SLIP_PAYEE_LABEL} — ต้องโอนเข้าบัญชีบริษัทเท่านั้น`
+    };
   }
   if (amountOk && dateOk) {
-    return { status: 'verified', label: 'ตรวจอัตโนมัติผ่าน (ยอดและวันที่ตรง)', amountOk, dateOk };
+    return { status: 'verified', label: 'ตรวจอัตโนมัติผ่าน (ผู้รับ ยอด และวันที่ตรง)', amountOk, dateOk, payeeOk };
   }
   return {
-    status: 'mismatch', amountOk, dateOk,
+    status: 'mismatch', amountOk, dateOk, payeeOk,
     label: !amountOk && !dateOk
       ? 'ยอดเงินและวันที่ในสลิปไม่ตรงกับที่ต้องโอน'
       : (!amountOk ? 'ยอดเงินในสลิปไม่ตรงกับยอดที่ต้องโอนคืน' : 'วันที่ในสลิปไม่ตรงกับวันที่โอนคืนที่เลือก')
@@ -263,6 +285,7 @@ function slipResponse(idValue: string, url: string, info: SlipInfo, expectDate: 
     amount: values.amount || 0, date: values.date || '', txn: values.txn || '', bank: info.bank || '',
     ocr: info.ocr, ocrDetail: info.detail || '', sample: info.sample || '', isManual: Boolean(checked.manual),
     status: checked.status, label: checked.label, amountOk: checked.amountOk, dateOk: checked.dateOk,
+    payeeOk: checked.payeeOk, payeeLabel: SLIP_PAYEE_LABEL,
     strict: env.slipStrict,
     canSave: checked.status === 'verified' || checked.status === 'manual'
       || (checked.status === 'unreadable' && !env.slipStrict),

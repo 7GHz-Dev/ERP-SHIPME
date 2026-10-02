@@ -3139,12 +3139,18 @@ function applySlipResult(res, bal, date){
 
   var read=(res.status==='manual')?'ที่กรอก':'ในสลิป';
   var L=[];
+  // ผู้รับโอนต้องเป็นบัญชีบริษัท — โชว์เฉพาะตอนอ่านสลิปออก (กรอกเอง/อ่านไม่ออก ผู้ดูแลตรวจรูปเอง)
+  if(res.payeeOk!=null && res.status!=='manual' && res.status!=='unreadable'){
+    L.push(slipInfoRow('ผู้รับโอน', res.payeeOk?(res.payeeLabel||'บัญชีบริษัท'):'ไม่ใช่บัญชีบริษัท', !!res.payeeOk));
+  }
   L.push(slipInfoRow('ยอด'+read, res.amount?(fmtM(res.amount)+' บาท'):'อ่านไม่ออก', !!res.amountOk));
   L.push(slipInfoRow('วันที่'+read, res.date?fmtD(res.date):'อ่านไม่ออก', !!res.dateOk));
   L.push(slipInfoRow('เลขที่รายการ', res.txn||'อ่านไม่ออก', !!res.txn));
   if(res.bank) L.push(slipInfoRow('ธนาคาร', res.bank, true));
   L.push('<div class="slip-row"><span>ต้องโอนคืน</span><b>'+fmtM(bal)+' บาท • '+esc(fmtD(date))+'</b></div>');
-  if(res.status==='mismatch'){
+  if(res.status==='mismatch' && res.payeeOk===false){
+    L.push('<div style="margin-top:6px">ต้องโอนเข้าบัญชี <b>'+esc(res.payeeLabel||'บริษัท')+'</b> เท่านั้น — สลิปเติมเงินวอลเล็ตหรือโอนเข้าบัญชีอื่นใช้ไม่ได้</div>');
+  } else if(res.status==='mismatch'){
     L.push('<div style="margin-top:6px">ตรวจสอบว่าแนบสลิปใบที่ถูกต้อง (ยอดและวันที่ต้องตรงกับที่โอนจริง)</div>');
   } else if(res.status!=='verified'){
     L.push('<div style="margin-top:6px">ผู้ดูแล/ผู้จัดการจะเห็นสลิปใบนี้เพื่อตรวจย้อนหลังให้'+
