@@ -28,19 +28,19 @@ function initServiceInvoice(){
   $('svc-from').value = svcLocalYmd(from);
   $('svc-to').value = svcLocalYmd(to);
   $('svc-issue').value = svcLocalYmd(now);
-  svcDefaultRound();
   $('svc-start').value = 'IN'+svcPeriod()+'01';
+  // เปลี่ยนช่วงวันที่ = ข้อมูลที่ดึงไว้ไม่ตรงช่วงแล้ว ต้องกด "ดึงข้อมูล" ใหม่
   $('svc-from').addEventListener('change', function(){
     if(this.value && (!$('svc-to').value || $('svc-to').value < this.value)) $('svc-to').value = this.value;
-    svcDefaultRound();
+    svcRangeChanged();
   });
-  $('svc-to').addEventListener('change', svcDefaultRound);
+  $('svc-to').addEventListener('change', svcRangeChanged);
   $('svc-issue').addEventListener('change', function(){
     // เลขที่ใบผูกกับเดือนที่ออกใบ — เปลี่ยนเดือนแล้วเริ่ม 01 ของเดือนนั้น
     $('svc-start').value = 'IN'+svcPeriod()+'01';
     svcRenderDocs();
   });
-  ['svc-round','svc-start','svc-rate-c','svc-rate-r'].forEach(function(id){
+  ['svc-start','svc-rate-c','svc-rate-r'].forEach(function(id){
     $(id).addEventListener('input', svcRenderDocs);
   });
   $('svc-load').addEventListener('click', svcLoad);
@@ -51,11 +51,17 @@ function initServiceInvoice(){
   $('svc-pdf-all').addEventListener('click', function(){ svcOpenPdf(svcDocuments(), 'ชุดใบแจ้งหนี้ค่าบริการ'); });
 }
 
-/** ครั้งที่ 1 = รอบ 1–15 / ครั้งที่ 2 = รอบ 16–สิ้นเดือน (ดูจากวันสุดท้ายของช่วง) */
-function svcDefaultRound(){
-  var to = $('svc-to').value;
-  if(to) $('svc-round').value = Number(to.slice(8,10)) <= 15 ? 1 : 2;
-  svcRenderDocs();
+function svcRangeChanged(){
+  var d = svcState.data;
+  if(d && (d.from !== $('svc-from').value || d.to !== $('svc-to').value)){
+    $('svc-msg').textContent = 'เปลี่ยนช่วงวันที่แล้ว — กด "ดึงข้อมูล" ใหม่ (เอกสารด้านล่างยังเป็นของช่วง '
+      + svcDmy(d.from)+' - '+svcDmy(d.to)+')';
+  }
+}
+function svcDmy(ymd){ return String(ymd||'').split('-').reverse().join('/'); }
+/** "วันที่ตรวจปล่อย 14/09/2026 - 30/09/2026" (วันเดียว = วันที่เดียว) — ใช้แทนเลขครั้งที่ */
+function svcRangeText(from, to){
+  return 'วันที่ตรวจปล่อย '+(from===to ? svcDmy(from) : svcDmy(from)+' - '+svcDmy(to));
 }
 
 function svcLoad(){
@@ -117,10 +123,11 @@ function svcRenderExtras(){
 function svcDocuments(){
   var data = svcState.data;
   if(!data) return [];
-  var to = $('svc-to').value, round = Number($('svc-round').value)||1;
+  // ใช้ช่วงวันที่ของข้อมูลที่ดึงมาจริง ไม่ใช่ค่าในช่องที่อาจแก้ไปแล้วแต่ยังไม่ได้ดึงใหม่
+  var from = data.from, to = data.to, range = svcRangeText(from, to);
   var monthName = SVC_MONTHS[Number(to.slice(5,7))-1]||'', year = to.slice(0,4);
-  var monthLabel = 'เดือน '+monthName+' (ครั้งที่ '+round+')';
-  var lineSuffix = 'ประจำเดือน '+monthName+' '+year+' (ครั้งที่ '+round+')';
+  var monthLabel = 'เดือน '+monthName+' ('+range+')';
+  var monthLine = 'ประจำเดือน '+monthName+' '+year;
   var rateC = Number($('svc-rate-c').value)||0, rateR = Number($('svc-rate-r').value)||0;
   var issueDate = $('svc-issue').value, period = svcPeriod();
   var m = String($('svc-start').value).trim().toUpperCase().match(/^IN(\d{6})(\d{2,4})$/);
@@ -146,9 +153,9 @@ function svcDocuments(){
       rows:src.rows.map(function(r){ return { label:r.bl, qty:String(r.containers), note:r.roro?'งาน : RORO':'', highlight:r.roro }; }),
       total:String(src.containers+src.roro), sum:src.containers+src.roro }, base));
     var items = [];
-    var label = 'ค่าบริการตรวจปล่อยสินค้าผ่านพิธีการศุลกากร\n'+lineSuffix;
-    if(src.containers) items.push({ no:items.length+1, label:label, qty:src.containers, unitPrice:rateC, amount:svcRound2(src.containers*rateC), note:'', fit:true });
-    if(src.roro) items.push({ no:items.length+1, label:label+' - งาน : RORO', qty:src.roro, unitPrice:rateR, amount:svcRound2(src.roro*rateR), note:'', fit:true });
+    var head = 'ค่าบริการตรวจปล่อยสินค้าผ่านพิธีการศุลกากร\n';
+    if(src.containers) items.push({ no:items.length+1, label:head+monthLine+'\n'+range, qty:src.containers, unitPrice:rateC, amount:svcRound2(src.containers*rateC), note:'', fit:true });
+    if(src.roro) items.push({ no:items.length+1, label:head+monthLine+' - งาน : RORO\n'+range, qty:src.roro, unitPrice:rateR, amount:svcRound2(src.roro*rateR), note:'', fit:true });
     docs.push(invoice('ใบแจ้งหนี้ค่าบริการตรวจปล่อย ('+src.label+')', items));
   });
 
@@ -157,10 +164,10 @@ function svcDocuments(){
     var sum = svcRound2(extras.reduce(function(s, x){ return s+Number(x.amount); }, 0));
     docs.push(Object.assign({ kind:'SUMMARY', title:'ใบสรุปค่าบริการเพิ่มเติม', subtitle:'ค่าบริการเพิ่มเติม', monthLabel:monthLabel, date:to,
       headers:['ลำดับ','รายการ (BL)','จำนวน','หมายเหตุ'],
-      rows:extras.map(function(x){ return { label:x.label, qty:svcMoney(x.amount), note:x.bl, highlight:/พรบ/.test(x.label) }; }),
+      rows:extras.map(function(x){ return { label:x.label, qty:svcMoney(x.amount), note:x.bl, highlight:false }; }),
       total:svcMoney(sum), sum:sum }, base));
     docs.push(invoice('ใบแจ้งหนี้ค่าบริการเพิ่มเติม',
-      [{ no:1, label:'ค่าบริการเพิ่มเติม '+lineSuffix, qty:1, unitPrice:sum, amount:sum, note:'', fit:true }]));
+      [{ no:1, label:'ค่าบริการเพิ่มเติม '+monthLine+'\n'+range, qty:1, unitPrice:sum, amount:sum, note:'', fit:true }]));
   }
   return docs;
 }

@@ -3,7 +3,8 @@ import { db } from '@/db';
 import { transportJobs } from '@/db/schema';
 import {
   INVOICE_COMPANY, INVOICE_CUSTOMER, SERVICE_EXTRA_RULES, SERVICE_RATES,
-  SERVICE_BANK_ACCOUNT_NO, SERVICE_RORO_INSPECTOR_LABEL, SERVICE_WITHHOLDING_RATE, VAT_RATE
+  SERVICE_BANK_ACCOUNT_NO, SERVICE_BRIDGE_INSPECTOR_FEE, SERVICE_BRIDGE_INSPECTOR_LABEL,
+  SERVICE_NO_CAR_PATTERN, SERVICE_RORO_INSPECTOR_LABEL, SERVICE_WITHHOLDING_RATE, VAT_RATE
 } from './constants';
 import type { ApiBody, ApiResult } from './types';
 import { round2, validYmd } from './utils';
@@ -16,6 +17,9 @@ const SOURCE_LABEL: Record<string, string> = {
 const SOURCE_ORDER = ['MAESOT FREEZONE', 'TRANSIT'];
 
 export const isRoro = (containerNo: unknown) => /^\s*RORO\s*$/i.test(String(containerNo ?? ''));
+/** งาน TRANSIT ที่หมายเหตุเขียน NO CAR — ไม่คิดค่าบริการตรวจปล่อย คิดค่านายตรวจข้ามสะพานแทน */
+export const isNoCar = (row: { sourceFile: string; note: string }) =>
+  row.sourceFile === 'TRANSIT' && SERVICE_NO_CAR_PATTERN.test(String(row.note || ''));
 
 /** ยอดท้ายรายการ เช่น "ยางเกิน 2000" / "ค่าบริการ พรบ. 98.75" — ไม่มียอด = null */
 function trailingAmount(segment: string) {
@@ -68,10 +72,33 @@ export async function serviceInvoiceData(body: ApiBody): Promise<ApiResult> {
     .where(and(gte(transportJobs.transportDate, from), lte(transportJobs.transportDate, to)))
     .orderBy(asc(transportJobs.transportDate), asc(transportJobs.id));
 
+  return {
+    ok: true, from, to, ...buildServiceData(rows),
+    rates: SERVICE_RATES, vatRate: VAT_RATE, withholdingRate: SERVICE_WITHHOLDING_RATE,
+    // หัวใบ โลโก้ ตราประทับ เหมือนใบ ADV ต่างกันแค่เลขบัญชีรับเงิน
+    company: { ...INVOICE_COMPANY, bankAccountNo: SERVICE_BANK_ACCOUNT_NO }, customer: INVOICE_CUSTOMER
+  };
+}
+
+/** จัดกลุ่มแถวชีตเป็นใบสรุปจำนวนตู้ต่อไฟล์ + ค่าบริการเพิ่มเติม (แยกออกมาให้ทดสอบได้โดยไม่ต้องต่อฐานข้อมูล) */
+export function buildServiceData(rows: JobRow[]) {
   const bySource = new Map<string, Map<string, { bl: string; containers: number; roro: boolean; date: string }>>();
   const extras: ReturnType<typeof extrasFromRow> = [];
+  const bridgeDone = new Set<string>();
   for (const row of rows) {
     const source = row.sourceFile || 'อื่นๆ';
+    if (isNoCar(row)) {
+      // ค่านายตรวจข้ามสะพาน BL ละครั้ง (BL หลายแถวก็คิดครั้งเดียว) แล้วไม่นับตู้ของแถวนี้
+      const blKey = String(row.bl).toUpperCase();
+      if (!bridgeDone.has(blKey)) {
+        bridgeDone.add(blKey);
+        extras.push({ label: SERVICE_BRIDGE_INSPECTOR_LABEL, amount: SERVICE_BRIDGE_INSPECTOR_FEE,
+          bl: row.bl, date: row.transportDate, source: row.sourceFile, segment: 'NO CAR' });
+      }
+      // รายการอื่นในหมายเหตุของแถวเดียวกัน (เช่น ค่าน๊อคประตู) ยังคิดตามปกติ
+      extras.push(...extrasFromRow(row));
+      continue;
+    }
     const roro = isRoro(row.containerNo);
     // BL เดียวกันแต่มีทั้งตู้ปกติและ RORO แยกบรรทัด เพราะคิดคนละราคา
     const key = `${String(row.bl).toUpperCase()}|${roro ? 'R' : 'C'}`;
@@ -94,10 +121,5 @@ export async function serviceInvoiceData(body: ApiBody): Promise<ApiResult> {
       };
     });
 
-  return {
-    ok: true, from, to, sources, extras,
-    rates: SERVICE_RATES, vatRate: VAT_RATE, withholdingRate: SERVICE_WITHHOLDING_RATE,
-    // หัวใบ โลโก้ ตราประทับ เหมือนใบ ADV ต่างกันแค่เลขบัญชีรับเงิน
-    company: { ...INVOICE_COMPANY, bankAccountNo: SERVICE_BANK_ACCOUNT_NO }, customer: INVOICE_CUSTOMER
-  };
+  return { sources, extras };
 }

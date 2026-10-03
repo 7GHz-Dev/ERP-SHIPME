@@ -146,6 +146,13 @@ export const SERVICE_EXTRA_RULES: { pattern: RegExp; label: string }[] = [
   { pattern: /แลก\s*E\s*R/i, label: 'ค่าแลก ER' }
 ];
 export const SERVICE_RORO_INSPECTOR_LABEL = 'ค่าบริการนายตรวจ (RORO)';
+/**
+ * งาน TRANSIT ที่หมายเหตุเขียน "NO CAR" = ไม่ได้ตรวจปล่อยรถ คิดแค่ค่านายตรวจข้ามสะพาน
+ * BL นั้นไม่นับในใบสรุปจำนวนตู้และใบแจ้งหนี้ค่าบริการตรวจปล่อย TRANSIT
+ */
+export const SERVICE_BRIDGE_INSPECTOR_LABEL = 'ค่าบริการนายตรวจ (ข้ามสะพาน)';
+export const SERVICE_BRIDGE_INSPECTOR_FEE = 100;
+export const SERVICE_NO_CAR_PATTERN = /NO\s*-?\s*CAR/i;
 
 /**
  * ผู้รับโอนที่ถูกต้องในสลิปโอนคืนบริษัท (ปิดบัญชีชิปปิ้ง)
