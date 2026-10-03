@@ -747,20 +747,22 @@
       <p class="muted" style="margin:0 0 14px">
         นับจำนวนใบและยอดหัก ณ ที่จ่าย จากชีตงานขนส่ง <b>MAESOT FREEZONE</b> และ <b>TRANSIT</b> ตามวันที่ตรวจปล่อย —
         ยอดในชีตเป็นยอดที่จ่ายจริงหลังหักแล้ว (ฐาน + VAT 7% − หัก 3% = ฐาน × 1.04) จึงหาฐานภาษีด้วยการหาร 1.04 •
-        แก้ตัวหารและอัตราของแต่ละหมวดได้ในตาราง
+        แก้ตัวหารและอัตราของแต่ละหมวดได้ในตาราง •
+        <b>DO นับตามวันที่จ่ายในชีตค่าแลกดีโอ</b> หมวดอื่นนับตามวันที่ตรวจปล่อย
       </p>
       <div class="toolbar">
-        <label style="display:flex;align-items:center;gap:6px">วันที่ตรวจปล่อย ตั้งแต่ <input id="wht-from" type="date"></label>
+        <label style="display:flex;align-items:center;gap:6px">วันที่ ตั้งแต่ <input id="wht-from" type="date"></label>
         <label style="display:flex;align-items:center;gap:6px">ถึง <input id="wht-to" type="date"></label>
         <button id="wht-load" class="btn btn-primary btn-sm">ดึงข้อมูล</button>
       </div>
       <div id="wht-msg" class="muted" style="margin:0 2px 12px">เลือกช่วงวันที่แล้วกด "ดึงข้อมูล"</div>
       <div id="wht-result" class="hidden">
+        <div id="wht-do-warn" class="hidden" style="background:#fffbeb;border:1px solid #fcd34d;color:#92400e;border-radius:10px;padding:10px 12px;margin-bottom:14px"></div>
         <div class="tablewrap" style="margin-bottom:18px">
           <table class="inv-tbl">
             <thead><tr><th>หมวด</th><th class="num">จำนวนใบ</th><th class="num">ยอดในชีต</th><th>หาร</th><th>อัตรา</th><th class="num">ฐานภาษี</th><th class="num">ยอดหัก ณ ที่จ่าย</th></tr></thead>
             <tbody id="wht-sum-body">
-              <tr data-cat="DO"><td><b>DO <span class="muted" style="font-weight:400">(KNOT GLOBAL / SEAL / M+R)</span></b></td><td class="num wht-c">0</td><td class="num wht-a">0.00</td>
+              <tr data-cat="DO"><td><b>DO <span class="muted" style="font-weight:400">(KNOT GLOBAL / SEAL / M+R) ตามวันที่จ่าย</span></b></td><td class="num wht-c">0</td><td class="num wht-a">0.00</td>
                 <td><input id="wht-div-DO" type="number" step="0.01" min="0" style="width:76px"></td>
                 <td><input id="wht-rate-DO" type="number" step="0.01" min="0" style="width:64px"> %</td>
                 <td class="num wht-b">0.00</td><td class="num"><b class="wht-w">0.00</b></td></tr>
@@ -788,7 +790,7 @@
         </div>
         <div class="tablewrap">
           <table class="inv-tbl">
-            <thead><tr><th class="num">#</th><th>วันที่ตรวจปล่อย</th><th>BL</th><th>VESSEL</th><th>รายละเอียด</th>
+            <thead><tr><th class="num">#</th><th>วันที่ <span class="muted" style="font-weight:400">(DO = วันที่จ่าย)</span></th><th>BL</th><th>VESSEL</th><th>รายละเอียด</th>
               <th class="num">ยอดในชีต</th><th class="num">ฐานภาษี</th><th class="num">ยอดหัก</th></tr></thead>
             <tbody id="wht-lines-body"></tbody>
           </table>

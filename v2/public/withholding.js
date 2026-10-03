@@ -2,7 +2,7 @@
  * ใบหัก ณ ที่จ่าย (กระทำการแทน) — สรุปจำนวนใบและยอดหักตามช่วงวันที่ตรวจปล่อย
  *
  * ข้อมูลจากชีตงานขนส่ง MAESOT FREEZONE + TRANSIT (เซิร์ฟเวอร์แตกเป็นรายการ 1 รายการ = 1 ใบ)
- *   DO             : VESSEL = KNOT GLOBAL / SEAL / M+R
+ *   DO             : VESSEL = KNOT GLOBAL / SEAL / M+R — นับตามวันที่จ่ายในชีตค่าแลกดีโอ (ไม่ใช่วันที่ตรวจปล่อย)
  *   EXTRA MOVEMENT : ทุก BL ที่มียอด
  *   STORAGE + LIFT ON + LIFT OFF : รวมเป็น 1 ใบต่อ BL
  * ยอดหัก = ยอดในชีต ÷ ตัวหาร × อัตรา — ตั้งแยกได้ทีละหมวด (ค่าเริ่มต้น ÷ 1.04 × 3%)
@@ -11,7 +11,7 @@
  */
 var whtState = { ready:false, data:null, filter:'' };
 var WHT_CATS = [
-  { key:'DO', label:'DO (KNOT GLOBAL / SEAL / M+R)' },
+  { key:'DO', label:'DO (KNOT GLOBAL / SEAL / M+R) ตามวันที่จ่าย' },
   { key:'EM', label:'EXTRA MOVEMENT' },
   { key:'PORT', label:'STORAGE / LIFT ON / LIFT OFF' }
 ];
@@ -61,8 +61,10 @@ function whtLoad(){
       if(!$('wht-div-'+c.key).value) $('wht-div-'+c.key).value = res.defaults.divisor;
       if(!$('wht-rate-'+c.key).value) $('wht-rate-'+c.key).value = whtRound2(res.defaults.rate*100);
     });
-    $('wht-msg').textContent = 'วันที่ตรวจปล่อย '+whtDmy(res.from)+' - '+whtDmy(res.to)+' • '+res.lines.length+' ใบ';
+    $('wht-msg').textContent = 'ช่วงวันที่ '+whtDmy(res.from)+' - '+whtDmy(res.to)+' • '+res.lines.length+' ใบ'
+      + (res.doTabs && res.doTabs.length ? (' • ชีตค่าแลกดีโอ: '+res.doTabs.join(', ')) : '');
     $('wht-result').classList.remove('hidden');
+    whtRenderDoWarn(res);
     whtRender();
   }).catch(function(){
     $('wht-load').disabled = false;
@@ -71,6 +73,27 @@ function whtLoad(){
 }
 
 function whtRender(){ whtRenderSummary(); whtRenderLines(); }
+
+/**
+ * เตือนเรื่อง DO — อ่านชีตค่าแลกดีโอไม่ได้ หรือ BL ที่จ่าย DO แล้วแต่ยังหาสายเรือไม่เจอ
+ * (ส่วนใหญ่คือ BL ที่ยังไม่ได้ลงชีตงานขนส่ง) ถ้าเป็นสายเรือที่ต้องออกใบหัก จะยังไม่ถูกนับ
+ */
+function whtRenderDoWarn(res){
+  var html = '';
+  if(res.doError){
+    html += '<div><b>อ่านชีตค่าแลกดีโอไม่ได้</b> ('+esc(res.doError)+') — ยังไม่ได้นับใบหักค่า DO • ตรวจว่าชีตยังแชร์แบบ "ทุกคนที่มีลิงก์" อยู่</div>';
+  }
+  var list = res.doUnmatched || [];
+  if(list.length){
+    html += '<div><b>BL ที่จ่าย DO แล้วแต่หาสายเรือ (VESSEL) ในชีตงานขนส่งไม่เจอ '+list.length+' รายการ</b>'
+      + ' — ยังไม่นับเป็นใบหัก ถ้าเป็น KNOT GLOBAL / SEAL / M+R ให้ลง BL ในชีตงานขนส่งก่อนแล้วดึงใหม่</div>'
+      + '<div style="margin-top:4px;font-size:12px">'+list.map(function(x){
+          return esc(whtDmy(x.date))+' <span class="mono">'+esc(x.bl)+'</span> '+whtMoney(x.amount);
+        }).join(' • ')+'</div>';
+  }
+  $('wht-do-warn').innerHTML = html;
+  $('wht-do-warn').classList.toggle('hidden', !html);
+}
 
 /** ตารางสรุปต่อหมวด — แก้ตัวหาร/อัตราในแถวได้ ยอดเปลี่ยนทันที */
 function whtRenderSummary(){
@@ -116,7 +139,7 @@ function whtExport(){
             l.amount, whtBase(l), whtAmount(l)];
   });
   downloadCSV('withholding_'+d.from+'_'+d.to+'.csv',
-    ['ลำดับ','หมวด','วันที่ตรวจปล่อย','ไฟล์','BL','VESSEL','รายละเอียด','ยอดในชีต','ฐานภาษี','ยอดหัก ณ ที่จ่าย'], rows);
+    ['ลำดับ','หมวด','วันที่ (DO = วันที่จ่าย)','ที่มา','BL','VESSEL','รายละเอียด','ยอดในชีต','ฐานภาษี','ยอดหัก ณ ที่จ่าย'], rows);
 }
 
 // ตัวหาร/อัตราเปลี่ยน = คิดยอดใหม่ทั้งหน้า (ผูกครั้งเดียวตอนโหลดไฟล์ได้ เพราะเป็นแค่ฟังก์ชัน)

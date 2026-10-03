@@ -1,7 +1,8 @@
-import { and, asc, gte, lte } from 'drizzle-orm';
+import { and, asc, gte, lte, ne } from 'drizzle-orm';
 import { db } from '@/db';
 import { transportJobs } from '@/db/schema';
 import { WHT_DEFAULT, WHT_DO_VESSELS } from './constants';
+import { readDoSheet, type DoEntry } from './do-sheet';
 import type { ApiBody, ApiResult } from './types';
 import { round2, validYmd } from './utils';
 
@@ -25,7 +26,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2,
 /**
  * แตกแถวชีตเป็นรายการใบหัก ณ ที่จ่าย — 1 รายการ = 1 ใบ
  * ค่าใช้จ่ายของ BL อยู่ที่แถวแรกของ BL (ตู้อื่นเป็น 0) จึงรวมตาม ไฟล์ + BL + วันที่
- *   DO          : เฉพาะ VESSEL = KNOT GLOBAL / SEAL / M+R
+ *   (DO ไม่ได้มาจากที่นี่ — นับตามวันที่จ่ายในชีตค่าแลกดีโอ ดู buildDoLines)
  *   EXTRA MOVEMENT : ทุก BL ที่มียอด
  *   STORAGE + LIFT ON + LIFT OFF : รวมเป็น 1 ใบต่อ BL (ได้ใบเสร็จมาใบเดียว แล้วแยกรายการกรอกเอง)
  */
@@ -46,10 +47,6 @@ export function buildWithholding(rows: JobRow[]): WhtLine[] {
   const out: WhtLine[] = [];
   for (const g of groups.values()) {
     const base = { date: g.row.transportDate, bl: g.row.bl, vessel: g.row.vessel, source: g.row.sourceFile };
-    const doVessel = whtDoVessel(g.row.vessel);
-    if (doVessel && g.doFee > 0) {
-      out.push({ ...base, category: 'DO', amount: round2(g.doFee), detail: `DO ${doVessel}` });
-    }
     if (g.em > 0) out.push({ ...base, category: 'EM', amount: round2(g.em), detail: 'EXTRA MOVEMENT' });
     const port = [['STORAGE', g.storage], ['LIFT ON', g.liftOn], ['LIFT OFF', g.liftOff]] as const;
     const parts = port.filter(([, v]) => v > 0);
@@ -64,6 +61,30 @@ export function buildWithholding(rows: JobRow[]): WhtLine[] {
   return out.sort((a, b) => order[a.category] - order[b.category] || a.date.localeCompare(b.date) || a.bl.localeCompare(b.bl));
 }
 
+const blKey = (bl: unknown) => String(bl ?? '').toUpperCase().replace(/\s+/g, '');
+const blBase = (bl: unknown) => blKey(bl).split('(')[0];
+
+/**
+ * ใบหักค่า DO — จากชีตค่าแลกดีโอ ตามวันที่จ่ายจริง (1 แถวในชีต = 1 ใบ)
+ * ชีตนี้ไม่มีช่อง VESSEL จึงหาสายเรือจากชีตงานขนส่งด้วยเลข BL
+ * เทียบทั้ง BL เต็ม และส่วนหน้าวงเล็บ (ในชีตบางแถวลืมปิดวงเล็บ เช่น "KG…-668571(ONEYTYOGD2073800")
+ */
+export function buildDoLines(entries: DoEntry[], vessels: Map<string, string>, from: string, to: string) {
+  const lines: WhtLine[] = [];
+  const unmatched: { date: string; bl: string; amount: number }[] = [];
+  for (const e of entries) {
+    if (e.date < from || e.date > to || !(e.amount > 0)) continue;
+    const vessel = vessels.get(blKey(e.bl)) || vessels.get(blBase(e.bl)) || '';
+    if (!vessel) { unmatched.push({ date: e.date, bl: e.bl, amount: e.amount }); continue; }
+    const label = whtDoVessel(vessel);
+    if (!label) continue;
+    const extra = [e.note, /\+/.test(e.raw) ? `ยอดในชีต ${e.raw}` : ''].filter(Boolean).join(' • ');
+    lines.push({ category: 'DO', date: e.date, bl: e.bl, vessel, source: `ชีตค่าแลกดีโอ (${e.tab})`,
+      amount: e.amount, detail: `DO ${label}${extra ? ` • ${extra}` : ''}` });
+  }
+  return { lines, unmatched };
+}
+
 /** ข้อมูลใบหัก ณ ที่จ่ายตามช่วงวันที่ตรวจปล่อย (อ่านอย่างเดียว) */
 export async function withholdingData(body: ApiBody): Promise<ApiResult> {
   const from = String(body.from || ''), to = String(body.to || '');
@@ -76,8 +97,29 @@ export async function withholdingData(body: ApiBody): Promise<ApiResult> {
   }).from(transportJobs)
     .where(and(gte(transportJobs.transportDate, from), lte(transportJobs.transportDate, to)))
     .orderBy(asc(transportJobs.transportDate), asc(transportJobs.id));
+  const lines = buildWithholding(rows);
+
+  // DO: วันที่จ่ายจากชีตค่าแลกดีโอ — อ่านไม่ได้ไม่ล้มทั้งหน้า ยังเห็นหมวดอื่น แต่บอกว่า DO ขาด
+  let doLines: WhtLine[] = [], unmatched: { date: string; bl: string; amount: number }[] = [];
+  let doError = '', doTabs: string[] = [];
+  try {
+    const sheet = await readDoSheet();
+    doTabs = sheet.tabs;
+    const known = await db.selectDistinct({ bl: transportJobs.bl, vessel: transportJobs.vessel })
+      .from(transportJobs).where(ne(transportJobs.vessel, ''));
+    const vessels = new Map<string, string>();
+    for (const k of known) {
+      if (!vessels.has(blKey(k.bl))) vessels.set(blKey(k.bl), k.vessel);
+      if (!vessels.has(blBase(k.bl))) vessels.set(blBase(k.bl), k.vessel);
+    }
+    ({ lines: doLines, unmatched } = buildDoLines(sheet.entries, vessels, from, to));
+  } catch (error) {
+    doError = String((error as Error).message || error);
+  }
+  doLines.sort((a, b) => a.date.localeCompare(b.date) || a.bl.localeCompare(b.bl));
+
   return {
-    ok: true, from, to, lines: buildWithholding(rows), defaults: WHT_DEFAULT,
-    vessels: WHT_DO_VESSELS.map((v) => v.label)
+    ok: true, from, to, lines: [...doLines, ...lines], defaults: WHT_DEFAULT,
+    vessels: WHT_DO_VESSELS.map((v) => v.label), doUnmatched: unmatched, doError, doTabs
   };
 }

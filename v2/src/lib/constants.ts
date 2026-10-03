@@ -168,6 +168,11 @@ export const WHT_DO_VESSELS: { label: string; pattern: RegExp }[] = [
  * (LIFT ON 1,040 = 1,000 + 70 − 30) ยอดหัก = ยอดในชีต ÷ 1.04 × 3% — หน้าเว็บแก้ตัวหาร/อัตราได้
  */
 export const WHT_DEFAULT = { divisor: 1.04, rate: 0.03 } as const;
+/**
+ * ชีต "ค่าแลกดีโอ" — บันทึกวันที่จ่ายค่า DO จริง (แท็บละเดือน: ก.ย 69, ต.ค 69, …)
+ * ใบหักค่า DO นับตามวันที่ในชีตนี้ ไม่ใช่วันที่ตรวจปล่อย — ต้องแชร์แบบใครมีลิงก์ก็ดูได้
+ */
+export const DO_SHEET_ID = '1WC1-0ilraByB5FTfrrTAykDpWiG4UIKhhGoQ5HgLz4c';
 
 /**
  * ผู้รับโอนที่ถูกต้องในสลิปโอนคืนบริษัท (ปิดบัญชีชิปปิ้ง)
