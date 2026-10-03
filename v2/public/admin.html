@@ -208,6 +208,7 @@
 <script src="/invoice-pdf.js"></script>
 <script src="/invoice-workspace.js"></script>
 <script src="/service-invoice.js"></script>
+<script src="/withholding.js"></script>
 </head>
 <body>
 
@@ -227,6 +228,7 @@
     <button class="navbtn" data-tab="claim">การเบิก</button>
     <button class="navbtn" data-tab="settle">ปิดบัญชี</button>
     <button class="navbtn" data-tab="invoice">ใบแจ้งหนี้</button>
+    <button class="navbtn" data-tab="wht">ใบหัก ณ ที่จ่าย</button>
     <button class="navbtn" data-tab="receipt">ใบเสร็จ</button>
     <button class="navbtn" data-tab="leave">การลา</button>
     <button class="navbtn" data-tab="emp">พนักงาน</button>
@@ -739,6 +741,61 @@
       </div>
     </section>
 
+    <!-- ---------- ใบหัก ณ ที่จ่าย (กระทำการแทน) ---------- -->
+    <section id="tab-wht" class="hidden">
+      <h2 style="margin:0 0 6px">ใบหัก ณ ที่จ่าย (กระทำการแทน)</h2>
+      <p class="muted" style="margin:0 0 14px">
+        นับจำนวนใบและยอดหัก ณ ที่จ่าย จากชีตงานขนส่ง <b>MAESOT FREEZONE</b> และ <b>TRANSIT</b> ตามวันที่ตรวจปล่อย —
+        ยอดในชีตเป็นยอดที่จ่ายจริงหลังหักแล้ว (ฐาน + VAT 7% − หัก 3% = ฐาน × 1.04) จึงหาฐานภาษีด้วยการหาร 1.04 •
+        แก้ตัวหารและอัตราของแต่ละหมวดได้ในตาราง
+      </p>
+      <div class="toolbar">
+        <label style="display:flex;align-items:center;gap:6px">วันที่ตรวจปล่อย ตั้งแต่ <input id="wht-from" type="date"></label>
+        <label style="display:flex;align-items:center;gap:6px">ถึง <input id="wht-to" type="date"></label>
+        <button id="wht-load" class="btn btn-primary btn-sm">ดึงข้อมูล</button>
+      </div>
+      <div id="wht-msg" class="muted" style="margin:0 2px 12px">เลือกช่วงวันที่แล้วกด "ดึงข้อมูล"</div>
+      <div id="wht-result" class="hidden">
+        <div class="tablewrap" style="margin-bottom:18px">
+          <table class="inv-tbl">
+            <thead><tr><th>หมวด</th><th class="num">จำนวนใบ</th><th class="num">ยอดในชีต</th><th>หาร</th><th>อัตรา</th><th class="num">ฐานภาษี</th><th class="num">ยอดหัก ณ ที่จ่าย</th></tr></thead>
+            <tbody id="wht-sum-body">
+              <tr data-cat="DO"><td><b>DO <span class="muted" style="font-weight:400">(KNOT GLOBAL / SEAL / M+R)</span></b></td><td class="num wht-c">0</td><td class="num wht-a">0.00</td>
+                <td><input id="wht-div-DO" type="number" step="0.01" min="0" style="width:76px"></td>
+                <td><input id="wht-rate-DO" type="number" step="0.01" min="0" style="width:64px"> %</td>
+                <td class="num wht-b">0.00</td><td class="num"><b class="wht-w">0.00</b></td></tr>
+              <tr data-cat="EM"><td><b>EXTRA MOVEMENT</b></td><td class="num wht-c">0</td><td class="num wht-a">0.00</td>
+                <td><input id="wht-div-EM" type="number" step="0.01" min="0" style="width:76px"></td>
+                <td><input id="wht-rate-EM" type="number" step="0.01" min="0" style="width:64px"> %</td>
+                <td class="num wht-b">0.00</td><td class="num"><b class="wht-w">0.00</b></td></tr>
+              <tr data-cat="PORT"><td><b>STORAGE / LIFT ON / LIFT OFF <span class="muted" style="font-weight:400">(1 ใบต่อ BL)</span></b></td><td class="num wht-c">0</td><td class="num wht-a">0.00</td>
+                <td><input id="wht-div-PORT" type="number" step="0.01" min="0" style="width:76px"></td>
+                <td><input id="wht-rate-PORT" type="number" step="0.01" min="0" style="width:64px"> %</td>
+                <td class="num wht-b">0.00</td><td class="num"><b class="wht-w">0.00</b></td></tr>
+              <tr style="background:#f1f5f9"><td><b>รวม</b></td><td class="num"><b id="wht-t-c">0</b></td><td class="num"><b id="wht-t-a">0.00</b></td>
+                <td></td><td></td><td class="num"><b id="wht-t-b">0.00</b></td><td class="num"><b id="wht-t-w">0.00</b></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="toolbar">
+          <b>รายการ (1 แถว = 1 ใบ)</b>
+          <select id="wht-filter">
+            <option value="">ทุกหมวด</option><option value="DO">DO</option>
+            <option value="EM">EXTRA MOVEMENT</option><option value="PORT">STORAGE / LIFT ON / LIFT OFF</option>
+          </select>
+          <span class="grow"></span>
+          <button id="wht-csv" class="btn btn-ghost btn-sm">⬇ ส่งออก CSV</button>
+        </div>
+        <div class="tablewrap">
+          <table class="inv-tbl">
+            <thead><tr><th class="num">#</th><th>วันที่ตรวจปล่อย</th><th>BL</th><th>VESSEL</th><th>รายละเอียด</th>
+              <th class="num">ยอดในชีต</th><th class="num">ฐานภาษี</th><th class="num">ยอดหัก</th></tr></thead>
+            <tbody id="wht-lines-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
     <section id="tab-receipt" class="hidden">
       <h3 class="sec">ใบเสร็จที่พนักงานส่งเข้ามา</h3>
       <p class="muted" style="margin:0 0 14px">
@@ -1006,10 +1063,10 @@ function enterApp(){
   $('brand-title').textContent = isAccount ? '🧾 ใบแจ้งหนี้' : (isManager ? '🗂️ แดชบอร์ด' : '🗂️ แดชบอร์ดผู้ดูแล');
 
   if(isAccount){
-    // เหลือเฉพาะ 2 เมนูของฝ่ายบัญชี
+    // เหลือเฉพาะเมนูของฝ่ายบัญชี (เข้างาน / ใบแจ้งหนี้ / ใบหัก ณ ที่จ่าย)
     Array.prototype.forEach.call(document.querySelectorAll('.navbtn'), function(btn){
       var tab = btn.getAttribute('data-tab');
-      btn.classList.toggle('hidden', tab!=='checkin' && tab!=='invoice');
+      btn.classList.toggle('hidden', tab!=='checkin' && tab!=='invoice' && tab!=='wht');
     });
   } else {
     // เมนูเข้างานมีเฉพาะผู้จัดการ (admin ไม่ต้องลงเวลา) และเปิดเป็นแท็บแรกให้เลย
@@ -1030,12 +1087,13 @@ Array.prototype.forEach.call(document.querySelectorAll('.navbtn'), function(t){
 });
 function switchTab(name){
   Array.prototype.forEach.call(document.querySelectorAll('.navbtn'), function(t){ t.classList.toggle('active', t.getAttribute('data-tab')===name); });
-  ['checkin','dash','attend','claim','settle','invoice','receipt','leave','emp','settings'].forEach(function(s){ $('tab-'+s).classList.toggle('hidden', s!==name); });
+  ['checkin','dash','attend','claim','settle','invoice','wht','receipt','leave','emp','settings'].forEach(function(s){ $('tab-'+s).classList.toggle('hidden', s!==name); });
   if(name==='checkin') initCheckin();   // ขอสิทธิ์ตำแหน่งเฉพาะตอนเปิดแท็บเข้างานจริง ๆ
   if(name==='claim') initClaimTab();    // โหลดใบเบิกของพนักงานตอนเปิดแท็บครั้งแรก
   if(name==='settle') initSettleTab();
   if(name==='receipt') initReceiptTab();
   if(name==='invoice') initInvoiceTab();
+  if(name==='wht') initWithholding();
   if(name==='settings') initSettingsTab();
   window.scrollTo(0,0);
 }

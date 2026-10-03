@@ -155,6 +155,21 @@ export const SERVICE_BRIDGE_INSPECTOR_FEE = 100;
 export const SERVICE_NO_CAR_PATTERN = /NO\s*-?\s*CAR/i;
 
 /**
+ * ใบหัก ณ ที่จ่าย (กระทำการแทน) — นับจากชีตงานขนส่งตามช่วงวันที่ตรวจปล่อย
+ * DO นับเฉพาะสายเรือ (ช่อง VESSEL) ที่ออกใบหักให้ — ในชีตเขียนว่า K-NOT / SEALS / M+R
+ */
+export const WHT_DO_VESSELS: { label: string; pattern: RegExp }[] = [
+  { label: 'KNOT GLOBAL', pattern: /K\s*-?\s*NOT/i },
+  { label: 'SEAL', pattern: /^\s*SEALS?\b/i },
+  { label: 'M+R', pattern: /M\s*\+\s*R/i }
+];
+/**
+ * ยอดในชีตเป็นยอดที่จ่ายจริงหลังหัก ณ ที่จ่ายแล้ว: ฐาน + VAT 7% − หัก 3% = ฐาน × 1.04
+ * (LIFT ON 1,040 = 1,000 + 70 − 30) ยอดหัก = ยอดในชีต ÷ 1.04 × 3% — หน้าเว็บแก้ตัวหาร/อัตราได้
+ */
+export const WHT_DEFAULT = { divisor: 1.04, rate: 0.03 } as const;
+
+/**
  * ผู้รับโอนที่ถูกต้องในสลิปโอนคืนบริษัท (ปิดบัญชีชิปปิ้ง)
  * สลิปจริงเขียนว่า "บจก. ชิป มี โลจิสติกส์" — เทียบแบบตัดช่องว่างทิ้ง
  * และรับ OCR อ่านเพี้ยนที่พบบ่อย (ชิป/ชิพ/ซิป) กับชื่อภาษาอังกฤษ
