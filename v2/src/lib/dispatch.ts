@@ -1,4 +1,5 @@
 import { saveInvoicePairs } from './invoice-pairs';
+import { serviceInvoiceData } from './service-invoices';
 import {
   acceptDocs, clearDocFix, createInvoiceBatch, flagDocsForFix, issueReceipts,
   listInvoiceBatches, listPendingDocs, listReceivables, matchReceivables, renameInvoiceBatch,
@@ -386,6 +387,11 @@ const handlers: Record<string, Handler> = {
   saveInvoiceBatch: async (body) => {
     const session = await guard(body, ACCOUNT_ROLES);
     return session.error || (body.kind === 'BOTH' ? saveInvoicePairs(body, session.user) : saveInvoiceBatch(body, session.user));
+  },
+  // ใบแจ้งหนี้ค่าบริการ (IN) — ดึงจากชีตงานขนส่งตามช่วงวันที่ อ่านอย่างเดียว ไม่บันทึกใบ
+  serviceInvoiceData: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || serviceInvoiceData(body);
   },
   listInvoices: async (body) => {
     const session = await guard(body, ACCOUNT_ROLES);

@@ -44,6 +44,10 @@
     return new Blob(chunks, {type:'application/pdf'});
   }
   function wrapLines(ctx,value,width){
+    // "\n" ในข้อความ = ขึ้นบรรทัดใหม่ตรงนั้น แล้วค่อยตัดคำในแต่ละบรรทัดตามความกว้าง
+    if(String(value||'').indexOf('\n')>=0){
+      return String(value).split('\n').reduce(function(all,part){ return all.concat(wrapLines(ctx,part,width)); },[]);
+    }
     var words=typeof Intl.Segmenter==='function'?Array.from(new Intl.Segmenter('th',{granularity:'word'}).segment(String(value||'')),function(s){return s.segment;}):Array.from(String(value||''));
     var lines=[],line='';
     words.forEach(function(word){
@@ -61,7 +65,8 @@
     ctx.font='13px "Sarabun", sans-serif';
     var pages=[],page=[],height=0;
     items.forEach(function(item,index){
-      var h=Math.max(28,Math.max(wrapLines(ctx,item.label,231).length,wrapLines(ctx,item.note,111).length)*17+10);
+      var labelLines=item.fit?String(item.label||'').split('\n').length:wrapLines(ctx,item.label,231).length;
+      var h=Math.max(28,Math.max(labelLines,wrapLines(ctx,item.note,111).length)*17+10);
       if(height+h>420&&page.length){pages.push(page);page=[];height=0;}
       page.push({item:item,height:h,no:index+1});height+=h;
     });
@@ -166,8 +171,10 @@
     text(String(invoice.issueDate).split('-').reverse().join('/'),619,hy[0],13);
     text('ใบแจ้งหนี้เลขที่',612,hy[1],13,false,'right');
     text(invoice.number,619,hy[1],13,true,'left',158);
-    text('B/L',612,hy[2],13,false,'right');
-    text(invoice.bl,619,hy[2],13,false,'left',158);
+    if(invoice.bl){
+      text('B/L',612,hy[2],13,false,'right');
+      text(invoice.bl,619,hy[2],13,false,'left',158);
+    }
     // "วันที่ตรวจปล่อย 26/08/2026 TRNS" — ประเภทงานย่อ (MSFZ / TRNS) ต่อท้ายวันที่ ไม่มีหัวข้อ Job Type แยก
     if(invoice.jobType||invoice.transportDate){
       var jobDate=invoice.transportDate?String(invoice.transportDate).split('-').reverse().join('/'):'';
@@ -184,7 +191,9 @@
       widths.forEach(function(w,j){ rule(xs[j],y,w,h); });
       if(item){
         text(entry.no,70.5,y+20,13,false,'center');
-        wrapped(item.label,110,y+20,231,17,13);
+        // fit = ชื่อรายการหลายบรรทัดที่แบ่งไว้แล้ว (ใบค่าบริการ) — ไม่ตัดคำซ้ำ บีบบรรทัดที่ยาวให้พอดีช่องแทน
+        if(item.fit) String(item.label||'').split('\n').forEach(function(line,li){ text(line,110,y+20+li*17,13,false,'left',231); });
+        else wrapped(item.label,110,y+20,231,17,13);
         text(item.qty||'',385.5,y+20,13,false,'center');
         text(item.unitPrice?money(item.unitPrice):'',521,y+20,13,false,'right');
         text(money(item.amount),646,y+20,13,false,'right');
@@ -195,7 +204,8 @@
       y+=h;
     }
     if(pageIndex===pageCount-1){
-      var totalRows=[['ค่าบริการรวม',invoice.subtotal],['ภาษีมูลค่าเพิ่ม 7%',invoice.kind==='V'?invoice.vat:null],['รวมเงินทั้งสิ้น',invoice.total],['หักภาษี ณ ที่จ่าย 3%',null],['รวมเงินที่ต้องชำระ',invoice.total]];
+      var wht=Number(invoice.withholding)>0?Number(invoice.withholding):null;
+      var totalRows=[['ค่าบริการรวม',invoice.subtotal],['ภาษีมูลค่าเพิ่ม 7%',invoice.kind==='V'?invoice.vat:null],['รวมเงินทั้งสิ้น',invoice.total],['หักภาษี ณ ที่จ่าย 3%',wht],['รวมเงินที่ต้องชำระ',wht?invoice.netTotal:invoice.total]];
       totalRows.forEach(function(row,i){
         var emphasized=i===2||i===4;
         rule(38,y,490,28,'#d9d9d9'); rule(528,y,125,28,'#d9d9d9'); rule(653,y,125,28,'#d9d9d9');
@@ -227,12 +237,75 @@
     var raw=atob(canvas.toDataURL('image/jpeg',.94).split(',')[1]);
     return {width:canvas.width,height:canvas.height,bytes:Uint8Array.from(raw,function(char){return char.charCodeAt(0);})};
   }
+  /**
+   * ใบสรุปจำนวนตู้ (ทั้งแบบนับตู้ และแบบค่าบริการเพิ่มเติม) — ตามไฟล์ตัวอย่างของฝ่ายบัญชี
+   * doc: { subtitle, monthLabel, date, rows:[{label, qty, note, highlight}], total, preparedBy,
+   *        customerName, customerAddress, customerTaxId, headers:[ลำดับ, รายการ, จำนวน, หมายเหตุ] }
+   */
+  var SUMMARY_ROWS=23;
+  function drawSummaryPage(doc, company, images, rows, startNo, pageIndex, pageCount){
+    var canvas=document.createElement('canvas'); canvas.width=1632; canvas.height=2112;
+    var ctx=canvas.getContext('2d'); ctx.scale(2,2);
+    ctx.fillStyle='#fff'; ctx.fillRect(0,0,816,1056); ctx.fillStyle='#111';
+    function text(value,x,y,size,bold,align,maxWidth){
+      ctx.font=(bold?'700 ':'')+(size||13)+'px "Sarabun", sans-serif';
+      ctx.textAlign=align||'left';
+      ctx.fillText(String(value==null?'':value),x,y,maxWidth||720);
+    }
+    function cell(x,y,w,h,fill){
+      if(fill){ ctx.fillStyle=fill; ctx.fillRect(x,y,w,h); ctx.fillStyle='#111'; }
+      ctx.strokeStyle='#333'; ctx.lineWidth=.7; ctx.strokeRect(x,y,w,h);
+    }
+    if(images[0]){ var r=Math.min(230/images[0].width,95/images[0].height); ctx.drawImage(images[0],408-images[0].width*r/2,30,images[0].width*r,images[0].height*r); }
+    text(company.name,408,148,14,true,'center');
+    text(company.address,408,165,13,true,'center');
+    text('เลขประจำตัวผู้เสียภาษี '+company.taxId,408,182,13,true,'center');
+    text('ใบสรุปจำนวนตู้',408,226,24,true,'center');
+    text('('+doc.subtitle+')',408,247,13,false,'center');
+    text(doc.monthLabel,408,265,13,false,'center');
+    text('วันที่',600,247,13,true,'left');
+    text(String(doc.date||'').split('-').reverse().join('/'),778,247,13,false,'right');
+    text('ชื่อลูกค้า',70,296,13,true);
+    text(doc.customerName,70,314,13);
+    text(doc.customerAddress,70,331,13);
+    text('เลขประจำตัวผู้เสียภาษี '+doc.customerTaxId,70,348,13);
+    var xs=[68,109,421,511], ws=[41,312,90,237], heads=doc.headers||['ลำดับ','รายการ (BL)','จำนวน','หมายเหตุ'];
+    var y=370, H=23.5, HEAD=52, BLUE='#3d85c6', YELLOW='#ffff00';
+    ws.forEach(function(w,i){ cell(xs[i],y,w,HEAD,BLUE); text(heads[i],xs[i]+w/2,y+31,13,true,'center',w-6); });
+    y+=HEAD;
+    rows.forEach(function(row,i){
+      var fill=row.highlight?YELLOW:null;
+      ws.forEach(function(w,j){ cell(xs[j],y,w,H,fill); });
+      text(startNo+i,xs[0]+ws[0]/2,y+17,13,false,'center');
+      text(row.label,xs[1]+5,y+17,13,false,'left',ws[1]-10);
+      text(row.qty,xs[2]+ws[2]/2,y+17,13,false,'center',ws[2]-6);
+      text(row.note||'',xs[3]+5,y+17,13,false,'left',ws[3]-10);
+      y+=H;
+    });
+    if(pageIndex===pageCount-1){
+      // แถวรวม: "รวม" กลางคอลัมน์ลำดับ+รายการ ยอดรวมกลางคอลัมน์จำนวน
+      cell(xs[0],y,ws[0]+ws[1],36,BLUE); cell(xs[2],y,ws[2],36,BLUE); cell(xs[3],y,ws[3],36,BLUE);
+      text('รวม',xs[0]+(ws[0]+ws[1])/2,y+23,13,true,'center');
+      text(doc.total,xs[2]+ws[2]/2,y+23,14,true,'center',ws[2]-6);
+      text('ผู้จัดทำ',70,y+82,13,true);
+      text('...........'+(doc.preparedBy||'')+'....................',112,y+82,13);
+    }
+    if(pageCount>1) text((pageIndex+1)+' / '+pageCount,778,1045,10,false,'right');
+    var raw=atob(canvas.toDataURL('image/jpeg',.94).split(',')[1]);
+    return {width:canvas.width,height:canvas.height,bytes:Uint8Array.from(raw,function(char){return char.charCodeAt(0);})};
+  }
+
   global.InvoicePDF = {
     create: async function(invoices,company,options){
       if(!invoices.length) throw new Error('ไม่มีใบแจ้งหนี้');
       await loadSarabun();
       var images=await Promise.all([loadImage(company.logoUrl),loadImage(company.stampUrl)]), pages=[];
       invoices.forEach(function(invoice){
+        if(invoice.kind==='SUMMARY'){
+          var list=invoice.rows||[], count=Math.max(1,Math.ceil(list.length/SUMMARY_ROWS));
+          for(var p=0;p<count;p++) pages.push(drawSummaryPage(invoice,company,images,list.slice(p*SUMMARY_ROWS,(p+1)*SUMMARY_ROWS),p*SUMMARY_ROWS+1,p,count));
+          return;
+        }
         var groups=paginate(invoice.items);
         for(var i=0;i<groups.length;i++) pages.push(drawPage(invoice,company,images,groups[i],i,groups.length,options));
       });

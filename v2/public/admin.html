@@ -207,6 +207,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="/invoice-pdf.js"></script>
 <script src="/invoice-workspace.js"></script>
+<script src="/service-invoice.js"></script>
 </head>
 <body>
 
@@ -546,6 +547,7 @@
         <button type="button" class="btn btn-ghost btn-sm inv-sub" data-sub="list">📄 ใบที่ออกแล้ว</button>
         <button type="button" class="btn btn-ghost btn-sm inv-sub" data-sub="wait">📮 รอลูกค้ารับเอกสาร</button>
         <button type="button" class="btn btn-ghost btn-sm inv-sub" data-sub="ar">💰 ลูกหนี้สำรองจ่ายคงค้าง</button>
+        <button type="button" class="btn btn-ghost btn-sm inv-sub" data-sub="svc">🧾 ใบแจ้งหนี้ค่าบริการ</button>
       </div>
 
       <!-- ---------- ออกใบใหม่ ---------- -->
@@ -643,6 +645,62 @@
         </div>
         <div id="wait-msg" class="muted" style="margin:0 2px 10px"></div>
         <div id="wait-body"><p class="muted">กำลังโหลด…</p></div>
+      </div>
+
+      <!-- ---------- ใบแจ้งหนี้ค่าบริการ (IN) จากชีตงานขนส่ง ---------- -->
+      <div id="inv-pane-svc" class="hidden">
+        <p class="muted" style="margin:0 0 12px">
+          ดึงงานจากชีตงานขนส่ง <b>MAESOT FREEZONE</b> และ <b>TRANSIT</b> ตามช่วงวันที่ตรวจปล่อย →
+          ใบสรุปจำนวนตู้ + ใบแจ้งหนี้ค่าบริการตรวจปล่อย (แยกตามไฟล์) และใบสรุป + ใบแจ้งหนี้ค่าบริการเพิ่มเติม
+          • ค่าบริการ VAT 7% หัก ณ ที่จ่าย 3% • ทำเป็น PDF อย่างเดียว ไม่บันทึกใบลงระบบ
+        </p>
+        <div class="toolbar">
+          <label style="display:flex;align-items:center;gap:6px">วันที่ตรวจปล่อย ตั้งแต่ <input id="svc-from" type="date"></label>
+          <label style="display:flex;align-items:center;gap:6px">ถึง <input id="svc-to" type="date"></label>
+          <button id="svc-load" class="btn btn-primary btn-sm">ดึงข้อมูล</button>
+        </div>
+        <div class="toolbar" style="margin-top:-6px">
+          <label style="display:flex;align-items:center;gap:6px">วันที่ออกใบแจ้งหนี้ <input id="svc-issue" type="date"></label>
+          <label style="display:flex;align-items:center;gap:6px">ครั้งที่ <input id="svc-round" type="number" min="1" max="9" style="width:64px"></label>
+          <label style="display:flex;align-items:center;gap:6px">เลขที่เริ่มต้น <input id="svc-start" type="text" class="mono" style="width:130px"></label>
+          <label style="display:flex;align-items:center;gap:6px">ค่าบริการ/ตู้ <input id="svc-rate-c" type="number" min="0" style="width:90px"></label>
+          <label style="display:flex;align-items:center;gap:6px">RORO/ตู้ <input id="svc-rate-r" type="number" min="0" style="width:90px"></label>
+        </div>
+        <div id="svc-start-warn" style="color:#b45309;font-size:12px;margin:-4px 2px 6px"></div>
+        <div id="svc-msg" class="muted" style="margin:0 2px 10px">เลือกช่วงวันที่แล้วกด "ดึงข้อมูล"</div>
+
+        <div id="svc-docs-wrap" class="hidden">
+          <div class="toolbar">
+            <b>เอกสารที่จะออก</b><span class="grow"></span>
+            <button id="svc-pdf-all" class="btn btn-primary btn-sm">📄 PDF ทั้งชุด</button>
+          </div>
+          <div class="tablewrap" style="margin-bottom:16px">
+            <table class="inv-tbl">
+              <thead><tr><th>เอกสาร</th><th>เลขที่</th><th class="num">ยอด</th><th></th></tr></thead>
+              <tbody id="svc-docs-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="svc-extra-wrap" class="hidden">
+          <div class="toolbar">
+            <b>ค่าบริการเพิ่มเติม</b>
+            <span class="muted" style="font-size:12px">ดึงจากช่องหมายเหตุ (พรบ. / ยางเกิน / สำแดงเท็จ / ค่าน๊อคประตู / แลก ER) และค่านายตรวจของงาน RORO — แก้ไข ลบ หรือเพิ่มเองได้ก่อนทำ PDF</span>
+            <span class="grow"></span>
+            <button id="svc-extra-add" class="btn btn-ghost btn-sm">+ เพิ่มรายการ</button>
+          </div>
+          <div class="tablewrap">
+            <table class="inv-tbl">
+              <thead><tr><th class="num">#</th><th>วันที่ตรวจปล่อย</th><th>รายการ</th><th>BL</th><th>ยอด</th><th>จากหมายเหตุ</th><th></th></tr></thead>
+              <tbody id="svc-extra-body"></tbody>
+            </table>
+          </div>
+          <datalist id="svc-labels">
+            <option value="ค่าบริการนายตรวจ (RORO)"><option value="ค่าบริการ พรบ."><option value="ยางเกิน">
+            <option value="สำแดงเท็จ"><option value="ค่าน๊อคประตูออกจากท่า"><option value="ค่าแลก ER">
+            <option value="ค่าบริการนายตรวจ (ข้ามสะพาน)">
+          </datalist>
+        </div>
       </div>
 
       <!-- ---------- ลูกหนี้สำรองจ่ายคงค้าง ---------- -->
@@ -2750,7 +2808,9 @@ Array.prototype.forEach.call(document.querySelectorAll('.inv-sub'), function(btn
     $('inv-pane-list').classList.toggle('hidden', sub!=='list');
     $('inv-pane-wait').classList.toggle('hidden', sub!=='wait');
     $('inv-pane-ar').classList.toggle('hidden', sub!=='ar');
+    $('inv-pane-svc').classList.toggle('hidden', sub!=='svc');
     if(sub==='ar') loadReceivables();
+    if(sub==='svc') initServiceInvoice();
     if(sub==='wait') loadPendingDocs();
   });
 });
