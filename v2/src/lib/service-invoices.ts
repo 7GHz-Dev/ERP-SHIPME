@@ -43,7 +43,8 @@ export function extrasFromRow(row: JobRow) {
   if (isRoro(row.containerNo) && Number(row.inspectorFee) > 0) {
     out.push({ ...base, label: SERVICE_RORO_INSPECTOR_LABEL, amount: round2(row.inspectorFee), segment: 'ค่านายตรวจ (RORO)' });
   }
-  const segments = String(row.note || '').split('//').map((s) => s.trim()).filter(Boolean);
+  // * ในหมายเหตุเป็นเครื่องหมายนับใบหัก ณ ที่จ่าย (ดู withholding.ts) ไม่ใช่ส่วนของยอด — "98.75**" ต้องอ่านได้ 98.75
+  const segments = String(row.note || '').replace(/\*/g, '').split('//').map((s) => s.trim()).filter(Boolean);
   const written = segments.reduce((sum, s) => sum + (trailingAmount(s) || 0), 0);
   for (const segment of segments) {
     const rule = SERVICE_EXTRA_RULES.find((r) => r.pattern.test(segment));

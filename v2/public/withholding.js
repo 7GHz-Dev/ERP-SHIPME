@@ -11,7 +11,7 @@
  */
 var whtState = { ready:false, data:null, filter:'' };
 var WHT_CATS = [
-  { key:'DO', label:'DO (KNOT GLOBAL / SEAL / M+R) ตามวันที่จ่าย' },
+  { key:'DO', label:'DO (KNOT GLOBAL / SEAL / M+R / IFOUR FREIGHT) ตามวันที่จ่าย' },
   { key:'EM', label:'EXTRA MOVEMENT' },
   { key:'PORT', label:'STORAGE / LIFT ON / LIFT OFF' }
 ];
@@ -61,7 +61,8 @@ function whtLoad(){
       if(!$('wht-div-'+c.key).value) $('wht-div-'+c.key).value = res.defaults.divisor;
       if(!$('wht-rate-'+c.key).value) $('wht-rate-'+c.key).value = whtRound2(res.defaults.rate*100);
     });
-    $('wht-msg').textContent = 'ช่วงวันที่ '+whtDmy(res.from)+' - '+whtDmy(res.to)+' • '+res.lines.length+' ใบ'
+    var certs = res.lines.reduce(function(s, l){ return s+(l.count||1); }, 0);
+    $('wht-msg').textContent = 'ช่วงวันที่ '+whtDmy(res.from)+' - '+whtDmy(res.to)+' • '+certs+' ใบ'
       + (res.doTabs && res.doTabs.length ? (' • ชีตค่าแลกดีโอ: '+res.doTabs.join(', ')) : '');
     $('wht-result').classList.remove('hidden');
     whtRenderDoWarn(res);
@@ -102,14 +103,15 @@ function whtRenderSummary(){
   $('wht-sum-body').querySelectorAll('tr[data-cat]').forEach(function(tr){
     var cat = tr.getAttribute('data-cat');
     var list = lines.filter(function(l){ return l.category === cat; });
+    var count = list.reduce(function(s, l){ return s+(l.count||1); }, 0);
     var amount = whtRound2(list.reduce(function(s, l){ return s+l.amount; }, 0));
     var base = whtRound2(list.reduce(function(s, l){ return s+whtBase(l); }, 0));
     var wht = whtRound2(list.reduce(function(s, l){ return s+whtAmount(l); }, 0));
-    tr.querySelector('.wht-c').textContent = list.length;
+    tr.querySelector('.wht-c').textContent = count;
     tr.querySelector('.wht-a').textContent = whtMoney(amount);
     tr.querySelector('.wht-b').textContent = whtMoney(base);
     tr.querySelector('.wht-w').textContent = whtMoney(wht);
-    tCount += list.length; tAmount += amount; tBase += base; tWht += wht;
+    tCount += count; tAmount += amount; tBase += base; tWht += wht;
   });
   $('wht-t-c').textContent = tCount;
   $('wht-t-a').textContent = whtMoney(tAmount);
@@ -124,7 +126,7 @@ function whtRenderLines(){
   $('wht-lines-body').innerHTML = lines.length ? lines.map(function(l, i){
     return '<tr><td class="num">'+(i+1)+'</td><td>'+esc(whtDmy(l.date))+'<div class="sub">'+esc(l.source)+'</div></td>'
       + '<td class="mono">'+esc(l.bl)+'</td><td>'+esc(l.vessel||'—')+'</td>'
-      + '<td>'+esc(l.detail)+'</td>'
+      + '<td>'+esc(l.detail)+((l.count||1)>1?' <span class="pill pending">'+l.count+' ใบ</span>':'')+'</td>'
       + '<td class="num">'+whtMoney(l.amount)+'</td><td class="num">'+whtMoney(whtBase(l))+'</td>'
       + '<td class="num"><b>'+whtMoney(whtAmount(l))+'</b></td></tr>';
   }).join('') : '<tr><td colspan="8" class="muted" style="padding:14px">ไม่มีรายการ</td></tr>';
@@ -135,11 +137,11 @@ function whtExport(){
   if(!d || !d.lines.length){ $('wht-msg').textContent = 'ยังไม่มีข้อมูลให้ส่งออก'; return; }
   var catLabel = {}; WHT_CATS.forEach(function(c){ catLabel[c.key] = c.label; });
   var rows = d.lines.map(function(l, i){
-    return [i+1, catLabel[l.category], whtDmy(l.date), l.source, l.bl, l.vessel, l.detail,
+    return [i+1, catLabel[l.category], whtDmy(l.date), l.source, l.bl, l.vessel, l.detail, l.count||1,
             l.amount, whtBase(l), whtAmount(l)];
   });
   downloadCSV('withholding_'+d.from+'_'+d.to+'.csv',
-    ['ลำดับ','หมวด','วันที่ (DO = วันที่จ่าย)','ที่มา','BL','VESSEL','รายละเอียด','ยอดในชีต','ฐานภาษี','ยอดหัก ณ ที่จ่าย'], rows);
+    ['ลำดับ','หมวด','วันที่ (DO = วันที่จ่าย)','ที่มา','BL','VESSEL','รายละเอียด','จำนวนใบ','ยอดในชีต','ฐานภาษี','ยอดหัก ณ ที่จ่าย'], rows);
 }
 
 // ตัวหาร/อัตราเปลี่ยน = คิดยอดใหม่ทั้งหน้า (ผูกครั้งเดียวตอนโหลดไฟล์ได้ เพราะเป็นแค่ฟังก์ชัน)

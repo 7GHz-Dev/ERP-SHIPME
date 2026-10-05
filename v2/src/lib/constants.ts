@@ -161,8 +161,15 @@ export const SERVICE_NO_CAR_PATTERN = /NO\s*-?\s*CAR/i;
 export const WHT_DO_VESSELS: { label: string; pattern: RegExp }[] = [
   { label: 'KNOT GLOBAL', pattern: /K\s*-?\s*NOT/i },
   { label: 'SEAL', pattern: /^\s*SEALS?\b/i },
-  { label: 'M+R', pattern: /M\s*\+\s*R/i }
+  { label: 'M+R', pattern: /M\s*\+\s*R/i },
+  { label: 'IFOUR FREIGHT', pattern: /I\s*-?\s*FOUR/i }
 ];
+/**
+ * LIFT ON ต่ำกว่า 1,000 (เช่น 716.90) ไม่ออกใบหัก — ใช้กับงานตรวจปล่อยถึงสิ้นเดือน ก.ย. 2569
+ * ตั้งแต่ ต.ค. 2569 นับทุกยอด
+ */
+export const WHT_LIFT_ON_MIN = 1000;
+export const WHT_LIFT_ON_MIN_UNTIL = '2026-09-30';
 /**
  * ยอดในชีตเป็นยอดที่จ่ายจริงหลังหัก ณ ที่จ่ายแล้ว: ฐาน + VAT 7% − หัก 3% = ฐาน × 1.04
  * (LIFT ON 1,040 = 1,000 + 70 − 30) ยอดหัก = ยอดในชีต ÷ 1.04 × 3% — หน้าเว็บแก้ตัวหาร/อัตราได้
