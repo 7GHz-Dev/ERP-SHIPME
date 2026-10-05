@@ -2,6 +2,7 @@ import { saveInvoicePairs } from './invoice-pairs';
 import { serviceInvoiceData } from './service-invoices';
 import { withholdingData } from './withholding';
 import { shippingIncomeData } from './shipping-income';
+import { shippingReconcileData } from './shipping-reconcile';
 import {
   acceptDocs, clearDocFix, createInvoiceBatch, flagDocsForFix, issueReceipts,
   listInvoiceBatches, listPendingDocs, listReceivables, matchReceivables, renameInvoiceBatch,
@@ -393,6 +394,11 @@ const handlers: Record<string, Handler> = {
   // ใบแจ้งหนี้ค่าบริการ (IN) — ดึงจากชีตงานขนส่งตามช่วงวันที่ อ่านอย่างเดียว ไม่บันทึกใบ
   // ใบหัก ณ ที่จ่าย (กระทำการแทน) — นับจากชีตงานขนส่งตามช่วงวันที่ อ่านอย่างเดียว
   // รายงานรายได้ชิปปิ้ง — แยกตามชื่อชิปปิ้งในชีตงานขนส่ง อ่านอย่างเดียว
+  // กระทบยอดชิปปิ้ง — ชีตงานขนส่งเทียบใบเบิก/ใบปิดบัญชี อ่านอย่างเดียว
+  shippingReconcileData: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || shippingReconcileData(body);
+  },
   shippingIncomeData: async (body) => {
     const session = await guard(body, ACCOUNT_ROLES);
     return session.error || shippingIncomeData(body);

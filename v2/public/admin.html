@@ -210,6 +210,7 @@
 <script src="/service-invoice.js"></script>
 <script src="/withholding.js"></script>
 <script src="/shipping-income.js"></script>
+<script src="/shipping-reconcile.js"></script>
 </head>
 <body>
 
@@ -231,6 +232,7 @@
     <button class="navbtn" data-tab="invoice">ใบแจ้งหนี้</button>
     <button class="navbtn" data-tab="wht">ใบหัก ณ ที่จ่าย</button>
     <button class="navbtn" data-tab="income">รายงานรายได้ชิปปิ้ง</button>
+    <button class="navbtn" data-tab="reconcile">กระทบยอดชิปปิ้ง</button>
     <button class="navbtn" data-tab="receipt">ใบเสร็จ</button>
     <button class="navbtn" data-tab="leave">การลา</button>
     <button class="navbtn" data-tab="emp">พนักงาน</button>
@@ -832,6 +834,31 @@
       </div>
     </section>
 
+    <!-- ---------- กระทบยอดชิปปิ้ง ---------- -->
+    <section id="tab-reconcile" class="hidden">
+      <h2 style="margin:0 0 6px">กระทบยอดชิปปิ้ง</h2>
+      <p class="muted" style="margin:0 0 14px">
+        ค่าใช้จ่ายในชีตงานขนส่ง <b>MAESOT FREEZONE</b> และ <b>TRANSIT</b> แยกตามชื่อชิปปิ้ง เทียบกับใบเบิก / ใบปิดบัญชี ต่อวันที่ตรวจปล่อย —
+        <b>ไม่นับ DO, DEM, ค่านายตรวจ, ค่า พรบ. และค่าบริการ พรบ.</b> •
+        ค่าบริการเพิ่มเติม(ฟรีโซน) ไม่มีในชีต จึงใช้ยอดจากใบปิดบัญชีบวกก่อนเทียบ •
+        แถวสีแดง = ยอดไม่ตรง กดแถวเพื่อดูราย BL
+      </p>
+      <div class="toolbar">
+        <label style="display:flex;align-items:center;gap:6px">วันที่ตรวจปล่อย ตั้งแต่ <input id="rec-from" type="date"></label>
+        <label style="display:flex;align-items:center;gap:6px">ถึง <input id="rec-to" type="date"></label>
+        <button id="rec-load" class="btn btn-primary btn-sm">ดึงข้อมูล</button>
+      </div>
+      <div id="rec-msg" class="muted" style="margin:0 2px 12px">เลือกช่วงวันที่แล้วกด "ดึงข้อมูล"</div>
+      <div id="rec-result" class="hidden">
+        <div class="toolbar">
+          <label class="invl-flt" style="flex:0 0 auto"><input type="checkbox" id="rec-only-diff"> แสดงเฉพาะวันที่ไม่ตรง</label>
+          <span class="grow"></span>
+          <button id="rec-csv" class="btn btn-ghost btn-sm">⬇ CSV</button>
+        </div>
+        <div id="rec-body"></div>
+      </div>
+    </section>
+
     <section id="tab-receipt" class="hidden">
       <h3 class="sec">ใบเสร็จที่พนักงานส่งเข้ามา</h3>
       <p class="muted" style="margin:0 0 14px">
@@ -1099,10 +1126,10 @@ function enterApp(){
   $('brand-title').textContent = isAccount ? '🧾 ใบแจ้งหนี้' : (isManager ? '🗂️ แดชบอร์ด' : '🗂️ แดชบอร์ดผู้ดูแล');
 
   if(isAccount){
-    // เหลือเฉพาะเมนูของฝ่ายบัญชี (เข้างาน / ใบแจ้งหนี้ / ใบหัก ณ ที่จ่าย / รายงานรายได้ชิปปิ้ง)
+    // เหลือเฉพาะเมนูของฝ่ายบัญชี (เข้างาน / ใบแจ้งหนี้ / ใบหัก ณ ที่จ่าย / รายงานรายได้ชิปปิ้ง / กระทบยอดชิปปิ้ง)
     Array.prototype.forEach.call(document.querySelectorAll('.navbtn'), function(btn){
       var tab = btn.getAttribute('data-tab');
-      btn.classList.toggle('hidden', tab!=='checkin' && tab!=='invoice' && tab!=='wht' && tab!=='income');
+      btn.classList.toggle('hidden', tab!=='checkin' && tab!=='invoice' && tab!=='wht' && tab!=='income' && tab!=='reconcile');
     });
   } else {
     // เมนูเข้างานมีเฉพาะผู้จัดการ (admin ไม่ต้องลงเวลา) และเปิดเป็นแท็บแรกให้เลย
@@ -1123,7 +1150,7 @@ Array.prototype.forEach.call(document.querySelectorAll('.navbtn'), function(t){
 });
 function switchTab(name){
   Array.prototype.forEach.call(document.querySelectorAll('.navbtn'), function(t){ t.classList.toggle('active', t.getAttribute('data-tab')===name); });
-  ['checkin','dash','attend','claim','settle','invoice','wht','income','receipt','leave','emp','settings'].forEach(function(s){ $('tab-'+s).classList.toggle('hidden', s!==name); });
+  ['checkin','dash','attend','claim','settle','invoice','wht','income','reconcile','receipt','leave','emp','settings'].forEach(function(s){ $('tab-'+s).classList.toggle('hidden', s!==name); });
   if(name==='checkin') initCheckin();   // ขอสิทธิ์ตำแหน่งเฉพาะตอนเปิดแท็บเข้างานจริง ๆ
   if(name==='claim') initClaimTab();    // โหลดใบเบิกของพนักงานตอนเปิดแท็บครั้งแรก
   if(name==='settle') initSettleTab();
@@ -1131,6 +1158,7 @@ function switchTab(name){
   if(name==='invoice') initInvoiceTab();
   if(name==='wht') initWithholding();
   if(name==='income') initShippingIncome();
+  if(name==='reconcile') initShippingReconcile();
   if(name==='settings') initSettingsTab();
   window.scrollTo(0,0);
 }
