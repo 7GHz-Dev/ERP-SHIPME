@@ -10,7 +10,13 @@ export const preferredRegion = ['sin1'];
 // ที่ผู้ใช้อ่านไม่รู้เรื่อง แทนข้อความบอกสาเหตุจริง — เผื่อเวลาให้มากกว่านั้น
 export const maxDuration = 60;
 
-const noStore = { 'cache-control': 'no-store' };
+// DocScan (คนละโดเมน) เรียก API ด้วย ticket — ทุก action ยังต้องมี token หรือ ticket เอง
+// และเบราว์เซอร์ส่ง text/plain จึงไม่มี preflight; เปิด origin ไว้ให้อ่านผลลัพธ์ได้
+const noStore = { 'cache-control': 'no-store', 'access-control-allow-origin': '*' };
+
+export async function OPTIONS() {
+  return new Response(null, { status: 204, headers: { ...noStore, 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-allow-headers': 'content-type' } });
+}
 
 export async function GET() {
   return NextResponse.json(

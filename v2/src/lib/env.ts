@@ -78,5 +78,9 @@ export const env = {
   // กุญแจให้ Apps Script ในชีตงานขนส่งยิงข้อมูลเข้ามาได้ (เว้นว่าง = ปิดรับ sync)
   transportSyncToken: (process.env.TRANSPORT_SYNC_TOKEN || '').trim(),
   // ถังของ Supabase Storage — ตั้งเป็น private ทั้งหมด แล้วเข้าถึงผ่าน signed URL เท่านั้น
-  bucket: process.env.SUPABASE_BUCKET || 'uploads'
+  bucket: process.env.SUPABASE_BUCKET || 'uploads',
+  /** แอป DocScan (คนละลิงก์กับ ERP) — หน้าปิดบัญชีเปิดไปถ่ายเอกสารตรวจปล่อย */
+  docscanUrl: (process.env.DOCSCAN_URL || 'https://docscan-shipme.vercel.app').replace(/\/+$/, ''),
+  /** กุญแจลงลายเซ็น ticket ของ DocScan — ไม่ตั้งก็ได้ ระบบใช้ค่าที่ได้จาก DATABASE_URL แทน */
+  scanTicketSecret: process.env.SCAN_TICKET_SECRET || ''
 } as const;

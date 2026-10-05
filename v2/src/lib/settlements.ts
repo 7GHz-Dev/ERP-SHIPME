@@ -1,4 +1,5 @@
 import { and, desc, eq, ne, sql } from 'drizzle-orm';
+import { inspectionFileCount, inspectionFilesFor } from './inspection';
 import { db } from '@/db';
 import { claims, settlements } from '@/db/schema';
 import { listClaims } from './claims';
@@ -356,7 +357,8 @@ export async function listSettlements(username: string | null = null, limit = 50
     ? await db.select().from(settlements).where(eq(settlements.username, username))
         .orderBy(desc(settlements.updatedAt)).limit(limit)
     : await db.select().from(settlements).orderBy(desc(settlements.updatedAt)).limit(limit);
-  return rows.map(settlementRow);
+  const files = await inspectionFilesFor(rows);
+  return rows.map((row) => ({ ...settlementRow(row), inspectionFiles: files.get(`${row.username.toLowerCase()}|${row.inspectDate}`) || [] }));
 }
 
 export async function saveSettlement(
@@ -425,6 +427,8 @@ export async function saveSettlement(
     .where(and(eq(settlements.username, user.username), eq(settlements.inspectDate, inspectDate)))
     .limit(1);
   if (duplicate) return { ok: false, error: 'settlement_date_exists', record: settlementRow(duplicate) };
+  // ใบใหม่ต้องแนบหลักฐานการตรวจปล่อย (ไฟล์จาก DocScan หรือแนบเอง) ของวันนั้นก่อน — ใบเก่าที่แก้ไขไม่บังคับ
+  if (!(await inspectionFileCount(user.username, inspectDate))) return { ok: false, error: 'inspection_file_required' };
 
   const claim = await claimedTotal(user.username, inspectDate);
   const balance = round2(claim.total - totalExpense);

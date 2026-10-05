@@ -433,6 +433,20 @@
         <button id="st-add" class="cl-add hidden" style="width:100%;padding:12px">＋ เพิ่มรายการเอง (กรณีไม่มีในชีตงานขนส่ง)</button>
       </div>
 
+      <!-- หลักฐานการตรวจปล่อย: PDF จากแอป DocScan (ถ่ายหน้าเอกสารตรวจปล่อยรวมเป็นไฟล์เดียว) หรือแนบไฟล์เอง -->
+      <div class="card" id="st-insp-card">
+        <h3 style="margin:0 0 4px; font-size:16px">4) หลักฐานการตรวจปล่อย <span style="color:var(--err)">*</span></h3>
+        <p class="muted" style="margin:0 0 12px">ถ่ายรูปหน้าเอกสารที่ตรวจปล่อยด้วยแอป DocScan แล้วกด "ส่งเข้าใบปิดบัญชี" ระบบจะรวมเป็นไฟล์ PDF แนบให้ — ใบปิดบัญชีใหม่ต้องมีอย่างน้อย 1 ไฟล์</p>
+        <div id="st-insp-status" class="status wait">เลือกวันที่ตรวจปล่อยก่อน</div>
+        <div id="st-insp-list"></div>
+        <div id="st-insp-actions" class="hidden">
+          <button type="button" id="st-insp-scan" class="btn btn-primary" style="margin-bottom:8px">📷 สแกนเอกสารด้วย DocScan</button>
+          <button type="button" id="st-insp-attach" class="btn btn-ghost">📎 แนบไฟล์เอง (PDF / รูป)</button>
+          <input id="st-insp-file" type="file" accept="application/pdf,.pdf,image/jpeg,image/png" multiple class="hidden">
+          <div id="st-insp-link" class="muted hidden" style="margin-top:8px"></div>
+        </div>
+      </div>
+
       <!-- ขั้นที่ 4: สรุป -->
       <div class="card" id="st-sum-card">
         <div class="cl-sum"><div style="font-weight:700">รวมค่าใช้จ่าย</div><div><span class="n" id="st-expense">0</span> บาท</div></div>
@@ -787,6 +801,9 @@ var ERR_TH = {
   slip_ocr_rate:'บริการ OCR เต็มชั่วคราว — รอสักครู่แล้วลองอีกครั้ง',
   slip_ocr_failed:'อ่านสลิปไม่สำเร็จ',
   slip_ocr_empty:'อ่านข้อความจากรูปสลิปไม่ได้',
+  inspection_file_required:'ต้องแนบหลักฐานการตรวจปล่อยของวันนี้ก่อน (สแกนด้วย DocScan หรือแนบไฟล์เอง)',
+  file_not_found:'ไม่พบไฟล์นี้ (อาจถูกลบไปแล้ว)',
+  too_large:'ไฟล์ใหญ่เกิน 25MB',
 };
 function errTH(code){ return ERR_TH[code] || ('เกิดข้อผิดพลาด: '+code); }
 
@@ -2372,7 +2389,109 @@ function newSettleForm(rec){
   renderBlPicker();
   renderSettleRows();
   updateSettleSummary();
+  loadInspFiles();
 }
+
+// ---------- หลักฐานการตรวจปล่อย (DocScan) ----------
+// ไฟล์ผูกกับ "พนักงาน + วันที่ตรวจปล่อย" (ไม่ใช่ id ใบปิดบัญชี) จึงแนบก่อนบันทึกใบได้
+// DocScan อยู่คนละลิงก์ — เปิดเป็นแท็บใหม่พร้อม ticket ส่งไฟล์เสร็จแล้วกลับมาแท็บนี้ รายการรีเฟรชเอง
+var insp = { date:'', files:[], loading:false, loaded:false, seq:0 };
+var INSP_MAX = 25*1024*1024;
+function fmtSize(n){ n=Number(n)||0; return n>=1048576 ? (n/1048576).toFixed(1)+' MB' : Math.max(1,Math.round(n/1024))+' KB'; }
+
+function loadInspFiles(){
+  var f=settle.form, date=f ? f.inspectDate : '';
+  if(date!==insp.date){ insp.files=[]; insp.loaded=false; }
+  insp.date=date;
+  renderInsp();
+  if(!date) return Promise.resolve();
+  var my=++insp.seq;
+  insp.loading=true; renderInsp();
+  return api({ action:'listInspectionFiles', token:state.token, inspectDate:date }).then(function(res){
+    if(my!==insp.seq) return;
+    insp.loading=false;
+    if(!res.ok){ $('st-insp-status').className='status err'; $('st-insp-status').textContent='โหลดรายการไฟล์ไม่สำเร็จ: '+errTH(res.error); return; }
+    insp.files=res.files||[]; insp.loaded=true;
+    renderInsp(); updateSettleSummary();
+  }).catch(function(){ if(my===insp.seq){ insp.loading=false; renderInsp(); } });
+}
+
+function renderInsp(){
+  var date=insp.date, st=$('st-insp-status');
+  $('st-insp-actions').classList.toggle('hidden', !date);
+  if(!date){ st.className='status wait'; st.textContent='เลือกวันที่ตรวจปล่อยก่อน'; $('st-insp-list').innerHTML=''; return; }
+  if(insp.loading && !insp.loaded){ st.className='status wait'; st.innerHTML='<span class="spinner"></span> กำลังโหลดไฟล์หลักฐาน…'; }
+  else if(insp.files.length){ st.className='status ok'; st.textContent='✅ แนบหลักฐานแล้ว '+insp.files.length+' ไฟล์'; }
+  else { st.className='status wait'; st.textContent='ยังไม่มีไฟล์หลักฐานของวันที่ '+fmtD(date); }
+  $('st-insp-list').innerHTML=insp.files.map(function(x){
+    var meta=[x.pages?x.pages+' หน้า':'', fmtSize(x.size), x.source==='docscan'?'DocScan':'แนบเอง'].filter(Boolean).join(' • ');
+    return '<div class="slip-row" style="align-items:center;border-bottom:1px solid #e2e8f0;padding:8px 0">'+
+      '<span style="min-width:0;flex:1"><a href="'+esc(x.url)+'" target="_blank" rel="noopener" style="word-break:break-all">📄 '+esc(x.fileName)+'</a>'+
+      '<br><span class="muted" style="font-size:12px">'+esc(meta)+'</span></span>'+
+      '<button type="button" class="btn btn-ghost" data-insp-del="'+esc(x.id)+'" style="width:auto;padding:6px 12px;margin:0">ลบ</button></div>';
+  }).join('');
+}
+
+$('st-insp-list').addEventListener('click', function(e){
+  var b=e.target.closest('[data-insp-del]'); if(!b) return;
+  if(!confirm('ลบไฟล์หลักฐานนี้?')) return;
+  b.disabled=true;
+  api({ action:'deleteInspectionFile', token:state.token, id:b.getAttribute('data-insp-del') }).then(function(res){
+    if(!res.ok){ b.disabled=false; toast('ลบไม่สำเร็จ: '+errTH(res.error)); return; }
+    loadInspFiles();
+  });
+});
+
+// เปิด DocScan: เปิดแท็บเปล่าไว้ก่อนในจังหวะกดปุ่ม (ไม่งั้นเบราว์เซอร์มือถือบล็อก popup) แล้วค่อยใส่ลิงก์
+$('st-insp-scan').addEventListener('click', function(){
+  var date=insp.date; if(!date){ toast('เลือกวันที่ตรวจปล่อยก่อน'); return; }
+  var w=null;
+  try{ w=window.open('', '_blank'); }catch(e){}
+  var b=this; b.disabled=true;
+  api({ action:'createScanTicket', token:state.token, inspectDate:date, returnUrl:location.origin+location.pathname }).then(function(res){
+    b.disabled=false;
+    if(!res.ok){ if(w) w.close(); toast(errTH(res.error)); return; }
+    if(w && !w.closed){ w.location.href=res.url; return; }
+    // ถูกบล็อก popup — ให้กดลิงก์เอง
+    var el=$('st-insp-link');
+    el.innerHTML='เปิดแท็บใหม่ไม่ได้ — <a href="'+esc(res.url)+'" target="_blank" rel="noopener"><b>แตะที่นี่เพื่อเปิด DocScan</b></a>';
+    el.classList.remove('hidden');
+  }).catch(function(){ b.disabled=false; if(w) w.close(); toast('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้'); });
+});
+
+$('st-insp-attach').addEventListener('click', function(){ $('st-insp-file').click(); });
+$('st-insp-file').addEventListener('change', function(){
+  var files=Array.prototype.slice.call(this.files||[]); this.value='';
+  var date=insp.date; if(!date || !files.length) return;
+  var st=$('st-insp-status'), i=0;
+  function next(){
+    if(i>=files.length){ toast('แนบไฟล์หลักฐานแล้ว'); return loadInspFiles(); }
+    var file=files[i++];
+    var ext=/pdf$/i.test(file.type)||/\.pdf$/i.test(file.name) ? 'pdf' : (/png$/i.test(file.type) ? 'png' : (/jpe?g$/i.test(file.type) ? 'jpg' : ''));
+    if(!ext){ toast('รองรับเฉพาะ PDF / JPG / PNG: '+file.name); return next(); }
+    if(file.size>INSP_MAX){ toast('ไฟล์ใหญ่เกิน 25MB: '+file.name); return next(); }
+    st.className='status wait'; st.innerHTML='<span class="spinner"></span> กำลังอัปโหลด '+esc(file.name)+'…';
+    return api({ action:'signInspectionUpload', token:state.token, inspectDate:date, ext:ext }).then(function(res){
+      if(!res.ok) throw res;
+      return fetch(res.uploadUrl, { method:'PUT', headers:{ 'Content-Type': file.type || 'application/octet-stream' }, body:file }).then(function(r){
+        if(!r.ok) throw { ok:false, error:'upload_failed' };
+        return api({ action:'registerInspectionFile', token:state.token, inspectDate:date, key:res.key, name:file.name, size:file.size });
+      });
+    }).then(function(res){
+      if(!res.ok) throw res;
+      return next();
+    }).catch(function(err){
+      toast('แนบไฟล์ไม่สำเร็จ: '+errTH((err&&err.error)||'upload_failed'), 4000);
+      loadInspFiles();
+    });
+  }
+  next();
+});
+
+// กลับมาจากแท็บ DocScan = ดึงรายการไฟล์ใหม่
+document.addEventListener('visibilitychange', function(){
+  if(document.visibilityState==='visible' && state.token && settle.form && insp.date) loadInspFiles();
+});
 
 function cloneCosts(src){
   var out={}; src=src||{};
@@ -2460,6 +2579,7 @@ function onSettleDateChange(){
   $('st-reload').classList.toggle('hidden', !f.inspectDate);
   f.rows=[]; f.available=[]; f.cache={};      // เปลี่ยนวันที่ = เริ่มเลือก BL ใหม่
   renderSettleRows(); updateSettleSummary();
+  loadInspFiles();
   if(!f.inspectDate){ renderBlPicker(); return; }
   fetchBL(false);
 }
@@ -2772,6 +2892,8 @@ function updateSettleSummary(){
       if(!sp.ok) miss.push(sp.why);
     }
   }
+  // ใบใหม่ต้องมีไฟล์หลักฐานการตรวจปล่อย (ใบเก่าที่แก้ไขไม่บังคับ)
+  if(ready && !f.id && !(insp.date===f.inspectDate && insp.files.length)) miss.push('แนบหลักฐานการตรวจปล่อย (ข้อ 4)');
   renderExtraSlips(bal, f.returnedDate);
   $('st-need').classList.toggle('hidden', !(ready && miss.length));
   if(miss.length) $('st-need').textContent='ต้องทำก่อนบันทึก: '+miss.join(' • ');

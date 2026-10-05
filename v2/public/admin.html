@@ -1031,6 +1031,7 @@
     <h3>รายละเอียดการปิดบัญชี</h3>
     <pre id="sm-detail" style="white-space:pre-wrap; word-break:break-word; font-family:inherit; font-size:13px; background:#f7f9fb; border:1px solid var(--line); border-radius:10px; padding:14px; margin:0 0 12px; max-height:46vh; overflow:auto"></pre>
     <div id="sm-slip" class="muted" style="margin:0 0 10px; background:#f7f9fb; border:1px solid var(--line); border-radius:10px; padding:12px"></div>
+    <div id="sm-insp" class="muted" style="margin:0 0 10px; background:#f7f9fb; border:1px solid var(--line); border-radius:10px; padding:12px"></div>
     <div id="sm-image" class="muted" style="margin:0 0 14px"></div>
     <div id="sm-acct">
       <label>วันที่บริษัทโอนคืน <span class="muted">(เฉพาะพนักงานบัญชี)</span></label>
@@ -2183,7 +2184,7 @@ function renderSettlements(){
     var cntr=(r.rows||[]).reduce(function(t,x){ return t+(Number(x.containers)||0); },0);
     return '<tr>'+
       '<td class="time-cell">'+esc(fmtD(r.inspectDate))+'</td>'+
-      '<td class="name">'+esc(r.name)+'</td>'+
+      '<td class="name">'+esc(r.name)+inspCell(r)+'</td>'+
       '<td>'+(r.rows?r.rows.length:0)+'</td>'+
       '<td>'+cntr+'</td>'+
       '<td>'+fmtM(r.totalExpense)+'</td>'+
@@ -2199,6 +2200,19 @@ function renderSettlements(){
         '<button class="btn btn-ghost btn-sm" onclick="smCopy('+i+')">คัดลอก</button>'+
       '</td></tr>';
   }).join('');
+}
+
+// หลักฐานการตรวจปล่อย (PDF จาก DocScan / แนบเอง) — ผูกกับพนักงาน + วันที่ตรวจปล่อย
+function inspLinks(r, sep){
+  return (r.inspectionFiles||[]).map(function(x){
+    return '<a href="'+esc(x.url)+'" target="_blank" rel="noopener">📄 '+esc(x.fileName)+'</a>'+
+      (x.pages?(' <span class="muted">('+x.pages+' หน้า)</span>'):'');
+  }).join(sep);
+}
+function inspCell(r){
+  var n=(r.inspectionFiles||[]).length;
+  return '<div style="font-size:12px;font-weight:400;margin-top:3px">'+
+    (n ? inspLinks(r, '<br>') : '<span class="muted">ไม่มีหลักฐานตรวจปล่อย</span>')+'</div>';
 }
 
 // สลิปโอนเงินคืนบริษัท — เลขที่รายการเก็บไว้ให้ตรวจย้อนหลัง
@@ -2244,6 +2258,9 @@ window.smView=function(i){
        extraSlipText(r))
     : ((Number(r.balance)>0) ? '🧾 ใบนี้ต้องโอนคืนบริษัท แต่ยังไม่มีสลิปในระบบ (ใบเก่าก่อนเปิดใช้ระบบสลิป)'
                              : '🧾 ใบนี้ไม่ต้องโอนคืนบริษัท จึงไม่มีสลิป');
+  $('sm-insp').innerHTML = (r.inspectionFiles||[]).length
+    ? ('📑 <b>หลักฐานการตรวจปล่อย</b><br>'+inspLinks(r, '<br>'))
+    : '📑 ไม่มีไฟล์หลักฐานการตรวจปล่อย (ใบที่บันทึกก่อนเปิดใช้ DocScan)';
   $('sm-image').innerHTML = r.imageUrl
     ? ('🖼️ รูปใบปิดบัญชีบนเซิร์ฟเวอร์: <a href="'+esc(r.imageUrl)+'" target="_blank"'+vwAttr('img', photoFull(r.imageUrl), 'ใบปิดบัญชี')+'>เปิดไฟล์</a>')
     : 'ยังไม่มีรูปใบปิดบัญชีบนเซิร์ฟเวอร์ (พนักงานกด "สร้างใบปิดบัญชี" แล้วระบบจะอัปโหลดให้)';

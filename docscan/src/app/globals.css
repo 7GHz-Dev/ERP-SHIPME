@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+/* โหมดมืด: ตั้งที่ <html data-theme="dark"> (ระบบเลือกตามเครื่องหรือตามที่ผู้ใช้ตั้ง) */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+:root {
+  --primary: #2563eb;
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --surface-2: #f1f4f8;
+  --surface-3: #e6ebf2;
+  --fg: #0f172a;
+  --muted: #64748b;
+  --line: #e2e8f0;
+}
+[data-theme="dark"] {
+  --primary: #3b82f6;
+  --bg: #0b1120;
+  --surface: #111827;
+  --surface-2: #1b2433;
+  --surface-3: #263244;
+  --fg: #e5e7eb;
+  --muted: #94a3b8;
+  --line: #273244;
+}
+
+@theme inline {
+  --color-primary: var(--primary);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --font-sans: var(--font-thai), ui-sans-serif, system-ui, sans-serif;
+}
+
+html, body { background: var(--bg); color: var(--fg); }
+body { -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
+/* ปุ่ม/ช่องกรอกบน iOS ไม่ซูมเข้าเอง (ฟอนต์ ≥ 16px) */
+input, select, textarea { font-size: 16px; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }

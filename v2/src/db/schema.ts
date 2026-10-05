@@ -173,6 +173,25 @@ export const settlements = pgTable('settlements', {
     .where(sql`${t.slipTxn} <> ''`)
 ]);
 
+/**
+ * หลักฐานการตรวจปล่อย (PDF จาก DocScan หรือไฟล์ที่แนบเอง) — ผูกกับพนักงาน + วันที่ตรวจปล่อย
+ * ไม่ผูกกับ id ใบปิดบัญชี เพราะต้องแนบได้ก่อนกดบันทึกใบปิดบัญชีครั้งแรก
+ */
+export const inspectionFiles = pgTable('inspection_files', {
+  id: text('id').primaryKey(),
+  username: citext('username').notNull()
+    .references(() => users.username, { onUpdate: 'cascade', onDelete: 'cascade' }),
+  inspectDate: text('inspect_date').notNull(),
+  fileName: text('file_name').notNull(),
+  storageKey: text('storage_key').notNull(),
+  url: text('url').notNull(),
+  pages: integer('pages').notNull().default(0),
+  size: integer('size').notNull().default(0),
+  source: text('source').notNull().default('docscan'),
+  createdAt: text('created_at').notNull(),
+  createdBy: citext('created_by').notNull().default('')
+}, (t) => [index('inspection_files_user_date_idx').on(t.username, t.inspectDate)]);
+
 export const receipts = pgTable('receipts', {
   id: text('id').primaryKey(),
   serverTime: text('server_time').notNull(),

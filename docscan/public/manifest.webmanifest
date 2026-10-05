@@ -1,0 +1,17 @@
+{
+  "name": "DocScan",
+  "short_name": "DocScan",
+  "description": "สแกนเอกสาร ครอบอัตโนมัติ อ่านข้อความ และส่งออก PDF — เอกสารอยู่ในเครื่องคุณ",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f4f6f9",
+  "theme_color": "#2563eb",
+  "lang": "th",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -1,4 +1,8 @@
 import { saveInvoicePairs } from './invoice-pairs';
+import {
+  createScanTicket, deleteInspectionFile, listInspectionFiles, registerInspectionFile,
+  scanTicketInfo, scanUploadDone, scanUploadSign, signInspectionUpload
+} from './inspection';
 import { serviceInvoiceData } from './service-invoices';
 import { withholdingData } from './withholding';
 import { shippingIncomeData } from './shipping-income';
@@ -348,6 +352,32 @@ const handlers: Record<string, Handler> = {
     if (purpose === 'settlement') return signSettlementImage(body.id, session.user);
     if (purpose === 'slip') return signSlipUpload(String(body.expectDate || ''), session.user);
     return { ok: false, error: 'bad_request' };
+  },
+
+  // ---- หลักฐานการตรวจปล่อย (DocScan) ----
+  createScanTicket: async (body) => {
+    const session = await guard(body);
+    return session.error || createScanTicket(body, session.user);
+  },
+  // 3 ตัวนี้ DocScan เรียกด้วย ticket แทนการล็อกอิน (อยู่คนละโดเมน)
+  scanTicketInfo: (body) => scanTicketInfo(body),
+  scanUploadSign: (body) => scanUploadSign(body),
+  scanUploadDone: (body) => scanUploadDone(body),
+  signInspectionUpload: async (body) => {
+    const session = await guard(body);
+    return session.error || signInspectionUpload(body, session.user);
+  },
+  registerInspectionFile: async (body) => {
+    const session = await guard(body);
+    return session.error || registerInspectionFile(body, session.user);
+  },
+  listInspectionFiles: async (body) => {
+    const session = await guard(body);
+    return session.error || listInspectionFiles(body, session.user);
+  },
+  deleteInspectionFile: async (body) => {
+    const session = await guard(body);
+    return session.error || deleteInspectionFile(body, session.user);
   },
 
   // ---- สลิป ----
