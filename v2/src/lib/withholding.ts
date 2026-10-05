@@ -30,7 +30,9 @@ const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2,
  *   (DO ไม่ได้มาจากที่นี่ — นับตามวันที่จ่ายในชีตค่าแลกดีโอ ดู buildDoLines)
  *   EXTRA MOVEMENT : ทุก BL ที่มียอด
  *   STORAGE + LIFT ON + LIFT OFF : รวมเป็น 1 ใบต่อ BL (ได้ใบเสร็จมาใบเดียว แล้วแยกรายการกรอกเอง)
- *     - หมายเหตุมี * = ได้ใบเสร็จแยก นับจำนวนใบตามจำนวน * (เช่น "**" = 2 ใบ ยอดรวมเท่าเดิม)
+ *   หมายเหตุมี * = จำนวนใบของ BL นี้ทั้งหมด (EXTRA MOVEMENT + STORAGE/LIFT) เท่ากับจำนวน * เลย
+ *     เช่น มี EXTRA MOVEMENT + LIFT ON (ปกติ 2 ใบ) แต่หมายเหตุ "*" = 1 ใบ / "**" = 2 ใบ — ยอดหักเท่าเดิม
+ *     (DO ไม่เกี่ยว — นับจากชีตค่าแลกดีโอแยกต่างหาก)
  *     - LIFT ON ต่ำกว่า 1,000 ของงานถึงสิ้น ก.ย. 2569 ไม่นับ (ถ้า BL นั้นมี STORAGE/LIFT OFF ยังนับส่วนนั้น)
  */
 export function buildWithholding(rows: JobRow[]): WhtLine[] {
@@ -51,19 +53,31 @@ export function buildWithholding(rows: JobRow[]): WhtLine[] {
   const out: WhtLine[] = [];
   for (const g of groups.values()) {
     const base = { date: g.row.transportDate, bl: g.row.bl, vessel: g.row.vessel, source: g.row.sourceFile };
-    if (g.em > 0) out.push({ ...base, category: 'EM', amount: round2(g.em), detail: 'EXTRA MOVEMENT', count: 1 });
+    const mine: WhtLine[] = [];
+    if (g.em > 0) mine.push({ ...base, category: 'EM', amount: round2(g.em), detail: 'EXTRA MOVEMENT', count: 1 });
     const lowLiftOn = g.liftOn > 0 && g.liftOn < WHT_LIFT_ON_MIN && g.row.transportDate <= WHT_LIFT_ON_MIN_UNTIL;
     const port = [['STORAGE', g.storage], ['LIFT ON', lowLiftOn ? 0 : g.liftOn], ['LIFT OFF', g.liftOff]] as const;
     const parts = port.filter(([, v]) => v > 0);
     if (parts.length) {
-      const notes = [lowLiftOn ? `ไม่นับ LIFT ON ${fmt(round2(g.liftOn))} (ต่ำกว่า ${fmt(WHT_LIFT_ON_MIN)})` : '',
-        g.stars > 1 ? `ใบเสร็จแยก ${g.stars} ใบ (*)` : ''].filter(Boolean);
-      out.push({
+      const notes = [lowLiftOn ? `ไม่นับ LIFT ON ${fmt(round2(g.liftOn))} (ต่ำกว่า ${fmt(WHT_LIFT_ON_MIN)})` : ''].filter(Boolean);
+      mine.push({
         ...base, category: 'PORT', amount: round2(parts.reduce((s, [, v]) => s + v, 0)),
         detail: parts.map(([k, v]) => `${k} ${fmt(round2(v))}`).join(' + ') + (notes.length ? ` • ${notes.join(' • ')}` : ''),
-        count: Math.max(1, g.stars)
+        count: 1
       });
     }
+    if (g.stars > 0 && mine.length) {
+      // จำนวนใบของ BL นี้ = จำนวน * — ใส่ไว้ที่ใบ STORAGE/LIFT (ถ้าไม่มีก็ EXTRA MOVEMENT) ใบอื่นนับเป็น 0
+      // ยอดเงินแต่ละหมวดยังอยู่ครบ ยอดหักจึงไม่เปลี่ยน เปลี่ยนแค่จำนวนใบ
+      const holder = mine.find((l) => l.category === 'PORT') || mine[0];
+      for (const l of mine) {
+        l.count = l === holder ? g.stars : 0;
+        l.detail += l === holder
+          ? ` • หมายเหตุ ${'*'.repeat(g.stars)} = ${g.stars} ใบ${mine.length > 1 ? ' (รวมทุกหมวดของ BL นี้)' : ''}`
+          : ' • รวมอยู่ในจำนวนใบตาม * ของ BL นี้';
+      }
+    }
+    out.push(...mine);
   }
   const order = { DO: 0, EM: 1, PORT: 2 };
   return out.sort((a, b) => order[a.category] - order[b.category] || a.date.localeCompare(b.date) || a.bl.localeCompare(b.bl));

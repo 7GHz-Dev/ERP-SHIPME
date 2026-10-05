@@ -61,7 +61,7 @@ function whtLoad(){
       if(!$('wht-div-'+c.key).value) $('wht-div-'+c.key).value = res.defaults.divisor;
       if(!$('wht-rate-'+c.key).value) $('wht-rate-'+c.key).value = whtRound2(res.defaults.rate*100);
     });
-    var certs = res.lines.reduce(function(s, l){ return s+(l.count||1); }, 0);
+    var certs = res.lines.reduce(function(s, l){ return s+(l.count==null?1:l.count); }, 0);
     $('wht-msg').textContent = 'ช่วงวันที่ '+whtDmy(res.from)+' - '+whtDmy(res.to)+' • '+certs+' ใบ'
       + (res.doTabs && res.doTabs.length ? (' • ชีตค่าแลกดีโอ: '+res.doTabs.join(', ')) : '');
     $('wht-result').classList.remove('hidden');
@@ -103,7 +103,7 @@ function whtRenderSummary(){
   $('wht-sum-body').querySelectorAll('tr[data-cat]').forEach(function(tr){
     var cat = tr.getAttribute('data-cat');
     var list = lines.filter(function(l){ return l.category === cat; });
-    var count = list.reduce(function(s, l){ return s+(l.count||1); }, 0);
+    var count = list.reduce(function(s, l){ return s+(l.count==null?1:l.count); }, 0);
     var amount = whtRound2(list.reduce(function(s, l){ return s+l.amount; }, 0));
     var base = whtRound2(list.reduce(function(s, l){ return s+whtBase(l); }, 0));
     var wht = whtRound2(list.reduce(function(s, l){ return s+whtAmount(l); }, 0));
@@ -126,7 +126,7 @@ function whtRenderLines(){
   $('wht-lines-body').innerHTML = lines.length ? lines.map(function(l, i){
     return '<tr><td class="num">'+(i+1)+'</td><td>'+esc(whtDmy(l.date))+'<div class="sub">'+esc(l.source)+'</div></td>'
       + '<td class="mono">'+esc(l.bl)+'</td><td>'+esc(l.vessel||'—')+'</td>'
-      + '<td>'+esc(l.detail)+((l.count||1)>1?' <span class="pill pending">'+l.count+' ใบ</span>':'')+'</td>'
+      + '<td>'+esc(l.detail)+(l.count!==1?' <span class="pill '+(l.count?'pending':'')+'">'+l.count+' ใบ</span>':'')+'</td>'
       + '<td class="num">'+whtMoney(l.amount)+'</td><td class="num">'+whtMoney(whtBase(l))+'</td>'
       + '<td class="num"><b>'+whtMoney(whtAmount(l))+'</b></td></tr>';
   }).join('') : '<tr><td colspan="8" class="muted" style="padding:14px">ไม่มีรายการ</td></tr>';
@@ -137,7 +137,7 @@ function whtExport(){
   if(!d || !d.lines.length){ $('wht-msg').textContent = 'ยังไม่มีข้อมูลให้ส่งออก'; return; }
   var catLabel = {}; WHT_CATS.forEach(function(c){ catLabel[c.key] = c.label; });
   var rows = d.lines.map(function(l, i){
-    return [i+1, catLabel[l.category], whtDmy(l.date), l.source, l.bl, l.vessel, l.detail, l.count||1,
+    return [i+1, catLabel[l.category], whtDmy(l.date), l.source, l.bl, l.vessel, l.detail, (l.count==null?1:l.count),
             l.amount, whtBase(l), whtAmount(l)];
   });
   downloadCSV('withholding_'+d.from+'_'+d.to+'.csv',
