@@ -8,16 +8,18 @@ import { round2, safeJson, validYmd, ymd } from './utils';
 /**
  * กระทบยอดชิปปิ้ง — ค่าใช้จ่ายตามชีตงานขนส่ง เทียบกับใบเบิก/ใบปิดบัญชีของพนักงาน ต่อวันที่ตรวจปล่อย
  *
- * ค่าใช้จ่ายตามชีต = ทุกช่องค่าใช้จ่าย ยกเว้น DO, DEM, ค่านายตรวจ และหักค่า พรบ. / ค่าบริการ พรบ.
+ * ค่าใช้จ่ายตามชีต = ทุกช่องค่าใช้จ่าย รวมค่านายตรวจ ยกเว้น DO, DEM และหักค่า พรบ. / ค่าบริการ พรบ.
  *   (พรบ. อยู่ในช่อง คชจ. อื่นๆ — ยอดอ่านจากหมายเหตุ เช่น "ค่าพรบ 401.25 // ค่าบริการ พรบ. 98.75")
- * ค่าบริการเพิ่มเติม(ฟรีโซน) 500/ตู้ ไม่มีในชีต — ใช้ยอดจากใบปิดบัญชีมาบวกให้ก่อนเทียบ
- * ส่วนต่าง = ยอดใช้จริงในใบปิดบัญชี − (ชีต + ค่าบริการฟรีโซน) → 0 = ตรงกัน
+ * ค่านายตรวจในชีต = ค่าบริการเพิ่มเติม(ฟรีโซน) ในใบปิดบัญชี (เงินก้อนเดียวกัน เรียกคนละชื่อ —
+ *   ก.ย. 2569 ยอดรวมตรงกันทุกคน) จึงเทียบตรง ๆ ไม่ต้องบวกฟรีโซนเพิ่ม
+ * ส่วนต่าง = ยอดใช้จริงในใบปิดบัญชี − ชีต → 0 = ตรงกัน
+ * freezone ยังส่งไปให้หน้าเว็บแสดงว่าค่าใช้จ่ายจริงมีฟรีโซนเท่าไร
  * overtime ส่งแยกไว้ให้ดูว่าส่วนต่างมาจาก OT หรือไม่ — ข้อมูลจริงบางวันเบิก OT ในใบปิดบัญชี บางวันไม่เบิก
  */
 export const RECONCILE_SHEET_COLUMNS = [
   ['extraMovement', 'EXTRA MOVEMENT'], ['storage', 'STORAGE'], ['liftOn', 'LIFT ON'], ['liftOff', 'LIFT OFF'],
   ['orderForm', 'ORDER FORM'], ['overtime', 'ค่าล่วงเวลา'], ['sealFee', 'ค่าตะกั่ว'], ['otherFee', 'คชจ. อื่นๆ'],
-  ['detention', 'DETENTION'], ['repairFee', 'ค่าซ่อมตู้']
+  ['detention', 'DETENTION'], ['repairFee', 'ค่าซ่อมตู้'], ['inspectorFee', 'ค่านายตรวจ']
 ] as const;
 const FREEZONE_KEYS = ['extra_service', 'extra_service_transit'];
 
@@ -58,7 +60,7 @@ export async function shippingReconcileData(body: ApiBody): Promise<ApiResult> {
     extraMovement: transportJobs.extraMovement, storage: transportJobs.storage, liftOn: transportJobs.liftOn,
     liftOff: transportJobs.liftOff, orderForm: transportJobs.orderForm, overtime: transportJobs.overtime,
     sealFee: transportJobs.sealFee, otherFee: transportJobs.otherFee, detention: transportJobs.detention,
-    repairFee: transportJobs.repairFee
+    repairFee: transportJobs.repairFee, inspectorFee: transportJobs.inspectorFee
   }).from(transportJobs).where(and(gte(transportJobs.transportDate, from), lte(transportJobs.transportDate, to)));
   const setts = await db.select().from(settlements)
     .where(and(gte(settlements.inspectDate, from), lte(settlements.inspectDate, to)));
@@ -124,10 +126,10 @@ export async function shippingReconcileData(body: ApiBody): Promise<ApiResult> {
 
   const groups = [...people.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([shipping, map]) => {
     const days = [...map.values()].sort((a, b) => a.date.localeCompare(b.date)).map((d) => {
-      const diff = d.used == null ? null : round2(d.used - (d.sheet + d.freezone));
+      const diff = d.used == null ? null : round2(d.used - d.sheet);
       const bls = [...d.bls.values()].map((b) => ({
         bl: b.bl, sheet: b.sheet, overtime: b.overtime, sheetParts: b.sheetParts, settlement: b.settlement, freezone: b.freezone,
-        diff: b.settlement == null ? null : round2(b.settlement - (b.sheet + b.freezone))
+        diff: b.settlement == null ? null : round2(b.settlement - b.sheet)
       }));
       return { ...d, bls, diff };
     });
