@@ -12,8 +12,8 @@ import { round2, safeJson, validYmd, ymd } from './utils';
  *   (พรบ. อยู่ในช่อง คชจ. อื่นๆ — ยอดอ่านจากหมายเหตุ เช่น "ค่าพรบ 401.25 // ค่าบริการ พรบ. 98.75")
  * ค่านายตรวจในชีต = ค่าบริการเพิ่มเติม(ฟรีโซน) ในใบปิดบัญชี (เงินก้อนเดียวกัน เรียกคนละชื่อ —
  *   ก.ย. 2569 ยอดรวมตรงกันทุกคน)
- * ส่วนต่าง = ยอดใช้จริงในใบปิดบัญชี − (ชีต + ค่าบริการฟรีโซน) — ฝ่ายบัญชีให้นับฟรีโซนในส่วนต่างด้วย
- *   (ชีตรวมค่านายตรวจแล้ว วันที่ปกติจึงต่างเท่ากับยอดฟรีโซนของวันนั้นพอดี)
+ * ส่วนต่าง = ค่าใช้จ่ายจริง (ใบปิดบัญชี) − ค่าใช้จ่ายตามชีต → 0 = ตรงกัน
+ *   ไม่บวกฟรีโซนเพิ่ม เพราะชีตรวมค่านายตรวจซึ่งคือเงินก้อนเดียวกับฟรีโซนอยู่แล้ว
  * freezone ยังส่งไปให้หน้าเว็บแสดงว่าค่าใช้จ่ายจริงมีฟรีโซนเท่าไร
  * overtime ส่งแยกไว้ให้ดูว่าส่วนต่างมาจาก OT หรือไม่ — ข้อมูลจริงบางวันเบิก OT ในใบปิดบัญชี บางวันไม่เบิก
  */
@@ -127,10 +127,10 @@ export async function shippingReconcileData(body: ApiBody): Promise<ApiResult> {
 
   const groups = [...people.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([shipping, map]) => {
     const days = [...map.values()].sort((a, b) => a.date.localeCompare(b.date)).map((d) => {
-      const diff = d.used == null ? null : round2(d.used - d.sheet - d.freezone);
+      const diff = d.used == null ? null : round2(d.used - d.sheet);
       const bls = [...d.bls.values()].map((b) => ({
         bl: b.bl, sheet: b.sheet, overtime: b.overtime, sheetParts: b.sheetParts, settlement: b.settlement, freezone: b.freezone,
-        diff: b.settlement == null ? null : round2(b.settlement - b.sheet - b.freezone)
+        diff: b.settlement == null ? null : round2(b.settlement - b.sheet)
       }));
       return { ...d, bls, diff };
     });
