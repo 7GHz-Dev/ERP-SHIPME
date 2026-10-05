@@ -29,11 +29,10 @@ var REC_BG = { claim:'#eaf2ff', claimBad:'#dbe6fb', sheet:'#fff6e0', sheetBad:'#
 function recTd(group, bad, html){
   return '<td class="num" style="background:'+REC_BG[group+(bad?'Bad':'')]+'">'+html+'</td>';
 }
-/** ค่าใช้จ่ายจริง = ยอดในใบปิดบัญชี (รวมค่าบริการฟรีโซนแล้ว) — บอกยอดฟรีโซนไว้ใต้ตัวเลข */
+/** ค่าใช้จ่ายจริง = ยอดในใบปิดบัญชี (รวมค่าบริการฟรีโซนแล้ว) — แสดงยอดอย่างเดียว ไม่ต้องบอกยอดฟรีโซน */
 function recUsedHtml(used, freezone, bold){
   if(used == null) return '<span class="muted">—</span>';
-  var v = bold ? '<b>'+recMoney(used)+'</b>' : recMoney(used);
-  return v + (freezone ? '<div class="sub">รวมฟรีโซน '+recMoney(freezone)+'</div>' : '');
+  return bold ? '<b>'+recMoney(used)+'</b>' : recMoney(used);
 }
 
 function initShippingReconcile(){
