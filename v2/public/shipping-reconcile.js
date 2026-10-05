@@ -21,12 +21,6 @@ function recDiff(x, used){
   return Math.round((used - (recSheet(x) + (x.freezone||0)))*100)/100;
 }
 function recOk(diff){ return diff != null && Math.abs(diff) < 0.01; }
-/** ค่าใช้จ่ายจริงหักเงินคืน = ค่าใช้จ่ายจริง (ใบปิดบัญชี) − ยอดคืนเงิน — ยังไม่ปิดบัญชี = null */
-function recNet(used, refund){ return used == null ? null : Math.round((used - (refund||0))*100)/100; }
-function recNetHtml(v, bold){
-  if(v == null) return '<span class="muted">—</span>';
-  return bold ? '<b>'+recMoney(v)+'</b>' : recMoney(v);
-}
 /**
  * สีพื้นหลังแยกกลุ่มคอลัมน์ — ฝั่งใบเบิก/ใบปิดบัญชี (ยอดเบิก / ค่าใช้จ่ายจริง / ยอดคืนเงิน) กับฝั่งชีต
  * แถวที่ไม่ตรงใช้สีเข้มขึ้นของกลุ่มเดิม จะได้ยังเห็นว่าเป็นคอลัมน์กลุ่มไหน
@@ -104,7 +98,6 @@ function recRender(){
         + recTd('claim', !ok, day.claim ? recMoney(day.claim) : '<span class="muted">—</span>')
         + recTd('claim', !ok, recUsedHtml(day.used, day.freezone))
         + recTd('claim', !ok, day.refund == null ? '<span class="muted">—</span>' : recMoney(day.refund))
-        + recTd('claim', !ok, recNetHtml(recNet(day.used, day.refund)))
         + recTd('sheet', !ok, recMoney(recSheet(day)))
         + '<td class="num">'+recDiffCell(diff)+'</td>'
         + '<td>'+recDmy(day.returnedDate)+'</td><td>'+recStatus(day)+'</td></tr>';
@@ -122,16 +115,14 @@ function recRender(){
       + '<th class="num" style="background:'+REC_BG.head.claim+'">ยอดเบิก</th>'
       + '<th class="num" style="background:'+REC_BG.head.claim+'">ค่าใช้จ่ายจริง<div class="sub">ใบปิดบัญชี</div></th>'
       + '<th class="num" style="background:'+REC_BG.head.claim+'">ยอดคืนเงิน</th>'
-      + '<th class="num" style="background:'+REC_BG.head.claim+'">ค่าใช้จ่ายจริง<div class="sub">หักเงินคืน</div></th>'
       + '<th class="num" style="background:'+REC_BG.head.sheet+'">ค่าใช้จ่ายตามชีต</th>'
       + '<th class="num">ส่วนต่าง<div class="sub">ไม่นับค่าบริการฟรีโซน</div></th>'
       + '<th>วันที่คืนเงิน</th><th>สถานะ</th></tr></thead><tbody>'
-      + (rows || '<tr><td colspan="10" class="muted" style="padding:12px">ตรงทุกวัน</td></tr>')
+      + (rows || '<tr><td colspan="9" class="muted" style="padding:12px">ตรงทุกวัน</td></tr>')
       + '<tr style="background:#f1f5f9"><td colspan="2"><b>รวม</b></td>'
       + recTd('claim', false, '<b>'+recMoney(t.claim)+'</b>')
       + recTd('claim', false, recUsedHtml(t.used, t.freezone, true))
       + recTd('claim', false, '<b>'+recMoney(t.refund)+'</b>')
-      + recTd('claim', false, recNetHtml(recNet(t.used, t.refund), true))
       + recTd('sheet', false, '<b>'+recMoney(tSheet)+'</b>')
       + '<td class="num">'+recDiffCell(Math.round(tDiff*100)/100)+'</td>'
       + '<td colspan="2"></td></tr></tbody></table></div></div>';
@@ -159,7 +150,6 @@ function recBlRows(day){
       + recTd('claim', false, '')
       + recTd('claim', false, b.settlement == null ? '<span style="color:#b91c1c">ไม่มีในใบปิดบัญชี</span>' : recUsedHtml(b.settlement, b.freezone))
       + recTd('claim', false, '')
-      + recTd('claim', false, '')
       + recTd('sheet', false, recMoney(recSheet(b)))
       + '<td class="num">'+recDiffCell(diff)+'</td>'
       + '<td colspan="2" class="muted">'+(parts || 'ไม่มีในชีต')+'</td></tr>';
@@ -174,12 +164,11 @@ function recExport(){
     g.days.forEach(function(day){
       var diff = recDiff(day, day.used);
       rows.push([g.shipping, g.fullName, recDmy(day.claimDate), recDmy(day.date), day.claim,
-        day.used == null ? '' : day.used, day.freezone, day.refund == null ? '' : day.refund,
-        recNet(day.used, day.refund) == null ? '' : recNet(day.used, day.refund), recSheet(day),
+        day.used == null ? '' : day.used, day.freezone, day.refund == null ? '' : day.refund, recSheet(day),
         diff == null ? '' : diff, day.returnedDate ? recDmy(day.returnedDate) : '', day.hasSettlement ? (day.slipStatus || '') : 'ยังไม่ปิดบัญชี']);
     });
   });
   downloadCSV('shipping_reconcile_'+d.from+'_'+d.to+'.csv',
     ['ชิปปิ้ง','ชื่อ','วันที่ทำใบเบิก','วันที่ตรวจปล่อย','ยอดเบิก','ค่าใช้จ่ายจริง (ใบปิดบัญชี)','ในนั้นเป็นค่าบริการฟรีโซน',
-     'ยอดคืนเงิน','ค่าใช้จ่ายจริงหักเงินคืน','ค่าใช้จ่ายตามชีต','ส่วนต่าง (ไม่นับฟรีโซน)','วันที่คืนเงิน','สถานะสลิป'], rows);
+     'ยอดคืนเงิน','ค่าใช้จ่ายตามชีต','ส่วนต่าง (ไม่นับฟรีโซน)','วันที่คืนเงิน','สถานะสลิป'], rows);
 }
