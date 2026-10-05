@@ -238,9 +238,11 @@
     return {width:canvas.width,height:canvas.height,bytes:Uint8Array.from(raw,function(char){return char.charCodeAt(0);})};
   }
   /**
-   * ใบสรุปจำนวนตู้ (ทั้งแบบนับตู้ และแบบค่าบริการเพิ่มเติม) — ตามไฟล์ตัวอย่างของฝ่ายบัญชี
-   * doc: { subtitle, monthLabel, date, rows:[{label, qty, note, highlight}], total, preparedBy,
-   *        customerName, customerAddress, customerTaxId, headers:[ลำดับ, รายการ, จำนวน, หมายเหตุ] }
+   * หน้าตารางสรุป — ใบสรุปจำนวนตู้ / ค่าบริการเพิ่มเติม / ใบสรุปค่าใช้จ่ายเพิ่มเติม (รายได้ชิปปิ้ง)
+   * doc: { subtitle?, monthLabel?, date, rows:[{label, qty, note, highlight}], total, preparedBy,
+   *        customerName, customerAddress, customerTaxId, headers:[ลำดับ, รายการ, จำนวน, หมายเหตุ],
+   *        heading? (หัวเรื่อง), partyLabel? + partyLines? (แทนบล็อกชื่อลูกค้า),
+   *        headFill? (สีหัว/แถวรวม), rowsPerPage? }
    */
   var SUMMARY_ROWS=23;
   function drawSummaryPage(doc, company, images, rows, startNo, pageIndex, pageCount){
@@ -260,17 +262,16 @@
     text(company.name,408,148,14,true,'center');
     text(company.address,408,165,13,true,'center');
     text('เลขประจำตัวผู้เสียภาษี '+company.taxId,408,182,13,true,'center');
-    text('ใบสรุปจำนวนตู้',408,226,24,true,'center');
-    text('('+doc.subtitle+')',408,247,13,false,'center');
-    text(doc.monthLabel,408,265,13,false,'center');
+    text(doc.heading||'ใบสรุปจำนวนตู้',408,226,24,true,'center');
+    if(doc.subtitle) text('('+doc.subtitle+')',408,247,13,false,'center');
+    if(doc.monthLabel) text(doc.monthLabel,408,265,13,false,'center');
     text('วันที่',600,247,13,true,'left');
     text(String(doc.date||'').split('-').reverse().join('/'),778,247,13,false,'right');
-    text('ชื่อลูกค้า',70,296,13,true);
-    text(doc.customerName,70,314,13);
-    text(doc.customerAddress,70,331,13);
-    text('เลขประจำตัวผู้เสียภาษี '+doc.customerTaxId,70,348,13);
+    text(doc.partyLabel||'ชื่อลูกค้า',70,296,13,true);
+    (doc.partyLines||[doc.customerName,doc.customerAddress,'เลขประจำตัวผู้เสียภาษี '+doc.customerTaxId])
+      .forEach(function(line,i){ text(line,70,314+i*17,13); });
     var xs=[68,109,421,511], ws=[41,312,90,237], heads=doc.headers||['ลำดับ','รายการ (BL)','จำนวน','หมายเหตุ'];
-    var y=370, H=23.5, HEAD=52, BLUE='#3d85c6', YELLOW='#ffff00';
+    var y=370, H=23.5, HEAD=52, BLUE=doc.headFill||'#3d85c6', YELLOW='#ffff00';
     ws.forEach(function(w,i){ cell(xs[i],y,w,HEAD,BLUE); text(heads[i],xs[i]+w/2,y+31,13,true,'center',w-6); });
     y+=HEAD;
     rows.forEach(function(row,i){
@@ -302,8 +303,9 @@
       var images=await Promise.all([loadImage(company.logoUrl),loadImage(company.stampUrl)]), pages=[];
       invoices.forEach(function(invoice){
         if(invoice.kind==='SUMMARY'){
-          var list=invoice.rows||[], count=Math.max(1,Math.ceil(list.length/SUMMARY_ROWS));
-          for(var p=0;p<count;p++) pages.push(drawSummaryPage(invoice,company,images,list.slice(p*SUMMARY_ROWS,(p+1)*SUMMARY_ROWS),p*SUMMARY_ROWS+1,p,count));
+          var per=invoice.rowsPerPage||SUMMARY_ROWS;
+          var list=invoice.rows||[], count=Math.max(1,Math.ceil(list.length/per));
+          for(var p=0;p<count;p++) pages.push(drawSummaryPage(invoice,company,images,list.slice(p*per,(p+1)*per),p*per+1,p,count));
           return;
         }
         var groups=paginate(invoice.items);

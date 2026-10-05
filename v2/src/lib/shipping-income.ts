@@ -1,7 +1,10 @@
 import { and, asc, eq, gte, lte } from 'drizzle-orm';
 import { db } from '@/db';
 import { transportJobs, users } from '@/db/schema';
-import { SERVICE_BRIDGE_INSPECTOR_FEE, SERVICE_BRIDGE_INSPECTOR_LABEL, SERVICE_RORO_INSPECTOR_LABEL } from './constants';
+import {
+  INVOICE_COMPANY, SERVICE_BRIDGE_INSPECTOR_FEE, SERVICE_BRIDGE_INSPECTOR_LABEL, SERVICE_RORO_INSPECTOR_LABEL,
+  SHIPPING_FULL_NAMES
+} from './constants';
 import { isNoCar, isRoro, noteExtras, type ExtraLine, type JobRow } from './service-invoices';
 import type { ApiBody, ApiResult } from './types';
 import { round2, validYmd } from './utils';
@@ -37,12 +40,12 @@ export function incomeFromRow(row: JobRow): ExtraLine[] {
 
 /** จัดกลุ่มตามชื่อชิปปิ้ง (ช่อง "ชิปปิ้ง" ในชีต) — แยกออกมาให้ทดสอบได้โดยไม่ต้องต่อฐานข้อมูล */
 export function buildShippingIncome(rows: IncomeRow[], names: Map<string, string> = new Map()) {
-  const groups = new Map<string, { shipping: string; name: string; lines: (ExtraLine & { shipping: string })[] }>();
+  const groups = new Map<string, { shipping: string; name: string; fullName: string; lines: (ExtraLine & { shipping: string })[] }>();
   for (const row of rows) {
     const lines = incomeFromRow(row);
     if (!lines.length) continue;
     const code = String(row.shipping || '').trim().toUpperCase() || '(ไม่ระบุชิปปิ้ง)';
-    const g = groups.get(code) || { shipping: code, name: names.get(code) || '', lines: [] };
+    const g = groups.get(code) || { shipping: code, name: names.get(code) || '', fullName: SHIPPING_FULL_NAMES[code] || '', lines: [] };
     g.lines.push(...lines.map((l) => ({ ...l, shipping: code })));
     groups.set(code, g);
   }
@@ -85,5 +88,6 @@ export async function shippingIncomeData(body: ApiBody): Promise<ApiResult> {
       }
     }
   }
-  return { ok: true, from, to, ...buildShippingIncome(rows, names) };
+  // company = หัวกระดาษ/โลโก้ของใบสรุปค่าใช้จ่ายเพิ่มเติมตอนส่งออก PDF
+  return { ok: true, from, to, ...buildShippingIncome(rows, names), company: INVOICE_COMPANY };
 }
