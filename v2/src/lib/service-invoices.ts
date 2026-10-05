@@ -27,22 +27,22 @@ function trailingAmount(segment: string) {
   return match ? Number(match[1]) : null;
 }
 
-type JobRow = {
+export type JobRow = {
   id: number; transportDate: string; bl: string; containerNo: string;
   inspectorFee: number; otherFee: number; note: string; sourceFile: string;
 };
 
+export type ExtraLine = { label: string; amount: number; bl: string; date: string; source: string; segment: string };
+
 /**
- * แตกช่องหมายเหตุของแถวเดียวเป็นค่าบริการเพิ่มเติม
+ * รายการค่าบริการจากช่องหมายเหตุของแถวเดียว (คั่นด้วย //) ตาม SERVICE_EXTRA_RULES
  * รายการที่ไม่มียอดในหมายเหตุ ใช้ คชจ. อื่นๆ หักยอดที่เขียนไว้ในหมายเหตุออก
  * (หมายเหตุ "ยางเกิน" + คชจ.อื่นๆ 1000 → ยางเกิน 1000)
+ * ใช้ร่วมกันทั้งใบแจ้งหนี้ค่าบริการเพิ่มเติม และรายงานรายได้ชิปปิ้ง
  */
-export function extrasFromRow(row: JobRow) {
-  const out: { label: string; amount: number; bl: string; date: string; source: string; segment: string }[] = [];
+export function noteExtras(row: JobRow): ExtraLine[] {
+  const out: ExtraLine[] = [];
   const base = { bl: row.bl, date: row.transportDate, source: row.sourceFile };
-  if (isRoro(row.containerNo) && Number(row.inspectorFee) > 0) {
-    out.push({ ...base, label: SERVICE_RORO_INSPECTOR_LABEL, amount: round2(row.inspectorFee), segment: 'ค่านายตรวจ (RORO)' });
-  }
   // * ในหมายเหตุเป็นเครื่องหมายนับใบหัก ณ ที่จ่าย (ดู withholding.ts) ไม่ใช่ส่วนของยอด — "98.75**" ต้องอ่านได้ 98.75
   const segments = String(row.note || '').replace(/\*/g, '').split('//').map((s) => s.trim()).filter(Boolean);
   const written = segments.reduce((sum, s) => sum + (trailingAmount(s) || 0), 0);
@@ -53,6 +53,16 @@ export function extrasFromRow(row: JobRow) {
     if (amount > 0) out.push({ ...base, label: rule.label, amount: round2(amount), segment });
   }
   return out;
+}
+
+/** ค่าบริการเพิ่มเติมของแถวเดียว (ใบแจ้งหนี้) = ค่านายตรวจของงาน RORO + รายการในหมายเหตุ */
+export function extrasFromRow(row: JobRow): ExtraLine[] {
+  const out: ExtraLine[] = [];
+  if (isRoro(row.containerNo) && Number(row.inspectorFee) > 0) {
+    out.push({ bl: row.bl, date: row.transportDate, source: row.sourceFile,
+      label: SERVICE_RORO_INSPECTOR_LABEL, amount: round2(row.inspectorFee), segment: 'ค่านายตรวจ (RORO)' });
+  }
+  return out.concat(noteExtras(row));
 }
 
 /**
