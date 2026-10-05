@@ -60,6 +60,8 @@
 
   .toolbar { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; align-items:center; }
   .toolbar input, .toolbar select { min-width:120px; }
+  /* ช่องติ๊กไม่ต้องกว้าง 120px — เดิมทำให้ป้ายตัวกรองในแถบเครื่องมือยืดยาวผิดรูป */
+  .toolbar input[type=checkbox], .toolbar input[type=radio] { min-width:0; }
   .grow { flex:1; min-width:180px; }
 
   /* clean grid table (เหมือนตัวอย่าง) */
