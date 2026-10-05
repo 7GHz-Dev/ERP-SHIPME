@@ -56,8 +56,9 @@ function Shell() {
   // เริ่มแอป: ธีม, onboarding, ticket จาก ERP, ล้างถังขยะที่หมดอายุ, service worker
   useEffect(() => {
     getSetting<Theme>('theme', 'system').then(setThemeState);
-    onboardingSeen().then((seen) => setOnboard(!seen));
-    loadTicket().then((t) => { setTicket(t); if (t) setOnboard(false); }).catch((e) => ui.toast(friendlyError(e), 'error'));
+    // เปิดจากหน้าปิดบัญชี (มี ticket) = ข้ามหน้าแนะนำ — รอทั้งสองอย่างก่อนตัดสินใจ กันลำดับสลับกัน
+    const ticketP = loadTicket().catch((e) => { ui.toast(friendlyError(e), 'error'); return null; });
+    Promise.all([onboardingSeen(), ticketP]).then(([seen, t]) => { setTicket(t); setOnboard(!seen && !t); });
     purgeExpiredTrash().catch(() => undefined);
     if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
       navigator.serviceWorker.register('/sw.js').catch(() => undefined);
@@ -91,7 +92,7 @@ function Shell() {
       try { validateImageFile(f); ok.push(f); } catch (e) { ui.toast(friendlyError(e), 'error'); }
     }
     if (!ok.length) return;
-    const docId = importTarget.current || (await createDocument(`นำเข้า ${stamp()}`, currentFolder)).id;
+    const docId = importTarget.current || (await createDocument(ticket ? newDocName() : `นำเข้า ${stamp()}`, currentFolder)).id;
     setImportQ({ docId, items: ok });
   };
 

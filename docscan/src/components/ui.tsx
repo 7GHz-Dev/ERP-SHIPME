@@ -1,6 +1,6 @@
 'use client';
 import { X, Loader2 } from 'lucide-react';
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
 
 /** ชุด UI พื้นฐาน (สไตล์ shadcn) — ปุ่มใหญ่กดง่ายบนมือถือ (สูงอย่างน้อย 44px) */
 
@@ -100,8 +100,10 @@ export function UiProvider({ children }: { children: ReactNode }) {
     setDlg({ title, input: value, resolve: (v) => resolve(typeof v === 'string' ? v : null) });
   }), []);
   const close = (v: string | boolean | null) => { dlg?.resolve(v); setDlg(null); };
+  // ค่าคงที่ — ถ้าสร้าง object ใหม่ทุกครั้งที่มี toast, effect ที่พึ่ง ui จะรันซ้ำ
+  const api = useMemo(() => ({ toast, confirm, prompt }), [toast, confirm, prompt]);
   return (
-    <UiCtx.Provider value={{ toast, confirm, prompt }}>
+    <UiCtx.Provider value={api}>
       {children}
       <div className="pointer-events-none fixed inset-x-0 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-[70] flex flex-col items-center gap-2 px-4">
         {toasts.map((t) => (
