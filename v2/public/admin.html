@@ -990,7 +990,8 @@
         </div>
       </div>
       <div class="grid2">
-        <div><label>เลขที่ใบแจ้งหนี้</label><input id="inv-no" type="text" readonly></div>
+        <div><label>เลขที่ใบแจ้งหนี้</label><input id="inv-no" type="text" readonly autocomplete="off">
+          <div id="inv-no-msg" class="muted hidden" style="font-size:12px;margin-top:4px"></div></div>
         <div><label>B/L</label><input id="inv-bl" type="text"></div>
       </div>
       <label>ชื่อลูกค้า</label>
@@ -3166,10 +3167,54 @@ function invNameOptions(kind){
 function manualInvoiceTitle(){
   var saved = invState.editing && invState.editing.saved;
   $('inv-title').textContent = (saved ? ('ใบแจ้งหนี้ ' + saved) : 'สร้างใบแจ้งหนี้เอง') + ' — ' + ($('inv-kind').value==='V' ? 'มี VAT' : 'ไม่มี VAT');
-  if(!saved) $('inv-no').value = invState.cfg && invState.cfg.next ? (invState.cfg.next[$('inv-kind').value] + ' (ออกจริงตอนบันทึก)') : '(ออกให้ตอนบันทึก)';
+  if(!saved){
+    var next = invState.cfg && invState.cfg.next ? invState.cfg.next[$('inv-kind').value] : '';
+    $('inv-no').placeholder = 'เว้นว่าง = ออกให้อัตโนมัติ' + (next ? (' (' + next + ')') : '');
+  }
 }
+// ---- เลขที่ใบที่กรอกเอง: พิมพ์แค่เลขรัน (15) = เติม V/NV + ปีเดือนของวันที่ออกใบให้ • ตรวจซ้ำกับเซิร์ฟเวอร์ ----
+function manualInvoiceNumber(){
+  var v = $('inv-no').value.trim().toUpperCase().replace(/\s+/g, '');
+  if(!v) return '';
+  if(/^[0-9]{1,2}$/.test(v)){
+    var period = ($('inv-date').value || '').slice(0,7).replace('-','');
+    v = $('inv-kind').value + period + (v.length < 2 ? '0' + v : v);
+  }
+  return v;
+}
+var invNoTimer = null, invNoSeq = 0;
+function setInvNoMsg(kind, html){
+  var el = $('inv-no-msg');
+  el.style.color = kind==='err' ? '#b91c1c' : (kind==='ok' ? '#059669' : '');
+  el.innerHTML = html; el.classList.toggle('hidden', !html);
+}
+function checkManualInvoiceNumber(){
+  var edit = invState.editing || {};
+  if(!edit.manual || edit.saved) return;
+  clearTimeout(invNoTimer);
+  var number = manualInvoiceNumber();
+  edit.numberOk = !number;
+  if(!number){ setInvNoMsg('', ''); return; }
+  setInvNoMsg('', 'กำลังตรวจเลข ' + esc(number) + '…');
+  invNoTimer = setTimeout(function(){
+    var my = ++invNoSeq;
+    api({ action:'checkInvoiceNumber', token:state.token, number:number, kind:$('inv-kind').value,
+          issueDate:$('inv-date').value, bl:$('inv-bl').value.trim() }).then(function(res){
+      if(my !== invNoSeq) return;
+      edit.numberOk = !!res.ok;
+      setInvNoMsg(res.ok ? 'ok' : 'err', res.ok ? ('✓ ใช้เลข ' + esc(res.number) + ' ได้') : ('✗ ' + esc(res.detail || invNoError(res.error))));
+    });
+  }, 400);
+}
+function invNoError(code){
+  return ({ invoice_number_exists:'เลขนี้มีอยู่แล้ว', invoice_number_format:'รูปแบบเลขไม่ถูกต้อง', seq_used_by_other_bl:'เลขรันนี้ใช้กับ B/L อื่นแล้ว' })[code] || code;
+}
+['inv-no','inv-bl','inv-date'].forEach(function(id){
+  $(id).addEventListener(id==='inv-date' ? 'change' : 'input', checkManualInvoiceNumber);
+});
 function openManualInvoice(){
-  invState.editing = { manual:true, src:{} };
+  invState.editing = { manual:true, src:{}, numberOk:true };
+  $('inv-no').readOnly = false; $('inv-no').value = ''; setInvNoMsg('', '');
   $('inv-kind').value = 'V';
   $('inv-kind').disabled = false;
   $('inv-date').value = $('inv-issue-date').value || new Date().toISOString().slice(0,10);
@@ -3301,7 +3346,7 @@ function recalcInvoice(){
 }
 
 $('inv-kind').addEventListener('change', function(){
-  if(invState.editing && invState.editing.manual){ invNameOptions($('inv-kind').value); manualInvoiceTitle(); recalcInvoice(); return; }
+  if(invState.editing && invState.editing.manual){ invNameOptions($('inv-kind').value); manualInvoiceTitle(); recalcInvoice(); checkManualInvoiceNumber(); return; }
   if(invState.editing) openInvoiceForm(invState.editing.src, $('inv-kind').value);
 });
 $('inv-add').addEventListener('click', function(){
@@ -3319,6 +3364,7 @@ $('inv-add').addEventListener('click', function(){
 $('inv-close').addEventListener('click', function(){
   $('inv-modal').classList.add('hidden');
   $('inv-kind').disabled = false; $('inv-save').classList.remove('hidden');
+  $('inv-no').readOnly = true; $('inv-no').placeholder = ''; setInvNoMsg('', '');
 });
 
 $('inv-save').addEventListener('click', function(){
@@ -3330,7 +3376,10 @@ $('inv-save').addEventListener('click', function(){
     var noName = items.filter(function(it){ return !it.label; }).length;
     if(noName){ $('inv-msg').textContent = 'กรอกชื่อรายการให้ครบทุกบรรทัด'; return; }
     if(!items.some(function(it){ return it.amount > 0; })){ $('inv-msg').textContent = 'กรอกจำนวนเงินอย่างน้อย 1 รายการ'; return; }
-    if(!confirm('บันทึกใบแจ้งหนี้ ' + ($('inv-kind').value==='V'?'มี VAT':'ไม่มี VAT') + ' ' + items.length + ' รายการ?\nระบบจะออกเลขที่ใบให้ตอนบันทึก')) return;
+    var wantNo = manualInvoiceNumber();
+    if(wantNo && edit.numberOk === false){ $('inv-msg').textContent = 'เลขที่ใบใช้ไม่ได้ — ' + $('inv-no-msg').textContent.replace(/^✗\s*/, ''); return; }
+    if(!confirm('บันทึกใบแจ้งหนี้ ' + ($('inv-kind').value==='V'?'มี VAT':'ไม่มี VAT') + ' ' + items.length + ' รายการ?\n'
+      + (wantNo ? ('เลขที่ใบ: ' + wantNo) : 'ระบบจะออกเลขที่ใบให้ตอนบันทึก'))) return;
   }
   $('inv-save').disabled = true;
   $('inv-msg').textContent = 'กำลังบันทึก…';
@@ -3342,12 +3391,14 @@ $('inv-save').addEventListener('click', function(){
     customerAddress:$('inv-addr').value.trim(),
     customerTaxId:$('inv-tax').value.trim(),
     settlementId: edit.src ? edit.src.settlementId : '',
+    number: edit.manual ? manualInvoiceNumber() : '',
     items: items
   }).then(function(res){
     $('inv-save').disabled = false;
     if(!res.ok){
-      $('inv-msg').textContent = 'บันทึกไม่สำเร็จ: ' + ({ bad_item:'มีรายการที่ไม่มีชื่อ หรือยอด/จำนวนติดลบ', no_items:'ต้องมีอย่างน้อย 1 รายการ',
-        too_many_items:'รายการเกิน 100 บรรทัด' }[res.error] || res.error);
+      $('inv-msg').textContent = 'บันทึกไม่สำเร็จ: ' + (res.detail || ({ bad_item:'มีรายการที่ไม่มีชื่อ หรือยอด/จำนวนติดลบ', no_items:'ต้องมีอย่างน้อย 1 รายการ',
+        too_many_items:'รายการเกิน 100 บรรทัด' }[res.error] || invNoError(res.error)));
+      if(/invoice_number|seq_used/.test(res.error||'')) setInvNoMsg('err', '✗ ' + esc(res.detail || invNoError(res.error)));
       return;
     }
     $('inv-no').value = res.number;
@@ -3356,6 +3407,7 @@ $('inv-save').addEventListener('click', function(){
     if(edit.manual){
       edit.saved = res.number;
       $('inv-save').classList.add('hidden'); $('inv-kind').disabled = true;
+      $('inv-no').readOnly = true; setInvNoMsg('', '');
       manualInvoiceTitle();
     }
     // เลขรันถัดไปขยับแล้ว ต้องดึงใหม่ ไม่งั้นใบต่อไปจะโชว์เลขเดิม

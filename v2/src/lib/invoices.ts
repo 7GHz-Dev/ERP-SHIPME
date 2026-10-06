@@ -314,6 +314,41 @@ export async function invoicePreview(body: ApiBody): Promise<ApiResult> {
 }
 
 /**
+ * เลขใบแจ้งหนี้ที่ฝ่ายบัญชีกรอกเอง (ใบที่สร้างเอง) — ต้องเป็นรูปแบบของระบบ ไม่ซ้ำ และเลขรันไม่ชนกับ BL อื่น
+ * รูปแบบ: V/NV + yyyymm ของวันที่ออกใบ + เลขรัน 2 หลักขึ้นไป (V20261015 / NV20261015)
+ * V กับ NV ใช้เลขรันชุดเดียวกัน (คู่ของ BL เดียวกัน) — เลขรันที่ BL อื่นใช้ไปแล้วจึงใช้ไม่ได้
+ */
+type Db = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
+async function checkManualNumber(q: Db, rawNumber: unknown, kind: string, issueDate: string, bl: string):
+  Promise<{ error: ApiResult } | { number: string; period: string; seq: number }> {
+  const number = text(rawNumber, 40).toUpperCase().replace(/\s+/g, '');
+  const period = issueDate.slice(0, 7).replace('-', '');
+  const seq = invoiceSeqOf(kind, period, number);
+  if (!seq) {
+    return { error: { ok: false, error: 'invoice_number_format', detail: `ต้องเป็น ${invoiceNumber(kind, period, 1).slice(0, -2)}xx ตามเดือนของวันที่ออกใบ (เช่น ${invoiceNumber(kind, period, 15)})` } };
+  }
+  if (seq > 99) return { error: { ok: false, error: 'invoice_number_format', detail: 'เลขรันต้องไม่เกิน 99' } };
+  const [same] = await q.select({ number: invoices.number }).from(invoices).where(eq(invoices.number, number)).limit(1);
+  if (same) return { error: { ok: false, error: 'invoice_number_exists', detail: `เลข ${number} มีอยู่แล้ว` } };
+  const owners = await q.select({ number: invoices.number, bl: invoices.bl }).from(invoices)
+    .where(and(eq(invoices.period, period), eq(invoices.seq, seq), sql`${invoices.status} <> 'cancelled'`));
+  const wanted = bl.toUpperCase();
+  const other = owners.find((row) => !wanted || row.bl.toUpperCase() !== wanted);
+  if (other) {
+    return { error: { ok: false, error: 'seq_used_by_other_bl', detail: `เลขรัน ${String(seq).padStart(2, '0')} ใช้กับ ${other.number}${other.bl ? ` (B/L ${other.bl})` : ''} แล้ว` } };
+  }
+  return { number, period, seq };
+}
+
+/** ตรวจเลขที่กรอกเองก่อนบันทึก (หน้าเว็บเรียกตอนพิมพ์) */
+export async function checkInvoiceNumber(body: ApiBody): Promise<ApiResult> {
+  const kind = text(body.kind) === 'NV' ? 'NV' : 'V';
+  const issueDate = validYmd(body.issueDate) ? String(body.issueDate) : ymd();
+  const r = await checkManualNumber(db, body.number, kind, issueDate, text(body.bl, 120));
+  return 'error' in r ? r.error : { ok: true, number: r.number };
+}
+
+/**
  * บันทึกใบแจ้งหนี้ — เลขรันถูกจองในทรานแซกชันเดียวกับการ insert
  * ถ้าแยกกันแล้วมีคนกดพร้อมกัน 2 คน จะได้เลขเดียวกันทั้งคู่ (primary key จะกันไว้อีกชั้น)
  */
@@ -346,15 +381,24 @@ export async function saveInvoice(body: ApiBody, actor: { username: string; name
   const totals = invoiceTotals(items, kind);
   const now = nowIso();
 
+  const manual = text(body.number, 40);
   const saved = await db.transaction(async (tx) => {
-    // นับรวมทั้ง V และ NV และหยิบเลขว่างต่ำสุด — ดู nextSeq ว่าทำไม
-    const taken = await tx.select({ seq: invoices.seq })
-      .from(invoices).where(eq(invoices.period, period));
-    const usedSeq = new Set(taken.map((r) => Number(r.seq)));
-    let seq = 1;
-    while (usedSeq.has(seq)) seq += 1;
-    if (seq > 99) throw new Error('seq_overflow');
-    const number = invoiceNumber(kind, period, seq);
+    let seq: number, number: string;
+    if (manual) {
+      // เลขที่กรอกเอง — ตรวจซ้ำอีกรอบในทรานแซกชันเดียวกับ insert (กันสองคนกดพร้อมกัน)
+      const checked = await checkManualNumber(tx, manual, kind, issueDate, text(body.bl, 120));
+      if ('error' in checked) return checked.error;
+      seq = checked.seq; number = checked.number;
+    } else {
+      // นับรวมทั้ง V และ NV และหยิบเลขว่างต่ำสุด — ดู nextSeq ว่าทำไม
+      const taken = await tx.select({ seq: invoices.seq })
+        .from(invoices).where(eq(invoices.period, period));
+      const usedSeq = new Set(taken.map((r) => Number(r.seq)));
+      seq = 1;
+      while (usedSeq.has(seq)) seq += 1;
+      if (seq > 99) throw new Error('seq_overflow');
+      number = invoiceNumber(kind, period, seq);
+    }
 
     await tx.insert(invoices).values({
       number, kind, period, seq, issueDate,
@@ -371,7 +415,12 @@ export async function saveInvoice(body: ApiBody, actor: { username: string; name
       createdBy: actor.username, createdAt: now, updatedAt: now
     });
     return number;
+  }).catch((error) => {
+    // ชนกันจริง ๆ ตอน insert (primary key) = มีคนออกเลขนี้ไปก่อนเสี้ยววินาที
+    if (String(error).includes('invoices_pkey')) return { ok: false, error: 'invoice_number_exists', detail: 'เลขนี้เพิ่งถูกใช้ไป' } as ApiResult;
+    throw error;
   });
+  if (typeof saved !== 'string') return saved;
 
   return { ok: true, number: saved, ...totals };
 }

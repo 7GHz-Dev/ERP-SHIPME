@@ -35,7 +35,7 @@ import { saveDataImage } from './storage';
 import { lookupTransport, transportDiagnostics } from './transport';
 import { pruneTransportSheets, syncTransportSheet, transportSyncStatus } from './transport-sync';
 import {
-  decideInvoice, getInvoice, invoiceConfig, invoicePreview, invoiceSources, listInvoices, updateInvoice,
+  checkInvoiceNumber, decideInvoice, getInvoice, invoiceConfig, invoicePreview, invoiceSources, listInvoices, updateInvoice,
   saveInvoice, saveInvoiceBatch
 } from './invoices';
 import type { ApiBody, ApiResult, Handler } from './types';
@@ -423,6 +423,10 @@ const handlers: Record<string, Handler> = {
   saveInvoice: async (body) => {
     const session = await guard(body, ACCOUNT_ROLES);
     return session.error || saveInvoice(body, session.user);
+  },
+  checkInvoiceNumber: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || checkInvoiceNumber(body);
   },
   saveInvoiceBatch: async (body) => {
     const session = await guard(body, ACCOUNT_ROLES);
