@@ -338,6 +338,10 @@ export async function saveInvoice(body: ApiBody, actor: { username: string; name
     items = built.items;
   }
   if (!items.length) return { ok: false, error: 'no_items' };
+  // ใบที่ฝ่ายบัญชีสร้างเอง (ไม่อิงใบปิดบัญชี) พิมพ์รายการเองทั้งหมด — ตรวจให้ครบก่อนกินเลขรัน
+  if (items.length > 100) return { ok: false, error: 'too_many_items' };
+  const badItem = items.find((item) => !item.label || item.amount < 0 || item.amount > 1e9 || item.qty < 0);
+  if (badItem) return { ok: false, error: 'bad_item', label: badItem.label };
 
   const totals = invoiceTotals(items, kind);
   const now = nowIso();
@@ -543,7 +547,11 @@ export async function updateInvoice(body: ApiBody, actor: { username: string; na
     if (!label || !Number.isFinite(amount) || amount < 0 || amount > 1e9) {
       return { ok: false, error: 'bad_item', label };
     }
-    items.push({ no: items.length + 1, label, qty: 0, unitPrice: 0, amount: money(amount), note: text(row?.note, 200) });
+    // จำนวน/ราคาต่อหน่วยเดิมเก็บไว้ (ใบที่สร้างเองมีกรอกไว้) — ไม่ส่งมา = 0 เหมือนเดิม
+    items.push({
+      no: items.length + 1, label, qty: Math.max(0, Number(row?.qty) || 0), unitPrice: Math.max(0, money(row?.unitPrice)),
+      amount: money(amount), note: text(row?.note, 200)
+    });
   }
 
   const totals = invoiceTotals(items, existing.kind);
