@@ -1167,6 +1167,10 @@ function enterApp(){
     document.querySelector('.navbtn[data-tab="checkin"]').classList.toggle('hidden', !isManager);
     document.querySelector('.navbtn[data-tab="leave"]').classList.toggle('hidden', isManager);
     document.querySelector('.navbtn[data-tab="emp"]').classList.toggle('hidden', isManager);
+    // ผู้จัดการไม่ใช้เมนูฝั่งบัญชี (ใบแจ้งหนี้ / ใบหัก ณ ที่จ่าย / รายงานรายได้ชิปปิ้ง / กระทบยอดชิปปิ้ง)
+    ['invoice','wht','income','reconcile'].forEach(function(tab){
+      document.querySelector('.navbtn[data-tab="'+tab+'"]').classList.toggle('hidden', isManager);
+    });
   }
   $('subbtn-sheet').classList.toggle('hidden', !canEditSheet());   // หน้าตารูปใบปิดบัญชี = เฉพาะ admin
   $('view-app').classList.remove('hidden');
