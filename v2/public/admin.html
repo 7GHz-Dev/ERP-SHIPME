@@ -2233,6 +2233,8 @@ function renderSettlements(){
       '<td style="white-space:nowrap">'+
         '<button class="btn btn-ghost btn-sm" onclick="smView('+i+')">ดู</button> '+
         '<button class="btn btn-ghost btn-sm" onclick="smCopy('+i+')">คัดลอก</button>'+
+        // บริษัทยังต้องโอนคืนพนักงาน → ปุ่มลัดไปแนบสลิปโอนคืน (ผู้จัดการ/ฝ่ายบัญชี)
+        (settleStatus(r)==='wait-com' ? '<div style="margin-top:6px"><button class="btn btn-ok btn-sm" onclick="smRefund('+i+')">💸 แนบสลิปโอนคืน</button></div>' : '')+
       '</td></tr>';
   }).join('');
 }
@@ -2445,6 +2447,11 @@ window.smView=function(i){
   $('sm-acct').classList.toggle('hidden', !isBossRole());
   $('sm-save').classList.toggle('hidden', !isBossRole());
   $('sm-modal').classList.remove('hidden');
+};
+window.smRefund=function(i){
+  window.smView(i);
+  var box=$('sm-refund');
+  if(box && !box.classList.contains('hidden')) setTimeout(function(){ box.scrollIntoView({ behavior:'smooth', block:'center' }); }, 50);
 };
 window.smCopy=function(i){ var r=settleRows[i]; if(r) copyText(r.detail||''); };
 $('sm-close').addEventListener('click', function(){ $('sm-modal').classList.add('hidden'); });
