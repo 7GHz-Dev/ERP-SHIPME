@@ -7,7 +7,7 @@ import { AUTO_MIN_CONTAINERS, SETTLE_COST_COLUMNS, TRANSPORT_SOURCE_STYLE } from
 import { env } from './env';
 import { appOptionsPayload } from './options';
 import { settleRates } from '@/db/schema';
-import { checkStoredSlip, getSlip } from './slip';
+import { checkStoredSlip, employeeSlipNames, getSlip } from './slip';
 import { createSignedUpload, fileExists, removeStale, replaceDataImage } from './storage';
 import type { ApiResult } from './types';
 import { fmtBaht, fmtDateStr, id, nowIso, round2, safeJson, validYmd } from './utils';
@@ -129,6 +129,8 @@ type SettleRecord = {
   returnedDate: string; companyReturnedDate: string;
   slipUrl: string; slipTxn: string; slipAmount: number; slipDate: string; slipStatus: string; slipBank: string;
   extraSlips: SlipValues[];
+  /** สลิปบริษัทโอนคืนพนักงาน (ฝ่ายบัญชีแนบ) */
+  companySlips: SlipValues[];
   imageUrl: string; detail?: string;
 };
 
@@ -177,6 +179,15 @@ function detail(record: SettleRecord) {
     lines.push(`สลิปโอนเพิ่ม: ${fmtBaht(extra.amount)} บาท • ${fmtDateStr(extra.date)}`
       + (extra.txn ? ` • เลขที่ ${extra.txn}` : ''));
   }
+  const money = settlementMoney(record);
+  // โอนคืนบริษัทไปแล้วมากกว่าที่ต้องคืนจริง (ค่าใช้จ่ายจริงเพิ่มทีหลัง) — บอกให้เห็นว่าบริษัทต้องคืนเท่าไร
+  if (money.paid > 0 && money.paid - record.balance > env.slipAmountTolerance) {
+    lines.push(`โอนคืนบริษัทแล้ว ${fmtBaht(money.paid)} บาท (เกินยอดที่ต้องคืน ${fmtBaht(money.paid - Math.max(0, record.balance))} บาท)`);
+  }
+  for (const c of record.companySlips) {
+    lines.push(`บริษัทโอนคืนพนักงาน: ${fmtBaht(c.amount)} บาท • ${fmtDateStr(c.date)}` + (c.txn ? ` • เลขที่ ${c.txn}` : ''));
+  }
+  if (money.owedToEmployee) lines.push(`รอบริษัทโอนคืนพนักงาน ${fmtBaht(money.owedToEmployee)} บาท`);
   if (record.companyReturnedDate) lines.push(`วันที่บริษัทโอนคืน: ${fmtDateStr(record.companyReturnedDate)}`);
   if (record.editCount > 0) lines.push(`(แก้ไขครั้งที่ ${record.editCount})`);
   return lines.join('\n');
@@ -194,9 +205,44 @@ function readExtraSlips(json: unknown): SlipValues[] {
   }));
 }
 const slipTotal = (slips: SlipValues[]) => round2(slips.reduce((sum, slip) => sum + (Number(slip.amount) || 0), 0));
+/** สลิปบริษัทโอนคืนพนักงาน — เก็บเพิ่มว่าใครแนบเมื่อไร */
+type CompanySlip = SlipValues & { by?: string; at?: string };
+function readCompanySlips(json: unknown): CompanySlip[] {
+  return readExtraSlips(json).map((slip, i) => {
+    const raw = safeJson<any[]>(json, [])[i] || {};
+    return { ...slip, by: String(raw.by || ''), at: String(raw.at || '') };
+  });
+}
+const latestDate = (slips: SlipValues[]) => slips.map((slip) => slip.date).filter(Boolean).sort().pop() || '';
 
 /**
- * เลขที่รายการนี้ถูกใช้กับใบปิดบัญชีอื่นแล้วหรือยัง — ทั้งสลิปหลักและสลิปโอนเพิ่ม
+ * เงินเข้า-ออกของใบปิดบัญชี (แหล่งเดียวที่ทุกหน้าใช้ตัดสินสถานะ)
+ *  paid     = พนักงานโอนคืนบริษัทแล้ว (สลิปหลัก + สลิปโอนเพิ่ม)
+ *  refunded = บริษัทโอนคืนพนักงานแล้ว (สลิปโอนคืนชิปปิ้ง)
+ *  net = คงเหลือ − paid + refunded → บวก = พนักงานยังต้องโอนคืนบริษัท, ลบ = บริษัทยังต้องโอนคืนพนักงาน
+ * เคสโอนเกิน: โอนคืนตามยอดเดิมแล้ว ทีหลังค่าใช้จ่ายจริงเพิ่ม → คงเหลือลด → บริษัทต้องโอนส่วนเกินคืน
+ */
+export function settlementMoney(r: {
+  balance: number; slipAmount: number; returnedDate: string; companyReturnedDate: string;
+  extraSlips: SlipValues[]; companySlips: SlipValues[];
+}) {
+  const tol = env.slipAmountTolerance;
+  const balance = round2(r.balance);
+  let paid = round2((Number(r.slipAmount) || 0) + slipTotal(r.extraSlips));
+  // ใบเก่าที่ย้ายมาจากระบบเดิม: มีวันที่โอนคืนแต่สลิปไม่มียอด = ถือว่าโอนครบตามคงเหลือ
+  if (!paid && r.returnedDate && balance > 0) paid = balance;
+  const refunded = slipTotal(r.companySlips);
+  const net = round2(balance - paid + refunded);
+  const owedToCompany = net > tol ? net : 0;
+  let owedToEmployee = net < -tol ? round2(-net) : 0;
+  // บันทึกแค่วันที่บริษัทโอนคืน (ก่อนมีสลิปโอนคืน) = ถือว่าบริษัทโอนครบแล้ว
+  if (owedToEmployee && r.companyReturnedDate && !r.companySlips.length) owedToEmployee = 0;
+  const status = owedToCompany ? 'wait-emp' : (owedToEmployee ? 'wait-com' : 'done');
+  return { paid, refunded, owedToCompany, owedToEmployee, status };
+}
+
+/**
+ * เลขที่รายการนี้ถูกใช้กับใบปิดบัญชีอื่นแล้วหรือยัง — ทั้งสลิปหลัก สลิปโอนเพิ่ม และสลิปบริษัทโอนคืน
  * unique index กันได้แค่สลิปหลัก สลิปโอนเพิ่มอยู่ใน JSON จึงต้องค้นเอง
  */
 async function txnUsedElsewhere(txn: string, selfId: string) {
@@ -207,7 +253,10 @@ async function txnUsedElsewhere(txn: string, selfId: string) {
   // "txn":"xxx" — escape % _ \\ ไม่งั้นเลขที่รายการที่มีอักขระพวกนี้จะกลายเป็น wildcard
   const needle = `%${JSON.stringify({ txn }).slice(1, -1).replace(/[\\%_]/g, '\\$&')}%`;
   const [extra] = await db.select({ inspectDate: settlements.inspectDate }).from(settlements)
-    .where(and(sql`${settlements.extraSlipsJson} ilike ${needle}`, ne(settlements.id, selfId || '')))
+    .where(and(
+      sql`(${settlements.extraSlipsJson} ilike ${needle} or ${settlements.companySlipsJson} ilike ${needle})`,
+      ne(settlements.id, selfId || '')
+    ))
     .limit(1);
   return extra ? extra.inspectDate : null;
 }
@@ -272,44 +321,44 @@ async function gateExtraSlips(
 }
 
 /**
- * คงเหลือเป็นบวก = พนักงานต้องโอนคืนบริษัท จึงบังคับวันที่โอนคืน + สลิปที่ตรวจแล้ว
- * ไม่เป็นบวก = ไม่ต้องแนบอะไรเลย และล้างค่าสลิปเดิมทิ้ง
+ * เงื่อนไขการโอนคืนบริษัทตอนบันทึกใบ
+ * due = ยอดที่พนักงานต้องโอนคืนบริษัททั้งหมด = คงเหลือ + ที่บริษัทโอนคืนพนักงานไปแล้ว (ปกติ = คงเหลือ)
+ *
+ * ใบใหม่ / ยังไม่เคยแนบสลิป: due เป็นบวก = บังคับวันที่โอนคืน + สลิปที่ตรวจแล้ว • ไม่เป็นบวก = ไม่ต้องแนบอะไร
+ * แก้ใบที่แนบสลิปแล้ว (ไม่แนบสลิปหลักใบใหม่) = ใช้สลิปเดิมต่อ
+ *   - ยอดเพิ่มขึ้น → ต้องแนบสลิปโอนเพิ่มให้ครบ
+ *   - พอดี หรือ "โอนเกิน" (ค่าใช้จ่ายจริงเพิ่มหลังโอนคืนแล้ว แม้คงเหลือจะติดลบ) → บันทึกได้
+ *     สลิปเดิมยังอยู่ครบ ส่วนเกินฝ่ายบัญชีโอนคืนพนักงานแล้วแนบสลิปโอนคืน (saveCompanyRefund)
  */
-async function transferGate(
-  balance: number,
-  returnedDate: string,
-  slipInput: any,
-  owner: string,
-  selfId: string,
-  previous: SlipValues | null,
-  extraInput: unknown = null,
-  previousExtras: SlipValues[] = []
-): Promise<{ error?: ApiResult; returnedDate?: string; slip?: SlipValues; extras?: SlipValues[] }> {
-  if (!(balance > 0)) return { returnedDate: '', slip: emptySlip(), extras: [] };
-  if (!returnedDate) return { error: { ok: false, error: 'returned_date_required' } };
+async function transferGate(o: {
+  balance: number; refunded: number; returnedDate: string; slipInput: any; owner: string; selfId: string;
+  previous: SlipValues | null; previousReturnedDate: string; extraInput: unknown; previousExtras: SlipValues[];
+}): Promise<{ error?: ApiResult; returnedDate?: string; slip?: SlipValues; extras?: SlipValues[] }> {
+  const due = round2(o.balance + o.refunded);
+  const fileId = String(o.slipInput?.fileId || '').trim();
+  const prev = o.previous?.url ? o.previous : null;
 
-  const fileId = String(slipInput?.fileId || '').trim();
-  if (!fileId) {
-    // แก้ใบเดิมโดยไม่แนบสลิปใหม่ = ใช้สลิปเดิม + สลิปโอนเพิ่ม รวมกันต้องเท่ายอดคงเหลือ
-    if (!previous?.url) return { error: { ok: false, error: 'slip_required' } };
-    const gate = await gateExtraSlips(balance, previous, extraInput, previousExtras, owner, selfId);
+  if (prev && !fileId) {
+    const date = o.previousReturnedDate || o.returnedDate;
+    // สลิปเก่าที่ไม่มียอด/วันที่ (ย้ายมาจากระบบเดิม) ตรวจยอดไม่ได้ — ปล่อยผ่านเหมือนเดิม
+    if (!prev.amount && !prev.date) return { returnedDate: date, slip: prev, extras: o.previousExtras };
+    const gate = await gateExtraSlips(due, prev, o.extraInput, o.previousExtras, o.owner, o.selfId);
     if (gate.error) return gate;
     const extras = gate.extras!;
-    // สลิปเก่าที่ไม่มียอด/วันที่ (ย้ายมาจากระบบเดิม) ตรวจยอดไม่ได้ — ปล่อยผ่านเหมือนเดิม
-    if (previous.amount || previous.date) {
-      if (String(previous.date || '') !== returnedDate) return { error: { ok: false, error: 'slip_recheck_required' } };
-      const short = round2(balance - (Number(previous.amount) || 0) - slipTotal(extras));
-      if (short > env.slipAmountTolerance) {
-        return { error: { ok: false, error: 'slip_extra_required', detail: `ยังขาดอีก ${fmtBaht(short)} บาท` } };
-      }
-      if (short < -env.slipAmountTolerance) return { error: { ok: false, error: 'slip_recheck_required' } };
+    const short = round2(due - (Number(prev.amount) || 0) - slipTotal(extras));
+    if (short > env.slipAmountTolerance) {
+      return { error: { ok: false, error: 'slip_extra_required', detail: `ยังขาดอีก ${fmtBaht(short)} บาท` } };
     }
-    return { returnedDate, slip: previous, extras };
+    return { returnedDate: date, slip: prev, extras };
   }
 
-  const stored = await getSlip(fileId, owner);
+  if (!(due > 0)) return { returnedDate: '', slip: emptySlip(), extras: [] };
+  if (!o.returnedDate) return { error: { ok: false, error: 'returned_date_required' } };
+  if (!fileId) return { error: { ok: false, error: 'slip_required' } };
+
+  const stored = await getSlip(fileId, o.owner);
   if (!stored.ok) return { error: stored };
-  const checked = checkStoredSlip(stored.info, returnedDate, balance);
+  const checked = checkStoredSlip(stored.info, o.returnedDate, due);
   if (checked.status === 'mismatch') return { error: { ok: false, error: 'slip_mismatch', detail: checked.label } };
   if (checked.status === 'unreadable' && env.slipStrict) {
     return { error: { ok: false, error: 'slip_unreadable', detail: checked.label } };
@@ -319,14 +368,14 @@ async function transferGate(
   const txn = String(values.txn || '').trim();
   if (txn) {
     // สลิปใบเดียวเอาไปปิดหลายวันไม่ได้
-    const usedOn = await txnUsedElsewhere(txn, selfId);
+    const usedOn = await txnUsedElsewhere(txn, o.selfId);
     if (usedOn) {
       return { error: { ok: false, error: 'slip_txn_duplicate', detail: `ใช้กับใบปิดบัญชีวันที่ ${fmtDateStr(usedOn)} ไปแล้ว` } };
     }
   }
 
   return {
-    returnedDate,
+    returnedDate: o.returnedDate,
     slip: {
       url: stored.row.url, txn, amount: round2(values.amount), date: String(values.date || ''),
       status: checked.label, bank: String(stored.info.bank || '')
@@ -334,6 +383,12 @@ async function transferGate(
     // แนบสลิปหลักใบใหม่ = ใบนั้นต้องครบยอดเอง สลิปโอนเพิ่มเดิมไม่เกี่ยวแล้ว
     extras: []
   };
+}
+
+/** วันที่บริษัทโอนคืน: มีสลิปโอนคืน = วันที่สลิปล่าสุดเมื่อคืนครบแล้ว (ยังไม่ครบ = ว่าง) • ไม่มีสลิป = ค่าที่บันทึกเอง */
+function companyDateOf(record: SettleRecord, fallback: string) {
+  if (!record.companySlips.length) return fallback;
+  return settlementMoney(record).owedToEmployee ? '' : latestDate(record.companySlips);
 }
 
 type SettlementDbRow = typeof settlements.$inferSelect;
@@ -348,8 +403,15 @@ export function settlementRow(row: SettlementDbRow) {
     rows: safeJson<SettleRow[]>(row.rowsJson, []), detail: row.detail || '', imageUrl: row.imageUrl || '',
     slipUrl: row.slipUrl || '', slipTxn: row.slipTxn || '', slipAmount: Number(row.slipAmount) || 0,
     slipDate: row.slipDate || '', slipStatus: row.slipStatus || '', slipBank: row.slipBank || '',
-    extraSlips: readExtraSlips(row.extraSlipsJson)
+    extraSlips: readExtraSlips(row.extraSlipsJson),
+    companySlips: readCompanySlips(row.companySlipsJson)
   };
+}
+
+/** แถวสำหรับส่งให้หน้าเว็บ — แนบสถานะเงิน (โอนแล้ว/บริษัทคืนแล้ว/ค้างใคร) ที่คิดจากฝั่งเซิร์ฟเวอร์ */
+export function settlementView(row: SettlementDbRow) {
+  const r = settlementRow(row);
+  return { ...r, money: settlementMoney(r) };
 }
 
 export async function listSettlements(username: string | null = null, limit = 500) {
@@ -358,7 +420,7 @@ export async function listSettlements(username: string | null = null, limit = 50
         .orderBy(desc(settlements.updatedAt)).limit(limit)
     : await db.select().from(settlements).orderBy(desc(settlements.updatedAt)).limit(limit);
   const files = await inspectionFilesFor(rows);
-  return rows.map((row) => ({ ...settlementRow(row), inspectionFiles: files.get(`${row.username.toLowerCase()}|${row.inspectDate}`) || [] }));
+  return rows.map((row) => ({ ...settlementView(row), inspectionFiles: files.get(`${row.username.toLowerCase()}|${row.inspectDate}`) || [] }));
 }
 
 export async function saveSettlement(
@@ -388,21 +450,29 @@ export async function saveSettlement(
 
     const claim = await claimedTotal(old.username, inspectDate);
     const balance = round2(claim.total - totalExpense);
-    const gate = await transferGate(balance, returnedDate, input?.slip, old.username, settlementId, {
-      url: old.slipUrl, txn: old.slipTxn, amount: old.slipAmount, date: old.slipDate,
-      status: old.slipStatus, bank: old.slipBank
-    }, input?.extraSlips, readExtraSlips(old.extraSlipsJson));
+    const companySlips = readCompanySlips(old.companySlipsJson);
+    const gate = await transferGate({
+      balance, refunded: slipTotal(companySlips), returnedDate, slipInput: input?.slip,
+      owner: old.username, selfId: settlementId,
+      previous: {
+        url: old.slipUrl, txn: old.slipTxn, amount: old.slipAmount, date: old.slipDate,
+        status: old.slipStatus, bank: old.slipBank
+      },
+      previousReturnedDate: old.returnedDate || '',
+      extraInput: input?.extraSlips, previousExtras: readExtraSlips(old.extraSlipsJson)
+    });
     if (gate.error) return gate.error;
 
     const record: SettleRecord = {
       id: settlementId, username: old.username, name: old.name, inspectDate,
       claimTotal: claim.total, rows, totalExpense, balance, editCount: Number(old.editCount) + 1,
-      returnedDate: gate.returnedDate!, companyReturnedDate: isBoss ? companyDate : old.companyReturnedDate,
+      returnedDate: gate.returnedDate!, companyReturnedDate: '',
       slipUrl: gate.slip!.url, slipTxn: gate.slip!.txn, slipAmount: gate.slip!.amount,
       slipDate: gate.slip!.date, slipStatus: gate.slip!.status, slipBank: gate.slip!.bank,
-      extraSlips: gate.extras || [],
+      extraSlips: gate.extras || [], companySlips,
       imageUrl: old.imageUrl || ''
     };
+    record.companyReturnedDate = companyDateOf(record, isBoss ? companyDate : old.companyReturnedDate);
     record.detail = detail(record);
 
     try {
@@ -420,7 +490,7 @@ export async function saveSettlement(
       if (message.includes('settlements_slip_txn_idx')) return { ok: false, error: 'slip_txn_duplicate' };
       throw error;
     }
-    return { ok: true, mode: 'updated', record: { ...record, updated: now } };
+    return { ok: true, mode: 'updated', record: { ...record, updated: now, money: settlementMoney(record) } };
   }
 
   const [duplicate] = await db.select().from(settlements)
@@ -432,7 +502,10 @@ export async function saveSettlement(
 
   const claim = await claimedTotal(user.username, inspectDate);
   const balance = round2(claim.total - totalExpense);
-  const gate = await transferGate(balance, returnedDate, input?.slip, user.username, '', null);
+  const gate = await transferGate({
+    balance, refunded: 0, returnedDate, slipInput: input?.slip, owner: user.username, selfId: '',
+    previous: null, previousReturnedDate: '', extraInput: null, previousExtras: []
+  });
   if (gate.error) return gate.error;
 
   const record: SettleRecord = {
@@ -441,7 +514,7 @@ export async function saveSettlement(
     returnedDate: gate.returnedDate!, companyReturnedDate: isBoss ? companyDate : '',
     slipUrl: gate.slip!.url, slipTxn: gate.slip!.txn, slipAmount: gate.slip!.amount,
     slipDate: gate.slip!.date, slipStatus: gate.slip!.status, slipBank: gate.slip!.bank,
-    extraSlips: [], imageUrl: ''
+    extraSlips: [], companySlips: [], imageUrl: ''
   };
   record.detail = detail(record);
 
@@ -460,7 +533,7 @@ export async function saveSettlement(
     if (message.includes('settlements_slip_txn_idx')) return { ok: false, error: 'slip_txn_duplicate' };
     throw error;
   }
-  return { ok: true, mode: 'created', record: { ...record, created: now, updated: now } };
+  return { ok: true, mode: 'created', record: { ...record, created: now, updated: now, money: settlementMoney(record) } };
 }
 
 /** ใบปิดบัญชีใบไหน + ใครเป็นเจ้าของ — ใช้ทั้งตอนขอ signed upload และตอนบันทึกรูป */
@@ -526,4 +599,84 @@ export async function saveSettlementImage(
   await db.update(settlements).set({ imageUrl: url, updatedAt: nowIso() })
     .where(eq(settlements.id, row.id));
   return { ok: true, url, name: fileName, folder: 'settlements' };
+}
+
+const MAX_COMPANY_SLIPS = 10;
+
+/**
+ * สลิปบริษัทโอนคืนชิปปิ้ง (ฝ่ายบัญชีแนบที่หน้าผู้ดูแล)
+ * ใช้เมื่อบริษัทต้องโอนเงินคืนพนักงาน: คงเหลือติดลบ หรือพนักงานโอนคืนไปแล้วแต่ภายหลังค่าใช้จ่ายจริงเพิ่ม
+ *
+ * slips = รายการทั้งหมดที่ต้องการให้เหลือ: { url } = ใบเดิม • { fileId, date, amount } = ใบใหม่ (ตรวจกับสลิปจริง)
+ * ไม่ใส่ใบเดิมกลับมา = ลบใบนั้น (แนบผิดใบ) • ยอดรวมห้ามเกินที่บริษัทต้องคืน
+ * คืนครบแล้ว → ตั้งวันที่บริษัทโอนคืนเป็นวันที่สลิปล่าสุดให้เอง
+ */
+export async function saveCompanyRefund(body: any, user: { username: string; role: string }): Promise<ApiResult> {
+  const [row] = await db.select().from(settlements).where(eq(settlements.id, String(body?.id || ''))).limit(1);
+  if (!row) return { ok: false, error: 'settlement_not_found' };
+  const input = Array.isArray(body?.slips) ? body.slips : null;
+  if (!input) return { ok: false, error: 'bad_request' };
+  if (input.length > MAX_COMPANY_SLIPS) return { ok: false, error: 'too_many_slips' };
+
+  const base = settlementRow(row);
+  const previous = base.companySlips;
+  // ยอดที่บริษัทต้องคืนทั้งหมด (ยังไม่หักที่คืนแล้ว)
+  const owedTotal = settlementMoney({ ...base, companySlips: [], companyReturnedDate: '' }).owedToEmployee;
+  const payee = await employeeSlipNames(row.username);
+  const seenTxn = new Set([base.slipTxn, ...base.extraSlips.map((x) => x.txn)].filter(Boolean).map((t) => t.toUpperCase()));
+  const list: CompanySlip[] = [];
+
+  for (const item of input) {
+    const fileId = String(item?.fileId || '').trim();
+    if (!fileId) {
+      const kept = previous.find((slip) => slip.url === String(item?.url || ''));
+      if (kept) { list.push(kept); if (kept.txn) seenTxn.add(kept.txn.toUpperCase()); }
+      continue;
+    }
+    const date = String(item?.date || '').trim();
+    if (!validYmd(date)) return { ok: false, error: 'company_refund_date_required' };
+    const amount = round2(item?.amount);
+    if (!(amount > 0)) return { ok: false, error: 'slip_mismatch', detail: 'ไม่ได้ระบุยอดที่บริษัทโอน' };
+    if (slipTotal(list) + amount - owedTotal > env.slipAmountTolerance) {
+      return { ok: false, error: 'company_refund_too_much', detail: `บริษัทต้องโอนคืนทั้งหมด ${fmtBaht(owedTotal)} บาท` };
+    }
+    // สลิปต้องเป็นไฟล์ที่ผู้ใช้คนนี้อัปโหลดเอง และตรวจผ่าน (อ่านได้ หรือกรอกค่าจากสลิปเอง)
+    const stored = await getSlip(fileId, user.username);
+    if (!stored.ok) return stored;
+    const checked = checkStoredSlip(stored.info, date, amount, { company: payee });
+    if (checked.status !== 'verified' && checked.status !== 'manual') {
+      return { ok: false, error: 'slip_mismatch', detail: checked.label };
+    }
+    const values = (checked.manual ? (stored.info.manual || {}) : stored.info) as { txn?: string };
+    const txn = String(values.txn || '').trim();
+    if (txn) {
+      if (seenTxn.has(txn.toUpperCase())) return { ok: false, error: 'slip_txn_duplicate', detail: 'แนบสลิปใบเดียวกันซ้ำ' };
+      const usedOn = await txnUsedElsewhere(txn, row.id);
+      if (usedOn) return { ok: false, error: 'slip_txn_duplicate', detail: `ใช้กับใบปิดบัญชีวันที่ ${fmtDateStr(usedOn)} ไปแล้ว` };
+      seenTxn.add(txn.toUpperCase());
+    }
+    list.push({
+      url: stored.row.url, txn, amount, date, status: checked.label, bank: String(stored.info.bank || ''),
+      by: user.username, at: nowIso()
+    });
+  }
+
+  const record: SettleRecord = {
+    id: row.id, username: row.username, name: row.name, inspectDate: row.inspectDate,
+    claimTotal: base.claimTotal, rows: base.rows, totalExpense: base.totalExpense, balance: base.balance,
+    editCount: base.editCount, returnedDate: base.returnedDate, companyReturnedDate: '',
+    slipUrl: base.slipUrl, slipTxn: base.slipTxn, slipAmount: base.slipAmount, slipDate: base.slipDate,
+    slipStatus: base.slipStatus, slipBank: base.slipBank, extraSlips: base.extraSlips, companySlips: list,
+    imageUrl: base.imageUrl
+  };
+  // ลบสลิปโอนคืนจนหมด = กลับไปใช้วันที่ที่บันทึกไว้เดิม (ถ้าเดิมมาจากสลิป ให้ล้างทิ้ง)
+  record.companyReturnedDate = companyDateOf(record, previous.length ? '' : row.companyReturnedDate);
+  record.detail = detail(record);
+  const now = nowIso();
+  await db.update(settlements).set({
+    companySlipsJson: JSON.stringify(list), companyReturnedDate: record.companyReturnedDate,
+    detail: record.detail, updatedAt: now
+  }).where(eq(settlements.id, row.id));
+  const [saved] = await db.select().from(settlements).where(eq(settlements.id, row.id)).limit(1);
+  return { ok: true, record: settlementView(saved) };
 }

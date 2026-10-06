@@ -1,4 +1,5 @@
 import { and, gte, lte } from 'drizzle-orm';
+import { settlementView } from './settlements';
 import { db } from '@/db';
 import { claims, settlements, transportJobs } from '@/db/schema';
 import { SHIPPING_FULL_NAMES } from './constants';
@@ -70,7 +71,7 @@ export async function shippingReconcileData(body: ApiBody): Promise<ApiResult> {
 
   type Day = {
     date: string; claimDate: string; claim: number; sheet: number; overtime: number; freezone: number; used: number | null;
-    refund: number | null; returnedDate: string; slipStatus: string; hasSettlement: boolean;
+    refund: number | null; returnedDate: string; slipStatus: string; hasSettlement: boolean; companyOwes: number;
     bls: Map<string, { bl: string; sheet: number; overtime: number; sheetParts: { label: string; amount: number }[]; settlement: number | null; freezone: number }>;
   };
   const people = new Map<string, Map<string, Day>>();
@@ -79,7 +80,7 @@ export async function shippingReconcileData(body: ApiBody): Promise<ApiResult> {
     people.set(who, p);
     let d = p.get(date);
     if (!d) {
-      d = { date, claimDate: '', claim: 0, sheet: 0, overtime: 0, freezone: 0, used: null, refund: null, returnedDate: '', slipStatus: '', hasSettlement: false, bls: new Map() };
+      d = { date, claimDate: '', claim: 0, sheet: 0, overtime: 0, freezone: 0, used: null, refund: null, returnedDate: '', slipStatus: '', hasSettlement: false, companyOwes: 0, bls: new Map() };
       p.set(date, d);
     }
     return d;
@@ -110,6 +111,8 @@ export async function shippingReconcileData(body: ApiBody): Promise<ApiResult> {
     d.refund = round2(s.balance);
     d.returnedDate = s.returnedDate || '';
     d.slipStatus = s.slipStatus || '';
+    // โอนคืนบริษัทไปแล้วแต่ค่าใช้จ่ายจริงเพิ่มทีหลัง / คงเหลือติดลบ — บริษัทยังต้องโอนคืนพนักงานเท่าไร
+    d.companyOwes = settlementView(s).money.owedToEmployee;
     if (!d.claim) d.claim = round2(s.claimTotal);
     for (const row of safeJson<any[]>(s.rowsJson, [])) {
       const fz = FREEZONE_KEYS.reduce((sum, k) => sum + (Number(row?.costs?.[k]) || 0), 0);

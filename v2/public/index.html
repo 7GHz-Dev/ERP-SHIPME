@@ -508,6 +508,8 @@
               </div>
             </div>
           </div>
+          <!-- โอนคืนไปแล้ว แต่แก้ใบแล้วค่าใช้จ่ายจริงเพิ่ม → ยอดที่ต้องคืนลดลง ส่วนที่โอนเกินบริษัทโอนคืนให้ -->
+          <div id="st-over" class="status hidden" style="margin:12px 0 0; background:#fef3c7; color:#92400e"></div>
         </div>
 
         <div id="st-company-wrap" class="hidden">
@@ -2338,11 +2340,13 @@ function loadSettleConfig(){
 
 function newSettleForm(rec){
   // available = เลข BL ที่ดึงมาได้ (ยังไม่นับว่าเลือก) / rows = ใบที่ติ๊กเลือกแล้ว = ส่วนกรอกค่าใช้จ่าย
-  var f={ id:null, editCount:0, inspectDate:'', claimTotal:0, available:[], rows:[], cache:{}, returnedDate:'', companyReturnedDate:'' };
+  var f={ id:null, editCount:0, inspectDate:'', claimTotal:0, available:[], rows:[], cache:{}, returnedDate:'', companyReturnedDate:'', refunded:0 };
   if(rec){
     f.id=rec.id; f.editCount=Number(rec.editCount)||0;
     f.inspectDate=rec.inspectDate||''; f.claimTotal=Number(rec.claimTotal)||0;
     f.returnedDate=rec.returnedDate||''; f.companyReturnedDate=rec.companyReturnedDate||'';
+    // บริษัทโอนคืนพนักงานไปแล้ว (สลิปโอนคืนชิปปิ้งที่ฝ่ายบัญชีแนบ) — นับรวมตอนคิดยอดที่ต้องโอนคืน
+    f.refunded=r2((rec.companySlips||[]).reduce(function(t,x){ return t+(Number(x.amount)||0); },0));
     f.rows=(rec.rows||[]).map(function(r){
       return { bl:r.bl||'', port:r.port||'', customer:r.customer||'', containers:Number(r.containers)||0,
                otherDetail:r.otherDetail||'', costs:cloneCosts(r.costs),
@@ -2863,6 +2867,11 @@ function settleBalance(){
   var f=settle.form; if(!f) return 0;
   return r2(f.claimTotal-settleExpense());
 }
+// ยอดที่สลิปโอนคืนบริษัทต้องตรง = คงเหลือ + ที่บริษัทโอนคืนให้ไปแล้ว (ปกติไม่มี = คงเหลือ)
+function settleDue(){
+  var f=settle.form; if(!f) return 0;
+  return r2(settleBalance()+(Number(f.refunded)||0));
+}
 
 function updateSettleSummary(){
   var f=settle.form; if(!f) return;
@@ -2874,9 +2883,12 @@ function updateSettleSummary(){
   $('st-balance-lbl').textContent = bal>=0 ? 'คงเหลือ (โอนคืนบริษัท)' : 'จ่ายเกินยอดเบิก (บริษัทโอนคืน)';
   $('st-balance').style.color = bal>=0 ? 'var(--blue)' : '#dc2626';
 
-  // คงเหลือเป็นบวก = พนักงานต้องโอนคืนบริษัท → บังคับวันที่โอนคืน + สลิป
-  // ไม่เป็นบวก (บริษัทโอนคืน / พอดี) = ไม่ต้องเลือกวันที่โอนคืนและไม่ต้องแนบสลิปเลย
-  var needTransfer = bal>0;
+  // due = ยอดที่ต้องโอนคืนบริษัททั้งหมด (คงเหลือ + ที่บริษัทโอนคืนให้ไปแล้ว ปกติ = คงเหลือ)
+  // เป็นบวก = พนักงานต้องโอนคืนบริษัท → บังคับวันที่โอนคืน + สลิป
+  // แก้ใบที่แนบสลิปไปแล้ว = แสดงส่วนสลิปเสมอ แม้ค่าใช้จ่ายจริงเพิ่มจนคงเหลือลด/ติดลบ (ส่วนที่โอนเกินบริษัทคืนให้)
+  var due=r2(bal+(Number(f.refunded)||0));
+  var paidSlip=savedSlip(), hasPaid=!!paidSlip && Number(paidSlip.amount)>0;
+  var needTransfer = hasPaid || due>0;
   $('st-return-wrap').classList.toggle('hidden', !needTransfer);
   if(!needTransfer && (f.returnedDate || settle.slip)){
     f.returnedDate=''; $('st-returned').value='';
@@ -2888,13 +2900,14 @@ function updateSettleSummary(){
   if(ready && needTransfer){
     if(!f.returnedDate) miss.push('เลือกวันที่โอนคืนบริษัท');
     else {
-      var sp=slipState(bal, f.returnedDate);
+      var sp=slipState(due, f.returnedDate);
       if(!sp.ok) miss.push(sp.why);
     }
   }
+  renderOverpay(due, bal);
   // ใบใหม่ต้องมีไฟล์หลักฐานการตรวจปล่อย (ใบเก่าที่แก้ไขไม่บังคับ)
   if(ready && !f.id && !(insp.date===f.inspectDate && insp.files.length)) miss.push('แนบหลักฐานการตรวจปล่อย (ข้อ 4)');
-  renderExtraSlips(bal, f.returnedDate);
+  renderExtraSlips(due, f.returnedDate);
   $('st-need').classList.toggle('hidden', !(ready && miss.length));
   if(miss.length) $('st-need').textContent='ต้องทำก่อนบันทึก: '+miss.join(' • ');
 
@@ -2932,7 +2945,7 @@ function resetSlip(){
 $('st-slip-retry').addEventListener('click', function(){
   var f=settle.form, sp=settle.slip;
   if(!f || !sp || !sp.fileId){ toast('แนบสลิปก่อน'); return; }
-  var bal=settleBalance(), date=f.returnedDate;
+  var bal=settleDue(), date=f.returnedDate;
   setSlipStatus('wait','<span class="spinner"></span> กำลังลองอ่านสลิปอีกครั้ง…');
   api({action:'verifySlip', token:state.token, fileId:sp.fileId, retryOcr:true, expectDate:date, expectAmount:bal})
     .then(function(res){ applySlipResult(res, bal, date); })
@@ -2943,7 +2956,7 @@ $('st-slip-retry').addEventListener('click', function(){
 $('st-slip-confirm').addEventListener('click', function(){
   var f=settle.form, sp=settle.slip;
   if(!f || !sp || !sp.fileId){ toast('แนบสลิปก่อน'); return; }
-  var bal=settleBalance(), date=f.returnedDate;
+  var bal=settleDue(), date=f.returnedDate;
   var manual={ amount:Number($('st-slip-amt').value)||0, date:$('st-slip-date').value, txn:$('st-slip-txn').value.trim() };
   if(!manual.txn){ toast('กรอกเลขที่รายการในสลิปด้วย'); return; }
   if(!manual.date){ toast('เลือกวันที่โอนในสลิป'); return; }
@@ -2974,7 +2987,7 @@ function scheduleSlipRecheck(){
 function recheckSlip(){
   var f=settle.form, sp=settle.slip;
   if(!f || !sp || !sp.fileId) return;
-  var bal=settleBalance();
+  var bal=settleDue();
   if(!(bal>0) || !f.returnedDate) return;
   if(sp.expectAmount===bal && sp.expectDate===f.returnedDate) return;
   setSlipStatus('wait','<span class="spinner"></span> ตรวจสลิปกับยอด/วันที่ใหม่…');
@@ -3008,16 +3021,32 @@ function extraSlipState(bal, date){
   var short=extraShort(bal);
   if(short>extraTol()) return { ok:false, why:'แนบสลิปโอนเพิ่มอีก '+fmtM(short)+' บาท' };
   if(short<-extraTol()){
-    return { ok:false, why: (settle.extras||[]).length
-      ? 'ยอดสลิปรวมเกินยอดคงเหลือ — ลบสลิปโอนเพิ่มออก'
-      : 'ยอดลดลงจากสลิปเดิม — ต้องแนบสลิปใหม่' };
+    // ยอดลดลงหลังโอนไปแล้ว (ค่าใช้จ่ายจริงเพิ่ม) = บันทึกได้ ส่วนที่โอนเกินบริษัทโอนคืนให้
+    // แต่ถ้าเพิ่งแนบสลิปโอนเพิ่มในรอบนี้แล้วเกิน = แนบเกินเอง ให้ลบออก
+    var fresh=(settle.extras||[]).some(function(x){ return !x.saved; });
+    if(fresh) return { ok:false, why:'ยอดสลิปรวมเกินยอดที่ต้องโอนคืน — ลบสลิปโอนเพิ่มที่เพิ่งแนบออก' };
+    return { ok:true, why:'' };
   }
   return { ok:true, why:'' };
 }
 
+/** แจ้งยอดที่บริษัทต้องโอนคืน เมื่อโอนคืนบริษัทไปแล้วมากกว่ายอดที่ต้องคืนจริง (หลังแก้ค่าใช้จ่ายเพิ่ม) */
+function renderOverpay(due, bal){
+  var sp=savedSlip(), el=$('st-over');
+  var paid = sp ? r2((Number(sp.amount)||0)+extraTotal()) : 0;
+  var over = r2(paid-due);
+  if(!(paid>0) || !(over>extraTol())){ el.classList.add('hidden'); return; }
+  var refunded=Number((settle.form||{}).refunded)||0;
+  el.innerHTML='💸 คุณโอนคืนบริษัทไปแล้ว <b>'+fmtM(paid)+'</b> บาท แต่ยอดที่ต้องคืนจริงตอนนี้คือ <b>'+fmtM(Math.max(0,bal))+'</b> บาท'+
+    (bal<0?(' (และจ่ายเกินยอดเบิกอีก '+fmtM(-bal)+' บาท)'):'')+
+    (refunded>0?(' • บริษัทโอนคืนให้แล้ว '+fmtM(refunded)+' บาท'):'')+
+    '<br><b>บริษัทจะโอนคืนให้คุณ '+fmtM(over)+' บาท</b> — บันทึกได้เลย ไม่ต้องแนบสลิปใหม่ ฝ่ายบัญชีจะแนบสลิปโอนคืนให้ในระบบ';
+  el.classList.remove('hidden');
+}
+
 function renderExtraSlips(bal, date){
   var sp=savedSlip();
-  var usable = !!sp && Number(sp.amount)>0 && sp.date===date && bal>0;
+  var usable = !!sp && Number(sp.amount)>0 && sp.date===date;
   var list=settle.extras||[];
   var short=usable ? extraShort(bal) : 0;
   $('st-extra-wrap').classList.toggle('hidden', !(usable && (short>extraTol() || list.length)));
@@ -3063,7 +3092,7 @@ $('st-extra-file').addEventListener('change', function(){
   if(!file) return;
   var f=settle.form; if(!f) return;
   var date=$('st-extra-date').value;
-  var short=extraShort(settleBalance());
+  var short=extraShort(settleDue());
   var amount=r2(Number($('st-extra-expect').value)||0);
   if(!date){ toast('เลือกวันที่โอนเพิ่มก่อน'); input.value=''; return; }
   if(!(short>extraTol())){ toast('ไม่ต้องโอนเพิ่มแล้ว'); input.value=''; return; }
@@ -3167,7 +3196,7 @@ function slipSourceImage(){
 function resizeSlipAndSend(maxW, quality){
   var f=settle.form, src=slipSourceImage();
   if(!f || !src){ toast('แนบสลิปก่อน'); return; }
-  var bal=settleBalance(), date=f.returnedDate;
+  var bal=settleDue(), date=f.returnedDate;
   if(!(bal>0) || !date){ toast('ต้องมียอดที่ต้องโอนคืนและวันที่โอนคืนก่อน'); return; }
   settle.slipMaxW=maxW;
   setSlipStatus('wait','<span class="spinner"></span> กำลังเตรียมรูป (กว้าง '+maxW+' px)…');
@@ -3201,7 +3230,7 @@ $('st-slip-file').addEventListener('change', function(){
   var file=this.files && this.files[0];
   if(!file) return;
   var f=settle.form; if(!f){ this.value=''; return; }
-  var bal=settleBalance();
+  var bal=settleDue();
   if(!(bal>0)){ toast('ใบนี้ไม่ต้องโอนคืนบริษัท จึงไม่ต้องแนบสลิป'); this.value=''; return; }
   if(!f.returnedDate){ toast('เลือกวันที่โอนคืนบริษัทก่อนแนบสลิป'); this.value=''; return; }
   if(file.size>10*1024*1024){ toast('ไฟล์ใหญ่เกิน 10MB — ถ่าย/แคปใหม่ให้เล็กลงก่อน'); this.value=''; return; }
@@ -3494,6 +3523,9 @@ function settleText(editCountOverride){
   (settle.extras||[]).forEach(function(x){
     L.push('สลิปโอนเพิ่ม: '+fmtM(x.amount)+' บาท • '+fmtD(x.date)+(x.txn?(' • เลขที่ '+x.txn):''));
   });
+  var spx=savedSlip(), paidx=spx ? r2((Number(spx.amount)||0)+extraTotal()) : 0, overx=r2(paidx-bal-(Number(f.refunded)||0));
+  if(paidx>0 && overx>extraTol()) L.push('โอนคืนบริษัทแล้ว '+fmtM(paidx)+' บาท — รอบริษัทโอนคืนพนักงาน '+fmtM(overx)+' บาท');
+  if(Number(f.refunded)>0) L.push('บริษัทโอนคืนพนักงานแล้ว: '+fmtM(f.refunded)+' บาท');
   if(f.companyReturnedDate) L.push('วันที่บริษัทโอนคืน: '+fmtD(f.companyReturnedDate));
   var ec=(editCountOverride==null)?f.editCount:editCountOverride;
   if(ec>0) L.push('(แก้ไขครั้งที่ '+ec+')');
@@ -3578,6 +3610,14 @@ function loadMySettlements(){
   });
 }
 
+// สถานะเงินที่คิดจากฝั่งเซิร์ฟเวอร์: รอบริษัทโอนคืน / บริษัทโอนคืนแล้ว / ยังขาดโอนคืนบริษัท
+function settleMoneyNote(r){
+  var m=r.money||{};
+  if(m.owedToEmployee>0) return '<br><b style="color:#b91c1c">💸 รอบริษัทโอนคืนให้คุณ '+fmtM(m.owedToEmployee)+' บาท</b>';
+  if(m.owedToCompany>0) return '<br><b style="color:#b45309">ยังต้องโอนคืนบริษัทอีก '+fmtM(m.owedToCompany)+' บาท</b>';
+  if(m.refunded>0) return '<br>💸 บริษัทโอนคืนให้แล้ว '+fmtM(m.refunded)+' บาท';
+  return '';
+}
 function renderSettleList(){
   if(!settle.list.length){ $('st-list').innerHTML='<div class="muted" style="padding:10px">ยังไม่มีรายการปิดบัญชี</div>'; return; }
   $('st-list').innerHTML=settle.list.map(function(r,i){
@@ -3591,7 +3631,8 @@ function renderSettleList(){
         (r.editCount>0?(' • <b>แก้ไขครั้งที่ '+r.editCount+'</b>'):'')+
         '<br>บันทึกล่าสุด '+esc(upd)+
         (r.returnedDate?(' • โอนคืนบริษัท '+esc(fmtD(r.returnedDate))):'')+
-        (r.companyReturnedDate?(' • บริษัทโอนคืน '+esc(fmtD(r.companyReturnedDate))):'')+'</div>'+
+        (r.companyReturnedDate?(' • บริษัทโอนคืน '+esc(fmtD(r.companyReturnedDate))):'')+
+        settleMoneyNote(r)+'</div>'+
       '<div class="r-act">'+
         '<button class="btn btn-ghost" onclick="settleEdit('+i+')">✏️ แก้ไข</button>'+
         '<button class="btn btn-ghost" onclick="settleCopy('+i+')">📋 คัดลอก</button>'+

@@ -159,6 +159,9 @@ export const settlements = pgTable('settlements', {
   // สลิปโอนเพิ่มตอนแก้ใบ — ยอดเพิ่มหลังโอนไปแล้ว พนักงานโอนแค่ส่วนต่าง จึงเป็นสลิปอีกใบ
   // [{ url, txn, amount, date, status, bank }] สลิปหลักยังอยู่ที่ slip_* เหมือนเดิม
   extraSlipsJson: text('extra_slips_json').notNull().default('[]'),
+  // สลิปบริษัทโอนคืนชิปปิ้ง — พนักงานโอนคืนไปแล้ว ภายหลังค่าใช้จ่ายจริงเพิ่ม (หรือคงเหลือติดลบ)
+  // ฝ่ายบัญชีโอนส่วนต่างคืนพนักงานแล้วแนบสลิป [{ url, txn, amount, date, status, bank, by, at }]
+  companySlipsJson: text('company_slips_json').notNull().default('[]'),
   // ข้อมูลที่ย้ายมาจากชีตเดิมมีบางวันที่ปิดบัญชีซ้ำคนละใบ ต้องเก็บไว้ทั้งหมด
   // ใบที่สร้างใหม่ยังถูกกันซ้ำด้วย partial unique index ด้านล่างตามเดิม
   legacyDuplicate: boolean('legacy_duplicate').notNull().default(false)

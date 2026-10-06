@@ -27,7 +27,7 @@ import {
 } from './people';
 import { listReceipts, myReceipts, saveReceipt } from './receipts';
 import {
-  listSettlements, saveSettleRates, saveSettlement, saveSettlementImage,
+  listSettlements, saveCompanyRefund, saveSettleRates, saveSettlement, saveSettlementImage,
   settleConfig, signSettlementImage
 } from './settlements';
 import { ocrDiagnostics, signSlipUpload, verifySlip } from './slip';
@@ -334,10 +334,15 @@ const handlers: Record<string, Handler> = {
     if (session.error) return session.error;
     return { ok: true, rows: await listSettlements(session.user.username, 100) };
   },
+  // ฝ่ายบัญชีเห็นใบปิดบัญชีทั้งหมดด้วย (ต้องแนบสลิปบริษัทโอนคืนชิปปิ้ง)
   listSettlements: async (body) => {
-    const session = await guard(body, ['admin', 'manager']);
+    const session = await guard(body, ACCOUNT_ROLES);
     if (session.error) return session.error;
     return { ok: true, rows: await listSettlements(null, 500) };
+  },
+  saveCompanyRefund: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || saveCompanyRefund(body, session.user);
   },
 
   /**

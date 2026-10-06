@@ -1,8 +1,8 @@
 import { desc, eq } from 'drizzle-orm';
 import { db } from '@/db';
-import { slips } from '@/db/schema';
+import { settlements, slips, users } from '@/db/schema';
 import { driveOcrConfigured, driveOcrText, driveServiceAccount } from './drive-ocr';
-import { SLIP_PAYEE_LABEL, SLIP_PAYEE_PATTERNS } from './constants';
+import { ACCOUNT_ROLES, SHIPPING_FULL_NAMES, SLIP_PAYEE_LABEL, SLIP_PAYEE_PATTERNS } from './constants';
 import { env } from './env';
 import { createSignedUpload, downloadAsDataUrl, fileExists, saveDataImage } from './storage';
 import type { ApiBody, ApiResult } from './types';
@@ -25,6 +25,8 @@ export type SlipInfo = {
   amounts?: number[]; dates?: string[];
   amount?: number; date?: string; txn?: string; bank?: string;
   payeeOk?: boolean;
+  /** ข้อความ OCR ตัดช่องว่าง (ช่วงต้น ~800 ตัว) — ใช้หาชื่อผู้รับในสลิปบริษัทโอนคืน */
+  compact?: string;
   manual?: { amount: number; date: string; txn: string };
   manualBy?: string; manualAt?: string;
 };
@@ -142,7 +144,8 @@ export function parseText(text: unknown) {
 }
 
 const fromText = (text: string): Partial<SlipInfo> => ({
-  ocr: 'ok', ...parseText(text), sample: text.replace(/\s+/g, ' ').slice(0, 300)
+  ocr: 'ok', ...parseText(text), sample: text.replace(/\s+/g, ' ').slice(0, 300),
+  compact: text.replace(/\s+/g, '').slice(0, 800)
 });
 
 /** Google Cloud Vision REST — ต้องบอก languageHints เป็นไทยด้วย ไม่งั้นอ่านสระ/วรรณยุกต์เพี้ยน */
@@ -231,7 +234,14 @@ export type SlipCheck = {
   label: string; amountOk: boolean; dateOk: boolean; payeeOk?: boolean; manual?: boolean;
 };
 
-function checkSlip(info: SlipInfo, expectDate: unknown, expectAmount: unknown): SlipCheck {
+/**
+ * company = ตรวจ "สลิปบริษัทโอนคืนพนักงาน" แทนสลิปพนักงานโอนคืนบริษัท
+ *   ผู้รับต้องเป็นพนักงานคนนั้น (เจอชื่อจริงหรือนามสกุลในสลิป) แทนการเช็กว่าผู้รับเป็นบัญชีบริษัท
+ *   ไม่รู้ชื่อเต็มของพนักงาน (names ว่าง) = ไม่เช็กชื่อ เช็กแค่ยอดและวันที่
+ */
+type SlipCheckOptions = { company?: { names: string[]; label: string } };
+
+function checkSlip(info: SlipInfo, expectDate: unknown, expectAmount: unknown, opts: SlipCheckOptions = {}): SlipCheck {
   const amounts = info.amounts || [];
   const dates = info.dates || [];
   const amountOk = amounts.some((amount) => Math.abs(amount - Number(expectAmount)) <= env.slipAmountTolerance);
@@ -258,6 +268,19 @@ function checkSlip(info: SlipInfo, expectDate: unknown, expectAmount: unknown): 
   if (!readable) {
     return { status: 'unreadable', label: 'อ่านข้อมูลในสลิปอัตโนมัติไม่ได้ (กรอกค่าจากสลิปเองได้)', amountOk: false, dateOk: false, payeeOk: false };
   }
+  if (opts.company) {
+    const text = info.compact || String(info.sample || '').replace(/\s+/g, '');
+    const nameOk = !opts.company.names.length || opts.company.names.some((n) => text.includes(n));
+    if (!nameOk) {
+      return { status: 'mismatch', amountOk, dateOk, payeeOk: false, label: `ไม่พบชื่อผู้รับ "${opts.company.label}" ในสลิป — ต้องเป็นสลิปที่โอนเข้าบัญชีพนักงานคนนี้` };
+    }
+    if (amountOk && dateOk) return { status: 'verified', label: 'ตรวจอัตโนมัติผ่าน (ผู้รับ ยอด และวันที่ตรง)', amountOk, dateOk, payeeOk: true };
+    return {
+      status: 'mismatch', amountOk, dateOk, payeeOk: true,
+      label: !amountOk && !dateOk ? 'ยอดเงินและวันที่ในสลิปไม่ตรงกับที่กรอก'
+        : (!amountOk ? 'ยอดเงินในสลิปไม่ตรงกับยอดที่กรอก' : 'วันที่ในสลิปไม่ตรงกับวันที่ที่เลือก')
+    };
+  }
   // ผู้รับโอนต้องเป็นบัญชีบริษัท — เคยมีคนแนบสลิปเติม GrabPay และสลิปโอนเข้าบัญชีตัวเอง
   // บอกเรื่องนี้ก่อนเรื่องยอด/วันที่ เพราะต่อให้ยอดตรงก็ใช้สลิปนี้ไม่ได้อยู่ดี
   if (!payeeOk) {
@@ -277,15 +300,15 @@ function checkSlip(info: SlipInfo, expectDate: unknown, expectAmount: unknown): 
   };
 }
 
-function slipResponse(idValue: string, url: string, info: SlipInfo, expectDate: string, expectAmount: number) {
-  const checked = checkSlip(info, expectDate, expectAmount);
+function slipResponse(idValue: string, url: string, info: SlipInfo, expectDate: string, expectAmount: number, opts: SlipCheckOptions = {}) {
+  const checked = checkSlip(info, expectDate, expectAmount, opts);
   const values = (info.manual || info) as { amount?: number; date?: string; txn?: string };
   return {
     ok: true, fileId: idValue, url,
     amount: values.amount || 0, date: values.date || '', txn: values.txn || '', bank: info.bank || '',
     ocr: info.ocr, ocrDetail: info.detail || '', sample: info.sample || '', isManual: Boolean(checked.manual),
     status: checked.status, label: checked.label, amountOk: checked.amountOk, dateOk: checked.dateOk,
-    payeeOk: checked.payeeOk, payeeLabel: SLIP_PAYEE_LABEL,
+    payeeOk: checked.payeeOk, payeeLabel: opts.company ? opts.company.label : SLIP_PAYEE_LABEL,
     strict: env.slipStrict,
     canSave: checked.status === 'verified' || checked.status === 'manual'
       || (checked.status === 'unreadable' && !env.slipStrict),
@@ -320,11 +343,32 @@ async function takePendingSlip(key: string, username: string) {
   };
 }
 
-export async function verifySlip(body: ApiBody, user: { username: string }): Promise<ApiResult> {
+/**
+ * ชื่อพนักงานที่ต้องเจอในสลิปบริษัทโอนคืน — ชื่อจริง/นามสกุลจากตารางชื่อเต็มของชิปปิ้ง (ตัดคำนำหน้า)
+ * ไม่รู้ชื่อเต็ม = [] (ไม่เช็กชื่อ)
+ */
+export async function employeeSlipNames(username: string) {
+  const [u] = await db.select({ code: users.shippingCode, name: users.name }).from(users).where(eq(users.username, username)).limit(1);
+  const full = SHIPPING_FULL_NAMES[String(u?.code || '').trim().toUpperCase()] || SHIPPING_FULL_NAMES[String(u?.name || '').trim().toUpperCase()] || '';
+  const clean = full.replace(/^(นางสาว|นาย|นาง|น\.ส\.)\s*/, '');
+  return { label: full || String(u?.name || username), names: clean.split(/\s+/).filter((w) => w.length >= 3) };
+}
+
+export async function verifySlip(body: ApiBody, user: { username: string; role?: string }): Promise<ApiResult> {
   const expectDate = String(body.expectDate || '').trim();
   const expectAmount = round2(body.expectAmount);
   if (!validYmd(expectDate)) return { ok: false, error: 'returned_date_required' };
   if (!(expectAmount > 0)) return { ok: false, error: 'slip_not_required' };
+
+  // สลิปบริษัทโอนคืนพนักงาน (ฝ่ายบัญชีแนบที่หน้าผู้ดูแล) — ผู้รับต้องเป็นพนักงานเจ้าของใบปิดบัญชี
+  let opts: SlipCheckOptions = {};
+  if (body.kind === 'company') {
+    if (!ACCOUNT_ROLES.includes(String(user.role || ''))) return { ok: false, error: 'forbidden' };
+    const [st] = await db.select({ username: settlements.username }).from(settlements)
+      .where(eq(settlements.id, String(body.settlementId || ''))).limit(1);
+    if (!st) return { ok: false, error: 'settlement_not_found' };
+    opts = { company: await employeeSlipNames(st.username) };
+  }
 
   let row: { id: string; url: string; infoJson: string; username: string; fileName: string };
 
@@ -367,7 +411,7 @@ export async function verifySlip(body: ApiBody, user: { username: string }): Pro
   const info = safeJson<SlipInfo>(row.infoJson, {});
 
   if (body.retryOcr && !body.image) {
-    if (!env.ocrEndpoint) return slipResponse(row.id, row.url, info, expectDate, expectAmount);
+    if (!env.ocrEndpoint) return slipResponse(row.id, row.url, info, expectDate, expectAmount, opts);
     const dataUrl = await downloadAsDataUrl(row.fileName);
     if (dataUrl) Object.assign(info, await runOcr(dataUrl));
   }
@@ -386,7 +430,7 @@ export async function verifySlip(body: ApiBody, user: { username: string }): Pro
   }
 
   await db.update(slips).set({ infoJson: JSON.stringify(info) }).where(eq(slips.id, row.id));
-  return slipResponse(row.id, row.url, info, expectDate, expectAmount);
+  return slipResponse(row.id, row.url, info, expectDate, expectAmount, opts);
 }
 
 export async function getSlip(fileId: unknown, username?: string) {
@@ -398,8 +442,8 @@ export async function getSlip(fileId: unknown, username?: string) {
   return { ok: true as const, row, info: safeJson<SlipInfo>(row.infoJson, {}) };
 }
 
-export function checkStoredSlip(info: SlipInfo, expectDate: unknown, expectAmount: unknown) {
-  return checkSlip(info, expectDate, expectAmount);
+export function checkStoredSlip(info: SlipInfo, expectDate: unknown, expectAmount: unknown, opts: SlipCheckOptions = {}) {
+  return checkSlip(info, expectDate, expectAmount, opts);
 }
 
 const ocrProvider = () => env.ocrEndpoint ? 'บริการ OCR ของตัวเอง (OCR_ENDPOINT)'

@@ -69,6 +69,7 @@ function recLoad(){
 
 function recStatus(d){
   if(!d.hasSettlement) return '<span class="pill pending">ยังไม่ปิดบัญชี</span>';
+  if(d.companyOwes > 0) return '<span class="pill rejected">บริษัทต้องคืน '+recMoney(d.companyOwes)+'</span>';
   if(!(d.refund > 0)) return '<span class="muted">ไม่ต้องคืน</span>';
   if(/ผ่าน/.test(d.slipStatus||'')) return '<span class="pill approved">✓ ตรวจแล้ว</span>';
   // ข้อความสถานะสลิปยาว (เช่น "อ่านข้อมูลในสลิปอัตโนมัติไม่ได้ …") ย่อเป็นคำสั้น เต็มอยู่ใน tooltip

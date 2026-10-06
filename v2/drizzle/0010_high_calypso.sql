@@ -1,0 +1,1 @@
+ALTER TABLE "settlements" ADD COLUMN "company_slips_json" text DEFAULT '[]' NOT NULL;

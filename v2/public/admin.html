@@ -1033,8 +1033,31 @@
     <div id="sm-slip" class="muted" style="margin:0 0 10px; background:#f7f9fb; border:1px solid var(--line); border-radius:10px; padding:12px"></div>
     <div id="sm-insp" class="muted" style="margin:0 0 10px; background:#f7f9fb; border:1px solid var(--line); border-radius:10px; padding:12px"></div>
     <div id="sm-image" class="muted" style="margin:0 0 14px"></div>
+    <!-- บริษัทโอนคืนชิปปิ้ง: คงเหลือติดลบ หรือพนักงานโอนคืนไปแล้วแต่ค่าใช้จ่ายจริงเพิ่มทีหลัง -->
+    <div id="sm-refund" class="hidden" style="margin:0 0 12px; border:1px solid #fecaca; background:#fff7f7; border-radius:10px; padding:12px">
+      <div style="font-weight:700; margin-bottom:6px">💸 บริษัทโอนคืนชิปปิ้ง</div>
+      <div id="sm-money" style="font-size:13px; line-height:1.7"></div>
+      <div id="sm-cslips" style="margin-top:6px"></div>
+      <div id="sm-cadd" class="hidden" style="margin-top:10px; border-top:1px dashed #fca5a5; padding-top:10px">
+        <div style="display:flex; gap:10px; flex-wrap:wrap">
+          <div style="flex:1; min-width:150px"><label>วันที่บริษัทโอน</label><input id="sm-cdate" type="date"></div>
+          <div style="flex:1; min-width:150px"><label>ยอดที่โอนครั้งนี้ (บาท)</label><input id="sm-camt" type="number" inputmode="decimal" min="0" step="0.01"></div>
+        </div>
+        <label>แนบสลิปโอนคืน <span class="muted">(ระบบอ่านยอด วันที่ และชื่อผู้รับให้)</span></label>
+        <input id="sm-cfile" type="file" accept="image/*">
+        <div id="sm-cstatus" class="hidden" style="margin-top:8px; font-size:13px; padding:8px 10px; border-radius:8px"></div>
+        <div id="sm-cmanual" class="hidden" style="margin-top:8px">
+          <div class="muted" style="font-size:12px; margin-bottom:6px">อ่านสลิปไม่ออก — กรอกค่าจากสลิปเอง</div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap">
+            <div style="flex:1; min-width:150px"><label>ยอดเงินในสลิป</label><input id="sm-cmamt" type="number" inputmode="decimal" step="0.01"></div>
+            <div style="flex:1; min-width:150px"><label>เลขที่รายการ</label><input id="sm-cmtxn" type="text" maxlength="60"></div>
+          </div>
+          <button id="sm-cmok" type="button" class="btn btn-ghost btn-sm" style="margin-top:6px">✔️ ยืนยันค่าจากสลิป</button>
+        </div>
+      </div>
+    </div>
     <div id="sm-acct">
-      <label>วันที่บริษัทโอนคืน <span class="muted">(เฉพาะพนักงานบัญชี)</span></label>
+      <label>วันที่บริษัทโอนคืน <span class="muted">(กรณีโอนคืนโดยไม่มีสลิป)</span></label>
       <input id="sm-company" type="date">
     </div>
     <div class="actions">
@@ -1129,10 +1152,11 @@ function enterApp(){
   $('brand-title').textContent = isAccount ? '🧾 ใบแจ้งหนี้' : (isManager ? '🗂️ แดชบอร์ด' : '🗂️ แดชบอร์ดผู้ดูแล');
 
   if(isAccount){
-    // เหลือเฉพาะเมนูของฝ่ายบัญชี (เข้างาน / ใบแจ้งหนี้ / ใบหัก ณ ที่จ่าย / รายงานรายได้ชิปปิ้ง / กระทบยอดชิปปิ้ง)
+    // เหลือเฉพาะเมนูของฝ่ายบัญชี (เข้างาน / ปิดบัญชี / ใบแจ้งหนี้ / ใบหัก ณ ที่จ่าย / รายงานรายได้ชิปปิ้ง / กระทบยอดชิปปิ้ง)
+    // ปิดบัญชี: ดูใบปิดบัญชี + แนบสลิปบริษัทโอนคืนชิปปิ้ง
     Array.prototype.forEach.call(document.querySelectorAll('.navbtn'), function(btn){
       var tab = btn.getAttribute('data-tab');
-      btn.classList.toggle('hidden', tab!=='checkin' && tab!=='invoice' && tab!=='wht' && tab!=='income' && tab!=='reconcile');
+      btn.classList.toggle('hidden', ['checkin','settle','invoice','wht','income','reconcile'].indexOf(tab)<0);
     });
   } else {
     // เมนูเข้างานมีเฉพาะผู้จัดการ (admin ไม่ต้องลงเวลา) และเปิดเป็นแท็บแรกให้เลย
@@ -2148,12 +2172,19 @@ function loadSettlements(){
   }).catch(function(){ $('sm-body').innerHTML='<tr><td colspan="12" style="padding:16px">โหลดไม่สำเร็จ</td></tr>'; });
 }
 
-// คงเหลือ > 0 = พนักงานต้องโอนคืนบริษัท, < 0 = บริษัทต้องโอนคืนพนักงาน
+// สถานะคิดจากฝั่งเซิร์ฟเวอร์ (r.money) — รวมเคส "พนักงานโอนคืนแล้ว แต่ค่าใช้จ่ายจริงเพิ่มทีหลัง = บริษัทต้องโอนส่วนเกินคืน"
 function settleStatus(r){
+  if(r.money && r.money.status) return r.money.status;
   var bal=Number(r.balance)||0;
   if(bal>0) return r.returnedDate ? 'done' : 'wait-emp';
   if(bal<0) return r.companyReturnedDate ? 'done' : 'wait-com';
   return 'done';
+}
+function settleOwedText(r){
+  var m=r.money||{};
+  if(m.owedToEmployee>0) return '<div class="muted" style="margin-top:3px">บริษัทต้องคืน <b style="color:#b91c1c">'+fmtM(m.owedToEmployee)+'</b></div>';
+  if(m.owedToCompany>0) return '<div class="muted" style="margin-top:3px">ยังขาด <b>'+fmtM(m.owedToCompany)+'</b></div>';
+  return '';
 }
 var SM_STATUS_TH={ 'wait-emp':'<span class="pill pending">รอพนักงานโอนคืน</span>',
                    'wait-com':'<span class="pill rejected">รอบริษัทโอนคืน</span>',
@@ -2191,9 +2222,10 @@ function renderSettlements(){
       '<td>'+fmtM(r.claimTotal)+'</td>'+
       '<td style="font-weight:700;color:'+(bal>=0?'#1e40af':'#dc2626')+'">'+fmtM(Math.abs(bal))+
         '<div class="muted" style="font-weight:400">'+(bal>=0?'โอนคืนบริษัท':'บริษัทโอนคืน')+'</div></td>'+
-      '<td class="time-cell">'+(r.returnedDate?esc(fmtD(r.returnedDate)):SM_STATUS_TH[settleStatus(r)])+'</td>'+
+      '<td class="time-cell">'+(r.returnedDate?esc(fmtD(r.returnedDate)):'')+
+        ((settleStatus(r)!=='done' || !r.returnedDate) ? ('<div>'+SM_STATUS_TH[settleStatus(r)]+'</div>'+settleOwedText(r)) : '')+'</td>'+
       '<td class="addr" style="font-size:12px">'+slipCell(r)+'</td>'+
-      '<td class="time-cell">'+(r.companyReturnedDate?esc(fmtD(r.companyReturnedDate)):'<span class="muted">—</span>')+'</td>'+
+      '<td class="time-cell">'+(r.companyReturnedDate?esc(fmtD(r.companyReturnedDate)):'<span class="muted">—</span>')+companySlipCell(r)+'</td>'+
       '<td>'+(r.editCount>0?('<span class="pill pending">ครั้งที่ '+r.editCount+'</span>'):'<span class="muted">—</span>')+'</td>'+
       '<td style="white-space:nowrap">'+
         '<button class="btn btn-ghost btn-sm" onclick="smView('+i+')">ดู</button> '+
@@ -2245,6 +2277,146 @@ function extraSlipText(r){
   }).join('');
 }
 
+// สลิปบริษัทโอนคืนชิปปิ้ง — แสดงใต้วันที่บริษัทโอนคืน
+function companySlipCell(r){
+  return (r.companySlips||[]).map(function(x){
+    return '<div style="font-size:12px;margin-top:3px">💸 '+fmtM(x.amount)+' • '+
+      (x.url?('<a href="'+esc(x.url)+'" target="_blank"'+vwAttr('img', photoFull(x.url), 'สลิปบริษัทโอนคืน')+'>สลิป</a>'):'')+'</div>';
+  }).join('');
+}
+
+// ---------- บริษัทโอนคืนชิปปิ้ง (แนบสลิป) ----------
+var crPending=null;
+function isBossRole(){ return ['admin','manager'].indexOf(state.user && state.user.role)>=0; }
+function crStatus(kind, html){
+  var el=$('sm-cstatus');
+  el.style.background = kind==='err' ? '#fee2e2' : (kind==='ok' ? '#dcfce7' : '#fef9c3');
+  el.style.color = kind==='err' ? '#991b1b' : (kind==='ok' ? '#166534' : '#854d0e');
+  el.innerHTML=html; el.classList.remove('hidden');
+}
+function renderRefund(r){
+  var m=r.money||{}, bal=Number(r.balance)||0, list=r.companySlips||[];
+  var over = (m.paid||0) - bal;
+  var show = m.owedToEmployee>0 || list.length || bal<0 || over>1;
+  $('sm-refund').classList.toggle('hidden', !show);
+  $('sm-cmanual').classList.add('hidden'); $('sm-cstatus').classList.add('hidden'); $('sm-cfile').value='';
+  crPending=null;
+  if(!show) return;
+  var L=[];
+  L.push(bal>=0 ? ('ยอดที่ต้องโอนคืนบริษัทตามใบปิดบัญชี: <b>'+fmtM(bal)+'</b> บาท')
+                : ('จ่ายเกินยอดเบิก (บริษัทต้องคืน): <b>'+fmtM(-bal)+'</b> บาท'));
+  if(m.paid>0) L.push('พนักงานโอนคืนบริษัทแล้ว: <b>'+fmtM(m.paid)+'</b> บาท'+(over>1 && bal>=0?(' <span style="color:#b91c1c">(เกิน '+fmtM(over)+')</span>'):''));
+  if(m.refunded>0) L.push('บริษัทโอนคืนพนักงานแล้ว: <b>'+fmtM(m.refunded)+'</b> บาท');
+  L.push(m.owedToEmployee>0 ? ('<b style="color:#b91c1c">ค้างบริษัทโอนคืนพนักงาน '+fmtM(m.owedToEmployee)+' บาท</b>')
+        : (m.owedToCompany>0 ? ('<b>ค้างพนักงานโอนคืนบริษัท '+fmtM(m.owedToCompany)+' บาท</b>') : '<b style="color:#166534">✅ ครบแล้ว</b>'));
+  $('sm-money').innerHTML=L.join('<br>');
+  $('sm-cslips').innerHTML=list.map(function(x, k){
+    return '<div style="display:flex;gap:8px;align-items:center;justify-content:space-between;border-top:1px solid #fde2e2;padding:6px 0;font-size:13px">'+
+      '<span>💸 <b>'+fmtM(x.amount)+'</b> บาท • '+esc(fmtD(x.date))+(x.txn?(' • เลขที่ '+esc(x.txn)):'')+
+        '<br><span class="muted">'+esc(x.status||'')+(x.by?(' • แนบโดย '+esc(x.by)):'')+'</span></span>'+
+      '<span style="white-space:nowrap">'+(x.url?('<a href="'+esc(x.url)+'" target="_blank"'+vwAttr('img', photoFull(x.url), 'สลิปบริษัทโอนคืน')+'>เปิดดู</a> · '):'')+
+        '<a href="#" onclick="crRemove('+k+');return false" style="color:#b91c1c">ลบ</a></span></div>';
+  }).join('');
+  var canAdd = m.owedToEmployee>0 && list.length<10;
+  $('sm-cadd').classList.toggle('hidden', !canAdd);
+  if(canAdd){
+    var d=new Date(), p=function(n){ return (n<10?'0':'')+n; };
+    $('sm-cdate').value=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+    $('sm-camt').value=m.owedToEmployee;
+  }
+}
+// ย่อรูปสลิปก่อนอัป (ด้านกว้างไม่เกิน 1600px) — ไฟล์เล็กลง อัปเร็ว OCR ยังอ่านได้
+function crResize(file){
+  return new Promise(function(resolve, reject){
+    var fr=new FileReader();
+    fr.onload=function(){
+      var img=new Image();
+      img.onload=function(){
+        var s=Math.min(1, 1600/(img.width||1)), c=document.createElement('canvas');
+        c.width=Math.round(img.width*s); c.height=Math.round(img.height*s);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        c.toBlob(function(b){ b ? resolve(b) : reject({error:'upload_failed'}); }, 'image/jpeg', 0.92);
+      };
+      img.onerror=function(){ reject({error:'bad_image'}); };
+      img.src=String(fr.result||'');
+    };
+    fr.onerror=function(){ reject({error:'bad_image'}); };
+    fr.readAsDataURL(file);
+  });
+}
+$('sm-cfile').addEventListener('change', function(){
+  var file=this.files && this.files[0], input=this, r=settleRows[smCurrent];
+  if(!file || !r) return;
+  var date=$('sm-cdate').value, amount=Math.round((Number($('sm-camt').value)||0)*100)/100;
+  var owed=(r.money&&r.money.owedToEmployee)||0;
+  if(!date){ toast('เลือกวันที่บริษัทโอนก่อน'); input.value=''; return; }
+  if(!(amount>0)){ toast('กรอกยอดที่โอนครั้งนี้'); input.value=''; return; }
+  if(amount-owed>1){ toast('ยอดเกินที่บริษัทต้องคืน ('+fmtM(owed)+' บาท)'); input.value=''; return; }
+  $('sm-cmanual').classList.add('hidden');
+  crStatus('wait','<span class="spinner"></span> กำลังอัปโหลดและอ่านสลิป…');
+  crResize(file).then(function(blob){
+    return api({action:'signUpload', token:state.token, purpose:'slip', expectDate:date}).then(function(up){
+      if(!up.ok) throw up;
+      return fetch(up.uploadUrl, { method:'PUT', headers:{'Content-Type':'image/jpeg'}, body:blob }).then(function(res){
+        if(!res.ok) throw { error:'upload_failed' };
+        crPending={ date:date, amount:amount, id:r.id };
+        return api({action:'verifySlip', token:state.token, key:up.key, expectDate:date, expectAmount:amount, kind:'company', settlementId:r.id});
+      });
+    });
+  }).then(crApply).catch(function(err){
+    crStatus('err','อัปโหลดสลิปไม่สำเร็จ'+((err&&err.error)?(': '+crErr(err.error)):' ตรวจสอบอินเทอร์เน็ต'));
+    input.value='';
+  });
+});
+function crErr(code){
+  return ({ upload_failed:'อัปโหลดไม่สำเร็จ', upload_missing:'ไฟล์หายระหว่างอัปโหลด ลองใหม่', bad_image:'เปิดไฟล์รูปไม่ได้',
+    slip_mismatch:'สลิปไม่ตรง', slip_txn_duplicate:'สลิปใบนี้ถูกใช้ไปแล้ว', company_refund_too_much:'ยอดรวมเกินที่บริษัทต้องคืน',
+    company_refund_date_required:'เลือกวันที่บริษัทโอน', settlement_not_found:'ไม่พบใบปิดบัญชีนี้', slip_not_found:'ไม่พบไฟล์สลิป ลองแนบใหม่',
+    slip_manual_not_allowed:'สลิปนี้ระบบอ่านได้แล้ว ไม่ต้องกรอกเอง', too_many_slips:'แนบได้ไม่เกิน 10 ใบ' })[code] || errTH(code);
+}
+function crApply(res){
+  if(!res || !res.ok){
+    if(!guard(res)) return;
+    crStatus('err','ตรวจสลิปไม่สำเร็จ: '+crErr((res&&res.error)||'bad_request')+((res&&res.detail)?(' — '+esc(res.detail)):''));
+    return;
+  }
+  if(!crPending) return;
+  crPending.fileId=res.fileId;
+  if(res.status==='verified' || res.status==='manual'){ crSave(crPending); return; }
+  crStatus(res.status==='mismatch'?'err':'wait', (res.status==='mismatch'?'❌ ':'⚠️ ')+esc(res.label||''));
+  $('sm-cmanual').classList.toggle('hidden', !res.canManual);
+  if(res.canManual){ $('sm-cmamt').value=crPending.amount; $('sm-cmtxn').value=''; }
+}
+$('sm-cmok').addEventListener('click', function(){
+  if(!crPending || !crPending.fileId){ toast('แนบสลิปก่อน'); return; }
+  var manual={ amount:Number($('sm-cmamt').value)||0, date:crPending.date, txn:$('sm-cmtxn').value.trim() };
+  if(!manual.txn){ toast('กรอกเลขที่รายการในสลิปด้วย'); return; }
+  crStatus('wait','<span class="spinner"></span> กำลังตรวจค่าที่กรอก…');
+  api({action:'verifySlip', token:state.token, fileId:crPending.fileId, manual:manual, expectDate:crPending.date,
+       expectAmount:crPending.amount, kind:'company', settlementId:crPending.id}).then(crApply)
+    .catch(function(){ crStatus('err','ส่งค่าไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต'); });
+});
+// บันทึกรายการสลิปโอนคืนทั้งชุด (ใบเดิม + ใบใหม่ / หรือเอาใบที่ลบออก)
+function crSave(newSlip, removeAt){
+  var r=settleRows[smCurrent]; if(!r) return;
+  var keep=(r.companySlips||[]).filter(function(x, k){ return k!==removeAt; }).map(function(x){ return { url:x.url }; });
+  if(newSlip) keep.push({ fileId:newSlip.fileId, date:newSlip.date, amount:newSlip.amount });
+  if(newSlip) crStatus('wait','<span class="spinner"></span> กำลังบันทึก…');
+  api({action:'saveCompanyRefund', token:state.token, id:r.id, slips:keep}).then(function(res){
+    if(!guard(res)) return;
+    if(!res.ok){ crStatus('err','บันทึกไม่สำเร็จ: '+crErr(res.error)+(res.detail?(' — '+esc(res.detail)):'')); return; }
+    var rec=res.record; rec.inspectionFiles=r.inspectionFiles||[];
+    settleRows[smCurrent]=rec;
+    toast(newSlip ? 'แนบสลิปบริษัทโอนคืนแล้ว ✓' : 'ลบสลิปแล้ว');
+    window.smView(smCurrent);
+    renderSettlements();
+  }).catch(function(){ crStatus('err','บันทึกไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต'); });
+}
+window.crRemove=function(k){
+  if(!confirm('ลบสลิปบริษัทโอนคืนใบนี้?')) return;
+  crSave(null, k);
+};
+
 window.smView=function(i){
   var r=settleRows[i]; if(!r) return;
   smCurrent=i;
@@ -2265,6 +2437,10 @@ window.smView=function(i){
     ? ('🖼️ รูปใบปิดบัญชีบนเซิร์ฟเวอร์: <a href="'+esc(r.imageUrl)+'" target="_blank"'+vwAttr('img', photoFull(r.imageUrl), 'ใบปิดบัญชี')+'>เปิดไฟล์</a>')
     : 'ยังไม่มีรูปใบปิดบัญชีบนเซิร์ฟเวอร์ (พนักงานกด "สร้างใบปิดบัญชี" แล้วระบบจะอัปโหลดให้)';
   $('sm-company').value=r.companyReturnedDate||'';
+  renderRefund(r);
+  // บันทึกวันที่โอนคืนแบบไม่มีสลิป (ผ่าน saveSettlement) ได้เฉพาะ admin/manager
+  $('sm-acct').classList.toggle('hidden', !isBossRole());
+  $('sm-save').classList.toggle('hidden', !isBossRole());
   $('sm-modal').classList.remove('hidden');
 };
 window.smCopy=function(i){ var r=settleRows[i]; if(r) copyText(r.detail||''); };
@@ -2302,7 +2478,8 @@ function exportSettleCSV(){
             'รายละเอียดค่าใช้จ่ายอื่นๆ','ที่มาของงาน','รวม(แถว)','รวมค่าใช้จ่าย(ใบ)','ยอดเบิก','คงเหลือ','วันที่โอนคืนบริษัท',
             'เลขที่รายการสลิป','ยอดในสลิป','วันที่ในสลิป','ธนาคาร','ผลตรวจสลิป','ลิงก์สลิป',
             'สลิปโอนเพิ่ม (ยอดรวม)','สลิปโอนเพิ่ม (เลขที่รายการ)','สลิปโอนเพิ่ม (ลิงก์)',
-            'วันที่บริษัทโอนคืน','ครั้งที่แก้ไข','ลิงก์รูปใบปิดบัญชี');
+            'วันที่บริษัทโอนคืน','บริษัทโอนคืน (ยอดรวม)','บริษัทโอนคืน (เลขที่รายการ)','บริษัทโอนคืน (ลิงก์)',
+            'ค้างบริษัทโอนคืน','ค้างพนักงานโอนคืน','ครั้งที่แก้ไข','ลิงก์รูปใบปิดบัญชี');
   var out=[];
   rows.forEach(function(r){
     (r.rows||[]).forEach(function(x, idx){
@@ -2317,7 +2494,12 @@ function exportSettleCSV(){
                 idx===0?extraSlipSum(r):'',
                 idx===0?(r.extraSlips||[]).map(function(x){ return x.txn; }).filter(Boolean).join(' | '):'',
                 idx===0?(r.extraSlips||[]).map(function(x){ return x.url; }).join(' | '):'',
-                idx===0?fmtD(r.companyReturnedDate):'', idx===0?r.editCount:'',
+                idx===0?fmtD(r.companyReturnedDate):'',
+                idx===0?((r.money&&r.money.refunded)||''):'',
+                idx===0?(r.companySlips||[]).map(function(x){ return x.txn; }).filter(Boolean).join(' | '):'',
+                idx===0?(r.companySlips||[]).map(function(x){ return x.url; }).join(' | '):'',
+                idx===0?((r.money&&r.money.owedToEmployee)||''):'', idx===0?((r.money&&r.money.owedToCompany)||''):'',
+                idx===0?r.editCount:'',
                 idx===0?(r.imageUrl||''):'');
       out.push(line);
     });
