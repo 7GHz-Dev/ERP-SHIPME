@@ -1,10 +1,11 @@
 /* DocScan service worker — ใช้งานออฟไลน์ได้
  * - หน้าแอป: network-first (ได้เวอร์ชันใหม่เมื่อออนไลน์) ตกไปใช้แคชเมื่อออฟไลน์
  * - ไฟล์ static (/_next/static, /vendor = OpenCV/PDF.js, ไอคอน, ฟอนต์): cache-first
+ * - สคริปต์ worker (cv-worker.js, detect-worker.js — ชื่อไฟล์คงที่): network-first ได้ตัวใหม่ทันทีที่ออนไลน์
  * - ไฟล์ OCR (tesseract core + ภาษา จาก CDN): cache-first หลังโหลดครั้งแรก → OCR ออฟไลน์ได้
  * เอกสารของผู้ใช้อยู่ใน IndexedDB ไม่ผ่าน service worker และไม่ถูกส่งไปไหน */
-const VERSION = 'docscan-v1';
-const SHELL = ['/', '/manifest.webmanifest', '/cv-worker.js', '/vendor/opencv.js', '/icons/icon-192.png'];
+const VERSION = 'docscan-v2';
+const SHELL = ['/', '/manifest.webmanifest', '/cv-worker.js', '/detect-worker.js', '/vendor/opencv.js', '/icons/icon-192.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -36,7 +37,8 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url);
   if (url.origin === location.origin) {
     if (req.mode === 'navigate') { e.respondWith(networkFirst(req)); return; }
-    if (/^\/(_next\/static|vendor|icons|cv-worker\.js)/.test(url.pathname) || /\.(woff2?|png|svg)$/.test(url.pathname)) { e.respondWith(cacheFirst(req)); return; }
+    if (/^\/(_next\/static|vendor|icons)\//.test(url.pathname) || /\.(woff2?|png|svg)$/.test(url.pathname)) { e.respondWith(cacheFirst(req)); return; }
+    if (/^\/[\w-]+-worker\.js$/.test(url.pathname)) { e.respondWith(networkFirst(req)); return; }
     return;
   }
   // ไฟล์ของ tesseract.js (worker / core wasm / traineddata) จาก CDN

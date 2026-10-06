@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useRef, useState, type PointerEvent as RPE } from 'react';
 import { db } from '@/lib/db';
-import { clearTicket, sendToErp, type ErpTicket } from '@/lib/erp';
+import { clearTicket, sendToErp, thaiDate, type ErpTicket } from '@/lib/erp';
 import { MAX_ORIGINAL, blobToCanvas, canvasToBlob } from '@/lib/image';
 import { DEFAULT_PDF, exportPdf } from '@/lib/pdf';
 import { cropToCanvas } from '@/lib/process';
@@ -17,6 +17,7 @@ import ExportSheet from './ExportSheet';
 import ImageEditor from './ImageEditor';
 import Markup from './Markup';
 import OcrPanel from './OcrPanel';
+import SendSheet from './SendSheet';
 import { Button, IconButton, Sheet, Spinner, friendlyError, useBlobUrl, useUi } from './ui';
 
 export default function DocumentView({ docId, ticket, onBack, onScanMore, onImport, onTicketUsed }: {
@@ -85,7 +86,7 @@ export default function DocumentView({ docId, ticket, onBack, onScanMore, onImpo
 
       {ticket && (
         <div className="flex items-center gap-2 border-b border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-100">
-          <span className="flex-1">หลักฐานการตรวจปล่อย • {ticket.name} • {ticket.inspectDate.split('-').reverse().join('/')}</span>
+          <span className="flex-1">หลักฐานการตรวจปล่อย • {ticket.name} • {thaiDate(ticket.inspectDate)}</span>
           {sent ? (
             <Button variant="primary" onClick={() => {
               clearTicket(); onTicketUsed();
@@ -100,6 +101,13 @@ export default function DocumentView({ docId, ticket, onBack, onScanMore, onImpo
           ) : (
             <Button variant="primary" loading={sending} disabled={!pages.length} onClick={send}><Send className="h-4 w-4" />ส่งเข้าใบปิดบัญชี</Button>
           )}
+        </div>
+      )}
+      {!ticket && pages.length > 0 && (
+        // ไม่ได้เปิดมาจากหน้าปิดบัญชี: ส่งเองได้ด้วยรหัส ERP แล้วเลือกใบเบิก
+        <div className="flex items-center gap-2 border-b border-line bg-surface px-3 py-2 text-sm">
+          <span className="flex-1 text-muted">แนบไฟล์นี้เป็นหลักฐานการตรวจปล่อยในใบปิดบัญชี</span>
+          <Button variant="primary" onClick={() => setPanel('send')}><Send className="h-4 w-4" />ส่งไปปิดบัญชี</Button>
         </div>
       )}
 
@@ -168,6 +176,7 @@ export default function DocumentView({ docId, ticket, onBack, onScanMore, onImpo
       </Sheet>
 
       {pages.length > 0 && <OcrPanel doc={doc} pages={pages} current={cur} open={panel === 'ocr'} onClose={() => setPanel('')} />}
+      {pages.length > 0 && <SendSheet doc={doc} pages={pages} open={panel === 'send'} onClose={() => setPanel('')} />}
       {pages.length > 0 && <ExportSheet doc={doc} pages={pages} current={cur} open={panel === 'export'} onClose={() => setPanel('')} />}
     </div>
   );

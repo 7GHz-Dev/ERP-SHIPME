@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { db, getSetting, setSetting } from '@/lib/db';
-import type { ErpTicket } from '@/lib/erp';
+import { thaiDate, type ErpTicket } from '@/lib/erp';
 import { formatBytes, safeName, shareOrDownload } from '@/lib/image';
 import { DEFAULT_PDF, exportPdf } from '@/lib/pdf';
 import {
@@ -87,7 +87,7 @@ export default function Library({ folderId, ticket, onOpenFolder, onOpenDoc, onS
       {ticket && (
         <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-blue-900 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-100">
           <p className="font-semibold">แนบหลักฐานการตรวจปล่อยเข้าใบปิดบัญชี</p>
-          <p className="mt-1 text-sm">{ticket.name} • วันที่ตรวจปล่อย {ticket.inspectDate.split('-').reverse().join('/')}</p>
+          <p className="mt-1 text-sm">{ticket.name} • วันที่ตรวจปล่อย {thaiDate(ticket.inspectDate)}</p>
           <p className="mt-1 text-sm opacity-80">ถ่ายทุกหน้าของเอกสารตรวจปล่อย แล้วกด "ส่งเข้าใบปิดบัญชี"</p>
           <Button variant="primary" className="mt-3" onClick={onScan}><Send className="h-4 w-4" />เริ่มสแกนเอกสารตรวจปล่อย</Button>
         </div>

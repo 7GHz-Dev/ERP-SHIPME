@@ -1,11 +1,11 @@
 import crypto from 'node:crypto';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, count, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '@/db';
-import { inspectionFiles, users } from '@/db/schema';
+import { claims, inspectionFiles, settlements, users } from '@/db/schema';
 import { env } from './env';
 import { createSignedUpload, fileExists } from './storage';
 import type { ApiBody, ApiResult } from './types';
-import { id, nowIso, validYmd } from './utils';
+import { id, nowIso, passwordMatches, validYmd } from './utils';
 import { supabaseAdmin } from './supabase';
 
 /**
@@ -65,6 +65,41 @@ export async function scanTicketInfo(body: ApiBody): Promise<ApiResult> {
   const [u] = await db.select({ name: users.name, active: users.active }).from(users).where(eq(users.username, r.t.username)).limit(1);
   if (!u || !u.active) return { ok: false, error: 'invalid_ticket' };
   return { ok: true, name: u.name, inspectDate: r.t.inspectDate, returnUrl: r.t.returnUrl, expiresAt: new Date(r.t.exp).toISOString() };
+}
+
+const LOGIN_CLAIMS = 40;        // ใบเบิกล่าสุดที่ให้เลือกใน DocScan
+const LOGIN_TICKET_MIN = 30;    // ticket จากการใส่รหัสใน DocScan ใช้ได้ 30 นาที
+
+/**
+ * DocScan ปุ่ม "ส่งไปปิดบัญชี": พนักงานใส่รหัส ERP ของตัวเอง (ทุกครั้งที่กด) แล้วเลือกใบเบิกที่จะแนบไฟล์
+ * ตรวจรหัสแบบเดียวกับหน้า login แต่ "ไม่สร้าง session" — DocScan ไม่ได้ token ล็อกอินของ ERP
+ * คืนใบเบิกล่าสุดพร้อม ticket ของแต่ละใบ (แนบไฟล์หลักฐานได้เฉพาะใบนั้น ภายใน 30 นาที)
+ */
+export async function scanLogin(body: ApiBody): Promise<ApiResult> {
+  const username = String(body.username || '').trim();
+  const password = String(body.password || '');
+  if (!username || !password) return { ok: false, error: 'missing_credentials' };
+  const [u] = await db.select().from(users).where(eq(users.username, username)).limit(1);
+  if (!u || !passwordMatches(password, u.passwordHash)) return { ok: false, error: 'invalid_credentials' };
+  if (!u.active) return { ok: false, error: 'account_disabled' };
+
+  // pool มีแค่ 1 connection — query ทีละตัว
+  const claimRows = await db.select({ inspectDate: claims.inspectDate, containers: claims.containers, total: claims.total })
+    .from(claims).where(eq(claims.username, u.username)).orderBy(desc(claims.inspectDate)).limit(LOGIN_CLAIMS);
+  const settledRows = await db.select({ d: settlements.inspectDate }).from(settlements).where(eq(settlements.username, u.username));
+  const fileRows = await db.select({ d: inspectionFiles.inspectDate, n: count() }).from(inspectionFiles)
+    .where(eq(inspectionFiles.username, u.username)).groupBy(inspectionFiles.inspectDate);
+  const settled = new Set(settledRows.map((r) => r.d));
+  const files = new Map(fileRows.map((r) => [r.d, Number(r.n) || 0]));
+  const exp = Date.now() + LOGIN_TICKET_MIN * 60_000;
+  return {
+    ok: true, name: u.name, username: u.username, expiresAt: new Date(exp).toISOString(),
+    claims: claimRows.map((c) => ({
+      inspectDate: c.inspectDate, containers: Number(c.containers) || 0, total: Number(c.total) || 0,
+      settled: settled.has(c.inspectDate), files: files.get(c.inspectDate) || 0,
+      ticket: makeTicket({ username: u.username, inspectDate: c.inspectDate, exp, returnUrl: '' })
+    }))
+  };
 }
 
 /** ลิงก์อัปโหลดตรงขึ้น Storage (ไฟล์ไม่ผ่าน Vercel ซึ่งจำกัดขนาด body) */

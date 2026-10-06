@@ -17,12 +17,43 @@ async function post<T>(body: Record<string, unknown>): Promise<T & { ok: boolean
 }
 
 const ERR: Record<string, string> = {
+  missing_credentials: 'กรอกชื่อผู้ใช้และรหัสผ่านของ ERP',
+  invalid_credentials: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง',
+  account_disabled: 'บัญชีนี้ถูกปิดใช้งาน — ติดต่อผู้ดูแลระบบ',
   ticket_expired: 'ลิงก์แนบไฟล์หมดอายุแล้ว — กลับไปหน้าปิดบัญชีแล้วกด "สแกนด้วย DocScan" ใหม่',
   invalid_ticket: 'ลิงก์แนบไฟล์ไม่ถูกต้อง — กลับไปหน้าปิดบัญชีแล้วกด "สแกนด้วย DocScan" ใหม่',
   upload_missing: 'อัปโหลดไม่สำเร็จ ลองใหม่อีกครั้ง',
   too_large: 'ไฟล์ใหญ่เกินไป (สูงสุด 25MB) — ลดคุณภาพ/DPI ตอนส่งออกแล้วลองใหม่'
 };
 export const erpError = (code?: string) => ERR[code || ''] || `ส่งไฟล์ไม่สำเร็จ (${code || 'ไม่ทราบสาเหตุ'})`;
+
+/** วันที่แบบไทย 05/10/2569 จาก 2026-10-05 */
+export function thaiDate(ymd: string) {
+  const [y, m, d] = ymd.split('-');
+  return y && m && d ? `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${Number(y) + 543}` : ymd;
+}
+
+export interface ErpClaim { inspectDate: string; containers: number; total: number; settled: boolean; files: number; ticket: string }
+export interface ErpLogin { name: string; username: string; expiresAt: string; claims: ErpClaim[] }
+
+/**
+ * ปุ่ม "ส่งไปปิดบัญชี": ตรวจรหัส ERP แล้วรับรายการใบเบิก (ERP ไม่สร้าง session ให้ DocScan)
+ * รหัสผ่านใช้ครั้งเดียวตรงนี้ ไม่เก็บไว้ที่ไหน — กดส่งครั้งถัดไปต้องใส่ใหม่
+ */
+export async function erpLogin(username: string, password: string): Promise<ErpLogin> {
+  let r: ErpLogin & { ok: boolean; error?: string };
+  try {
+    r = await post<ErpLogin>({ action: 'scanLogin', username, password });
+  } catch {
+    throw new Error('เชื่อมต่อ ERP ไม่ได้ — ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่');
+  }
+  if (!r.ok) throw new Error(erpError(r.error));
+  return { name: r.name, username: r.username, expiresAt: r.expiresAt, claims: r.claims || [] };
+}
+
+/** ticket ของใบเบิกที่เลือก → รูปแบบเดียวกับ ticket ที่หน้าปิดบัญชีส่งมา (ใช้ sendToErp ตัวเดียวกัน) */
+export const claimTicket = (login: ErpLogin, c: ErpClaim): ErpTicket =>
+  ({ ticket: c.ticket, name: login.name, inspectDate: c.inspectDate, returnUrl: '', expiresAt: login.expiresAt });
 
 /** อ่าน ticket จาก URL ครั้งแรก แล้วจำไว้ใน sessionStorage (สลับหน้าในแอปแล้วยังอยู่) */
 export async function loadTicket(): Promise<ErpTicket | null> {

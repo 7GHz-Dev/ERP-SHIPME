@@ -1,8 +1,10 @@
 'use client';
 import { Camera, FileText, FileUp, Search, Settings as SettingsIcon } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { warmUp } from '@/lib/cv';
 import { db, getSetting, setSetting } from '@/lib/db';
-import { loadTicket, type ErpTicket } from '@/lib/erp';
+import { warmDetector } from '@/lib/detect';
+import { loadTicket, thaiDate, type ErpTicket } from '@/lib/erp';
 import { canvasToBlob, ctx2d, validateImageFile } from '@/lib/image';
 import { pdfToImages } from '@/lib/pdf';
 import { blankCanvas, buildPageImages } from '@/lib/process';
@@ -41,7 +43,7 @@ function Shell() {
   const [theme, setThemeState] = useState<Theme>('system');
   const [ticket, setTicket] = useState<ErpTicket | null>(null);
   const [scan, setScan] = useState<{ docId: string | null } | null>(null);
-  const [importQ, setImportQ] = useState<{ docId: string; items: Blob[] } | null>(null);
+  const [importQ, setImportQ] = useState<{ docId: string; items: Blob[]; confirm: boolean } | null>(null);
   const [pdfBusy, setPdfBusy] = useState('');
   const imgInput = useRef<HTMLInputElement>(null);
   const pdfInput = useRef<HTMLInputElement>(null);
@@ -60,11 +62,15 @@ function Shell() {
     const ticketP = loadTicket().catch((e) => { ui.toast(friendlyError(e), 'error'); return null; });
     Promise.all([onboardingSeen(), ticketP]).then(([seen, t]) => { setTicket(t); setOnboard(!seen && !t); });
     purgeExpiredTrash().catch(() => undefined);
+    // เตรียมตัวหาขอบ (เล็ก) ทันที และโหลด OpenCV (ใช้ตอนบันทึกหน้า) ระหว่างผู้ใช้ยังดูหน้าแรก
+    warmDetector();
+    const t = setTimeout(() => { warmUp(); }, 1200);
     if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
       navigator.serviceWorker.register('/sw.js').catch(() => undefined);
     }
     if (process.env.NODE_ENV === 'development') seedDemo().catch(() => undefined);
     navigator.storage?.persist?.().catch(() => undefined);
+    return () => clearTimeout(t);
   }, [ui]);
 
   // ธีม: ตามเครื่อง / สว่าง / มืด
@@ -78,7 +84,7 @@ function Shell() {
   const setTheme = (t: Theme) => { setThemeState(t); setSetting('theme', t); };
 
   const currentFolder = route.name === 'library' ? route.folder : null;
-  const newDocName = useCallback(() => (ticket ? `ตรวจปล่อย ${ticket.inspectDate.split('-').reverse().join('-')}` : `สแกน ${stamp()}`), [ticket]);
+  const newDocName = useCallback(() => (ticket ? `ตรวจปล่อย ${thaiDate(ticket.inspectDate).replace(/\//g, '-')}` : `สแกน ${stamp()}`), [ticket]);
 
   const startScan = (docId: string | null = null) => setScan({ docId });
   const startImport = (kind: 'image' | 'pdf', docId: string | null = null) => {
@@ -93,7 +99,7 @@ function Shell() {
     }
     if (!ok.length) return;
     const docId = importTarget.current || (await createDocument(ticket ? newDocName() : `นำเข้า ${stamp()}`, currentFolder)).id;
-    setImportQ({ docId, items: ok });
+    setImportQ({ docId, items: ok, confirm: await getSetting<boolean>('scanConfirm', false) });
   };
 
   const onPdf = async (file: File | undefined) => {
@@ -132,7 +138,7 @@ function Shell() {
     );
   }
   if (importQ) {
-    return <CaptureFlow documentId={importQ.docId} items={importQ.items}
+    return <CaptureFlow documentId={importQ.docId} items={importQ.items} confirm={importQ.confirm}
       onDone={() => { const id = importQ.docId; setImportQ(null); go(`/doc/${id}`); }}
       onCancel={() => { const id = importQ.docId; setImportQ(null); go(`/doc/${id}`); }} />;
   }

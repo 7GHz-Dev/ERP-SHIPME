@@ -4,7 +4,7 @@
  */
 
 export const MAX_ORIGINAL = 4000;   // ด้านยาวสุดของภาพต้นฉบับที่เก็บ
-export const MAX_PROCESSED = 3000;  // ด้านยาวสุดของภาพที่ประมวลผลแล้ว
+export const MAX_PROCESSED = 2480;  // ด้านยาวสุดของภาพที่ประมวลผลแล้ว (A4 ≈ 210 dpi — คมพอสำหรับเอกสาร และบันทึกเร็ว)
 export const THUMB = 360;
 export const MAX_FILE_BYTES = 40 * 1024 * 1024;
 

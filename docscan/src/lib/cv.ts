@@ -37,12 +37,17 @@ function call<T>(msg: Record<string, unknown>, image?: ImageData): Promise<T> {
   });
 }
 
-/** เริ่มโหลด OpenCV ล่วงหน้า (เช่นตอนเปิดกล้อง) จะได้ไม่รอตอนกดถ่าย */
-export const warmUp = () => call<{ ok: boolean }>({ type: 'ping' }).catch(() => undefined);
+let ready = false;
+/** เริ่มโหลด OpenCV ล่วงหน้า (ตอนเปิดแอป) จะได้ไม่รอตอนบันทึกหน้าแรก */
+export const warmUp = () => call<{ ok: boolean }>({ type: 'ping' }).then((r) => { ready = true; return r; }).catch(() => undefined);
+/** OpenCV โหลดเสร็จแล้วหรือยัง (ไว้ตัดสินใจว่าจะใช้ตัวหาขอบสำรองแบบเดิมได้ทันทีไหม) */
+export const isCvReady = () => ready;
 
 export function detectQuad(image: ImageData) {
   return call<{ quad: Quad | null; confidence: number }>({ type: 'detect' }, image);
 }
-export function warpQuad(image: ImageData, quad: Quad) { return call<ImageData>({ type: 'warp', quad }, image); }
+export function warpQuad(image: ImageData, quad: Quad, size?: { w: number; h: number }) {
+  return call<ImageData>({ type: 'warp', quad, size }, image);
+}
 export function applyFilter(image: ImageData, name: FilterName) { return call<ImageData>({ type: 'filter', name }, image); }
 export function applyAdjust(image: ImageData, adjust: Adjustments) { return call<ImageData>({ type: 'adjust', adjust }, image); }

@@ -117,6 +117,11 @@ export function SettingsPage({ theme, setTheme, onTrash }: { theme: Theme; setTh
   const fileRef = useRef<HTMLInputElement>(null);
   const reload = () => storageStats().then(setStats);
   useEffect(() => { reload(); }, []);
+  const [scanAuto, setScanAuto] = useState(true), [scanConfirm, setScanConfirm] = useState(false);
+  useEffect(() => {
+    getSetting<boolean>('scanAuto', true).then(setScanAuto);
+    getSetting<boolean>('scanConfirm', false).then(setScanConfirm);
+  }, []);
 
   const clearOcr = async () => {
     if (!await ui.confirm('ลบข้อความ OCR ทั้งหมด?', 'รูปเอกสารไม่ถูกลบ แต่จะค้นหาข้อความในเอกสารไม่ได้จนกว่าจะกด OCR ใหม่', { ok: 'ลบข้อความ OCR', danger: true })) return;
@@ -158,8 +163,16 @@ export function SettingsPage({ theme, setTheme, onTrash }: { theme: Theme; setTh
     <div className="mx-auto grid max-w-3xl gap-3 px-4 pb-28 pt-[calc(1rem+env(safe-area-inset-top))]">
       <h1 className="text-2xl font-bold">ตั้งค่า</h1>
       <div className="flex items-center gap-2 rounded-2xl bg-emerald-50 p-3 text-sm text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100">
-        <ShieldCheck className="h-5 w-5 shrink-0" />เอกสารของคุณอยู่ในเครื่องนี้ — ไม่มีการอัปโหลดขึ้นเซิร์ฟเวอร์ ยกเว้นตอนกด "ส่งเข้าใบปิดบัญชี" เอง
+        <ShieldCheck className="h-5 w-5 shrink-0" />เอกสารของคุณอยู่ในเครื่องนี้ — ไม่มีการอัปโหลดขึ้นเซิร์ฟเวอร์ ยกเว้นตอนคุณกดส่งเข้าใบปิดบัญชีเอง
       </div>
+      <Row icon={<Camera className="h-5 w-5 text-primary" />} title="การสแกน">
+        <div className="grid gap-3">
+          <Toggle label="ถ่ายอัตโนมัติเมื่อเจอเอกสาร" hint="จับขอบได้และถือนิ่งครู่หนึ่ง = ถ่ายให้เอง แล้วรอหน้าถัดไป"
+            value={scanAuto} onChange={(v) => { setScanAuto(v); setSetting('scanAuto', v); }} />
+          <Toggle label="ยืนยันกรอบก่อนบันทึกทุกหน้า" hint="ปิด = ครอบตามกรอบที่จับได้แล้วบันทึกเลย (เร็วที่สุด แก้กรอบทีหลังได้ด้วยปุ่ม &quot;ครอบ&quot;)"
+            value={scanConfirm} onChange={(v) => { setScanConfirm(v); setSetting('scanConfirm', v); }} />
+        </div>
+      </Row>
       <Row icon={<Database className="h-5 w-5 text-primary" />} title="พื้นที่เก็บในเครื่อง">
         {stats ? (
           <div className="grid grid-cols-3 gap-2 text-center">
@@ -190,9 +203,24 @@ export function SettingsPage({ theme, setTheme, onTrash }: { theme: Theme; setTh
         </div>
       </Row>
       <Row icon={<FileDown className="h-5 w-5 text-primary" />} title="เกี่ยวกับ">
-        <p className="text-sm text-muted">DocScan • ประมวลผลภาพด้วย OpenCV และอ่านข้อความด้วย Tesseract ในเครื่อง • ติดตั้งเป็นแอปได้จากเมนูเบราว์เซอร์ ("เพิ่มไปยังหน้าจอโฮม")</p>
+        <p className="text-sm text-muted">DocScan • หาขอบเอกสารและประมวลผลภาพ (OpenCV) และอ่านข้อความ (Tesseract) ในเครื่อง • ติดตั้งเป็นแอปได้จากเมนูเบราว์เซอร์ ("เพิ่มไปยังหน้าจอโฮม")</p>
       </Row>
     </div>
+  );
+}
+
+/** สวิตช์เปิด/ปิด (ปุ่มใหญ่ กดง่ายบนมือถือ) */
+function Toggle({ label, hint, value, onChange }: { label: string; hint?: string; value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button type="button" role="switch" aria-checked={value} onClick={() => onChange(!value)} className="flex min-h-11 items-center gap-3 text-left">
+      <span className="flex-1">
+        <span className="block font-medium">{label}</span>
+        {hint && <span className="block text-sm text-muted">{hint}</span>}
+      </span>
+      <span className={`relative h-7 w-12 shrink-0 rounded-full transition ${value ? 'bg-primary' : 'bg-surface-3'}`}>
+        <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all ${value ? 'left-6' : 'left-1'}`} />
+      </span>
+    </button>
   );
 }
 

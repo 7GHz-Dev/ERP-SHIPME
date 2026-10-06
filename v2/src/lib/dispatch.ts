@@ -1,7 +1,7 @@
 import { saveInvoicePairs } from './invoice-pairs';
 import {
   createScanTicket, deleteInspectionFile, listInspectionFiles, registerInspectionFile,
-  scanTicketInfo, scanUploadDone, scanUploadSign, signInspectionUpload
+  scanLogin, scanTicketInfo, scanUploadDone, scanUploadSign, signInspectionUpload
 } from './inspection';
 import { serviceInvoiceData } from './service-invoices';
 import { withholdingData } from './withholding';
@@ -359,6 +359,8 @@ const handlers: Record<string, Handler> = {
     const session = await guard(body);
     return session.error || createScanTicket(body, session.user);
   },
+  // DocScan (คนละโดเมน) — ตรวจรหัสแล้วคืนใบเบิก + ticket ต่อใบ โดยไม่สร้าง session
+  scanLogin: (body) => scanLogin(body),
   // 3 ตัวนี้ DocScan เรียกด้วย ticket แทนการล็อกอิน (อยู่คนละโดเมน)
   scanTicketInfo: (body) => scanTicketInfo(body),
   scanUploadSign: (body) => scanUploadSign(body),

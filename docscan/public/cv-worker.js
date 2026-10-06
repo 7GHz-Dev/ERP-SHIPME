@@ -96,11 +96,12 @@ function detect(d) {
   } finally { del(src, gray, blur, edges, k); }
 }
 
-function warp(d, q) {
+/** size = ขนาดผลลัพธ์ที่ต้องการ (เช่นปรับเป็นสัดส่วน A4 แล้ว) — ไม่ส่งมา = คิดจากความยาวด้าน */
+function warp(d, q, size) {
   var src = matFromImageData(d), dst = new cv.Mat();
   var dist = function (a, b) { return Math.hypot(a.x - b.x, a.y - b.y); };
-  var w = Math.round(Math.max(dist(q[0], q[1]), dist(q[3], q[2])));
-  var h = Math.round(Math.max(dist(q[0], q[3]), dist(q[1], q[2])));
+  var w = size ? Math.round(size.w) : Math.round(Math.max(dist(q[0], q[1]), dist(q[3], q[2])));
+  var h = size ? Math.round(size.h) : Math.round(Math.max(dist(q[0], q[3]), dist(q[1], q[2])));
   var from = cv.matFromArray(4, 1, cv.CV_32FC2, [q[0].x, q[0].y, q[1].x, q[1].y, q[2].x, q[2].y, q[3].x, q[3].y]);
   var to = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, w, 0, w, h, 0, h]);
   var M = cv.getPerspectiveTransform(from, to);
@@ -111,32 +112,27 @@ function warp(d, q) {
 }
 
 /**
- * ลบเงา/แสงไม่สม่ำเสมอ: ประมาณพื้นกระดาษด้วย dilate + median blur แล้วหารออกทีละช่องสี
- * ตัวหนังสือ ลายเซ็น และตราประทับ (สีเข้มกว่าพื้น) ยังอยู่ครบ — ไม่ใช่ threshold ทิ้งสี
+ * ลบเงา/แสงไม่สม่ำเสมอ: ประมาณสีพื้นกระดาษ (dilate ลบตัวหนังสือ + median blur) แล้วหารออก → พื้นกระดาษขาว 255
+ * ตัวหนังสือ ลายเซ็น และตราประทับ (เข้มกว่าพื้น) ยังอยู่ครบตามสัดส่วนเดิม — ไม่ใช่ threshold ทิ้งสี
+ * ประมาณพื้นที่ความละเอียดต่ำ (ด้านยาว 360px) ทั้ง 3 ช่องสีพร้อมกัน แล้วขยายกลับ
+ * — เดิม median 51px บนภาพเต็ม + แยกทีละช่องสี กินเวลาหลายวินาทีต่อหน้าบนมือถือ
  */
 function normalizeBackground(rgb) {
-  var channels = new cv.MatVector(), outCh = new cv.MatVector();
-  cv.split(rgb, channels);
-  var k = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(7, 7));
-  var size = Math.max(21, (Math.round(Math.max(rgb.cols, rgb.rows) / 60) | 1));
-  for (var i = 0; i < 3; i++) {
-    var ch = channels.get(i), bg = new cv.Mat(), diff = new cv.Mat(), norm = new cv.Mat();
-    cv.dilate(ch, bg, k);
-    cv.medianBlur(bg, bg, size % 2 ? size : size + 1);
-    cv.absdiff(ch, bg, diff);
-    cv.bitwise_not(diff, diff);
-    cv.normalize(diff, norm, 0, 255, cv.NORM_MINMAX, cv.CV_8U);
-    outCh.push_back(norm);
-    del(ch, bg, diff, norm);
-  }
-  var out = new cv.Mat();
-  cv.merge(outCh, out);
-  del(channels, outCh, k);
-  return out;
+  var s = Math.min(1, 360 / Math.max(rgb.cols, rgb.rows));
+  var lo = new cv.Mat(), bg = new cv.Mat(), out = new cv.Mat();
+  var k = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
+  try {
+    cv.resize(rgb, lo, new cv.Size(Math.max(8, Math.round(rgb.cols * s)), Math.max(8, Math.round(rgb.rows * s))), 0, 0, cv.INTER_AREA);
+    cv.dilate(lo, lo, k);
+    cv.medianBlur(lo, lo, 7);
+    cv.resize(lo, bg, new cv.Size(rgb.cols, rgb.rows), 0, 0, cv.INTER_LINEAR);
+    cv.divide(rgb, bg, out, 255);
+    return out;
+  } finally { del(lo, bg, k); }
 }
 function sharpen(mat, amount) {
   var blur = new cv.Mat();
-  cv.GaussianBlur(mat, blur, new cv.Size(0, 0), 1.2);
+  cv.GaussianBlur(mat, blur, new cv.Size(5, 5), 1.0);
   cv.addWeighted(mat, 1 + amount, blur, -amount, 0, mat);
   blur.delete();
 }
@@ -177,7 +173,8 @@ function filter(d, name) {
       cv.cvtColor(norm, gray, cv.COLOR_RGB2GRAY);
       out = new cv.Mat();
       var block = Math.max(15, (Math.round(Math.max(gray.cols, gray.rows) / 80) | 1));
-      cv.adaptiveThreshold(gray, out, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, block % 2 ? block : block + 1, 12);
+      // ค่าเฉลี่ยแบบกล่อง (เร็วคงที่ไม่ขึ้นกับขนาดบล็อก) แทน Gaussian ที่ช้าลงตามขนาดบล็อก
+      cv.adaptiveThreshold(gray, out, 255, cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY, block % 2 ? block : block + 1, 12);
       del(norm, gray);
     }
     else { out = rgb.clone(); }
@@ -210,7 +207,7 @@ self.onmessage = function (e) {
       var result;
       if (msg.type === 'ping') result = { ok: true };
       else if (msg.type === 'detect') result = detect(msg.image);
-      else if (msg.type === 'warp') result = warp(msg.image, msg.quad);
+      else if (msg.type === 'warp') result = warp(msg.image, msg.quad, msg.size);
       else if (msg.type === 'filter') result = filter(msg.image, msg.name);
       else if (msg.type === 'adjust') result = adjust(msg.image, msg.adjust);
       else throw new Error('unknown op ' + msg.type);
