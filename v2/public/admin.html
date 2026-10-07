@@ -224,6 +224,9 @@
 #sm-head th.sm-sort:hover{background:#eef4ff;color:var(--blue2)}
 #sm-head th.sm-sort.on{color:var(--blue)}
 #sm-head .sm-arrow{font-size:10px;margin-left:3px}
+/* สลิป / เลขที่รายการ — แคบลง 40% จากเดิม (240px → 144px) เลขที่รายการยาวให้ตัดขึ้นบรรทัดใหม่ */
+#sm-head th[data-sort="slip"]{width:144px}
+#sm-body td.sm-slip{text-align:left;font-size:12px;width:144px;min-width:144px;max-width:144px;overflow-wrap:anywhere}
 .pl-recent{display:flex;gap:6px;flex-wrap:wrap;margin:-6px 0 14px}
 .pl-day{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 11px;font-size:12px;font-weight:700;color:#334155;cursor:pointer}
 .pl-day span{color:var(--muted);font-weight:600}
@@ -2415,7 +2418,7 @@ function renderSettlements(){
         '<div class="muted" style="font-weight:400">'+(bal>=0?'โอนคืนบริษัท':'บริษัทโอนคืน')+'</div></td>'+
       '<td class="time-cell">'+(r.returnedDate?esc(fmtD(r.returnedDate)):'')+
         ((settleStatus(r)!=='done' || !r.returnedDate) ? ('<div>'+SM_STATUS_TH[settleStatus(r)]+'</div>'+settleOwedText(r)) : '')+'</td>'+
-      '<td class="addr" style="font-size:12px">'+slipCell(r)+'</td>'+
+      '<td class="sm-slip">'+slipCell(r)+'</td>'+
       '<td class="time-cell">'+(r.companyReturnedDate?esc(fmtD(r.companyReturnedDate)):'<span class="muted">—</span>')+companySlipCell(r)+'</td>'+
       '<td>'+(r.editCount>0?('<span class="pill pending">ครั้งที่ '+r.editCount+'</span>'):'<span class="muted">—</span>')+'</td>'+
       '<td style="white-space:nowrap">'+
