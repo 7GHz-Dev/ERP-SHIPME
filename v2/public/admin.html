@@ -218,6 +218,12 @@
 .inv-row-actions{display:grid;gap:8px;min-width:112px}.inv-source-table .pill{display:block;margin-bottom:5px}
 /* ---- แพลนงานตรวจปล่อย (job-plan.js) ---- */
 .wrap:has(#tab-plan:not(.hidden)){max-width:1780px}
+/* รายการปิดบัญชีของพนักงาน — กว้างเต็มจอ + กดหัวคอลัมน์เพื่อเรียง */
+.wrap:has(#tab-settle:not(.hidden)){max-width:1780px}
+#sm-head th.sm-sort{cursor:pointer;user-select:none}
+#sm-head th.sm-sort:hover{background:#eef4ff;color:var(--blue2)}
+#sm-head th.sm-sort.on{color:var(--blue)}
+#sm-head .sm-arrow{font-size:10px;margin-left:3px}
 .pl-recent{display:flex;gap:6px;flex-wrap:wrap;margin:-6px 0 14px}
 .pl-day{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 11px;font-size:12px;font-weight:700;color:#334155;cursor:pointer}
 .pl-day span{color:var(--muted);font-weight:600}
@@ -422,10 +428,12 @@
       <div id="sm-summary" class="muted" style="margin-bottom:10px"></div>
       <div class="tbl-wrap">
         <table class="grid">
-          <thead><tr>
-            <th>วันที่ตรวจปล่อย</th><th>ชื่อ SHIPPING</th><th>BL</th><th>ตู้</th>
-            <th>รวมค่าใช้จ่าย</th><th>ยอดเบิก</th><th>คงเหลือ</th>
-            <th>โอนคืนบริษัท</th><th>สลิป / เลขที่รายการ</th><th>บริษัทโอนคืน</th><th>แก้ไข</th><th>จัดการ</th>
+          <thead><tr id="sm-head">
+            <th class="sm-sort" data-sort="date">วันที่ตรวจปล่อย</th><th class="sm-sort" data-sort="name">ชื่อ SHIPPING</th>
+            <th class="sm-sort" data-sort="bl">BL</th><th class="sm-sort" data-sort="cntr">ตู้</th>
+            <th class="sm-sort" data-sort="expense">รวมค่าใช้จ่าย</th><th class="sm-sort" data-sort="claim">ยอดเบิก</th><th class="sm-sort" data-sort="balance">คงเหลือ</th>
+            <th class="sm-sort" data-sort="returned">โอนคืนบริษัท</th><th class="sm-sort" data-sort="slip">สลิป / เลขที่รายการ</th>
+            <th class="sm-sort" data-sort="company">บริษัทโอนคืน</th><th class="sm-sort" data-sort="edit">แก้ไข</th><th>จัดการ</th>
           </tr></thead>
           <tbody id="sm-body"><tr><td colspan="12"><div class="center-load"><span class="spinner"></span> กำลังโหลด…</div></td></tr></tbody>
         </table>
@@ -2332,8 +2340,61 @@ function filteredSettlements(){
   });
 }
 
+// ---- เรียงตามหัวคอลัมน์: กดครั้งแรก = น้อยไปมาก ▲ กดซ้ำ = มากไปน้อย ▼ (จำไว้ในเครื่องนี้) ----
+var smSort={ key:'', dir:'asc' };
+try { var smSaved=JSON.parse(localStorage.getItem('sm_sort')||'null'); if(smSaved && smSaved.key) smSort=smSaved; } catch(e){}
+function smContainers(r){ return (r.rows||[]).reduce(function(t,x){ return t+(Number(x.containers)||0); },0); }
+var SM_SORT_VALUE={
+  date:function(r){ return r.inspectDate||''; },
+  name:function(r){ return String(r.name||r.username||''); },
+  bl:function(r){ return (r.rows||[]).length; },
+  cntr:smContainers,
+  expense:function(r){ return Number(r.totalExpense)||0; },
+  claim:function(r){ return Number(r.claimTotal)||0; },
+  balance:function(r){ return Number(r.balance)||0; },
+  returned:function(r){ return r.returnedDate||''; },
+  slip:function(r){ return String(r.slipTxn||'').toUpperCase(); },
+  company:function(r){ return r.companyReturnedDate||''; },
+  edit:function(r){ return Number(r.editCount)||0; }
+};
+function sortedSettlements(rows){
+  var get=SM_SORT_VALUE[smSort.key];
+  if(!get) return rows;
+  var dir=smSort.dir==='desc' ? -1 : 1;
+  return rows.map(function(r, i){ return { r:r, v:get(r), i:i }; }).sort(function(a, b){
+    var x=a.v, y=b.v;
+    if(typeof x==='string'){
+      // ช่องว่าง (ยังไม่โอน / ไม่มีสลิป) อยู่ท้ายเสมอ ไม่ว่าจะเรียงทางไหน
+      if(!x && y) return 1;
+      if(x && !y) return -1;
+      var c=x.localeCompare(y, 'th', { numeric:true });
+      if(c) return c*dir;
+    } else if(x!==y) return (x-y)*dir;
+    return a.i-b.i;
+  }).map(function(o){ return o.r; });
+}
+function renderSettleSortHead(){
+  Array.prototype.forEach.call(document.querySelectorAll('#sm-head th.sm-sort'), function(th){
+    var on=th.getAttribute('data-sort')===smSort.key;
+    th.classList.toggle('on', on);
+    th.title = on ? (smSort.dir==='asc' ? 'เรียงน้อยไปมาก — กดเพื่อเรียงมากไปน้อย' : 'เรียงมากไปน้อย — กดเพื่อเรียงน้อยไปมาก') : 'กดเพื่อเรียงน้อยไปมาก';
+    var a=th.querySelector('.sm-arrow');
+    if(!a){ a=document.createElement('span'); a.className='sm-arrow'; th.appendChild(a); }
+    a.innerHTML = on ? (smSort.dir==='asc' ? '▲' : '▼') : '<span class="muted">⇅</span>';
+  });
+}
+Array.prototype.forEach.call(document.querySelectorAll('#sm-head th.sm-sort'), function(th){
+  th.addEventListener('click', function(){
+    var key=th.getAttribute('data-sort');
+    smSort = smSort.key===key ? { key:key, dir: smSort.dir==='asc' ? 'desc' : 'asc' } : { key:key, dir:'asc' };
+    try { localStorage.setItem('sm_sort', JSON.stringify(smSort)); } catch(e){}
+    renderSettlements();
+  });
+});
+
 function renderSettlements(){
-  var rows=filteredSettlements();
+  renderSettleSortHead();
+  var rows=sortedSettlements(filteredSettlements());
   var exp=0, clm=0;
   rows.forEach(function(r){ exp+=Number(r.totalExpense)||0; clm+=Number(r.claimTotal)||0; });
   $('sm-summary').innerHTML='แสดง '+rows.length+' / ทั้งหมด '+settleRows.length+' ใบ • '+
@@ -2607,7 +2668,7 @@ function extraSlipSum(r){
   return Math.round(list.reduce(function(t,x){ return t+(Number(x.amount)||0); },0)*100)/100;
 }
 function exportSettleCSV(){
-  var rows=filteredSettlements();
+  var rows=sortedSettlements(filteredSettlements());   // CSV เรียงตามที่เห็นบนจอ
   if(!rows.length){ toast('ไม่มีข้อมูลให้ส่งออก'); return; }
   var head=['วันที่ตรวจปล่อย','ชื่อ SHIPPING','username','ท่า','ชื่อลูกค้า','เลข BL','จำนวนตู้'];
   claimSettleCols().forEach(function(c){ head.push(c.label); });
