@@ -203,7 +203,7 @@ export function SettingsPage({ theme, setTheme, onTrash }: { theme: Theme; setTh
         </div>
       </Row>
       <Row icon={<FileDown className="h-5 w-5 text-primary" />} title="เกี่ยวกับ">
-        <p className="text-sm text-muted">DocScan • หาขอบเอกสารและประมวลผลภาพ (OpenCV) และอ่านข้อความ (Tesseract) ในเครื่อง • ติดตั้งเป็นแอปได้จากเมนูเบราว์เซอร์ ("เพิ่มไปยังหน้าจอโฮม")</p>
+        <p className="text-sm text-muted">DocScan by ERP SHIPME • หาขอบเอกสารและประมวลผลภาพ (OpenCV) และอ่านข้อความ (Tesseract) ในเครื่อง • ติดตั้งเป็นแอปได้จากเมนูเบราว์เซอร์ ("เพิ่มไปยังหน้าจอโฮม")</p>
       </Row>
     </div>
   );
@@ -236,8 +236,11 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-bg px-6 pb-[env(safe-area-inset-bottom)]">
       <div className="w-full max-w-sm">
-        <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary text-white shadow-lg"><ScanLine className="h-9 w-9" /></div>
-        <h1 className="text-3xl font-bold">DocScan</h1>
+        <div className="mb-6 rounded-2xl bg-white p-3 shadow-sm ring-1 ring-black/5">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/logo.webp" alt="ERP SHIPME" width={640} height={270} className="mx-auto h-auto w-56" />
+        </div>
+        <h1 className="text-3xl font-bold text-navy">DocScan</h1>
         <p className="mt-1 text-muted">สแกนเอกสารให้ชัดเหมือนเครื่องสแกน</p>
         <ul className="mt-8 grid gap-4">
           {items.map((x, i) => (

@@ -4,8 +4,11 @@
 @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 
 :root {
-  --primary: #2563eb;
-  --bg: #f4f6f9;
+  /* ธีม ERP SHIPME (สีจากโลโก้): น้ำเงินเข้ม #002967 • น้ำเงิน #0058eb • ฟ้า #0099fd • ส้ม #ffa202 */
+  --primary: #0058eb;
+  --navy: #002967;
+  --accent: #ffa202;
+  --bg: #f1f5fb;
   --surface: #ffffff;
   --surface-2: #f1f4f8;
   --surface-3: #e6ebf2;
@@ -14,8 +17,10 @@
   --line: #e2e8f0;
 }
 [data-theme="dark"] {
-  --primary: #3b82f6;
-  --bg: #0b1120;
+  --primary: #2b8dff;
+  --navy: #9cc4ff;
+  --accent: #ffb22e;
+  --bg: #0a1224;
   --surface: #111827;
   --surface-2: #1b2433;
   --surface-3: #263244;
@@ -26,6 +31,8 @@
 
 @theme inline {
   --color-primary: var(--primary);
+  --color-navy: var(--navy);
+  --color-accent: var(--accent);
   --color-bg: var(--bg);
   --color-surface: var(--surface);
   --color-surface-2: var(--surface-2);

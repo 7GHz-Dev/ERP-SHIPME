@@ -6,7 +6,7 @@ import './globals.css';
 const thai = Noto_Sans_Thai({ subsets: ['thai', 'latin'], weight: ['400', '500', '600', '700'], variable: '--font-thai', display: 'swap' });
 
 export const metadata: Metadata = {
-  title: 'DocScan',
+  title: 'DocScan — ERP SHIPME',
   description: 'สแกนเอกสารด้วยกล้อง ครอบอัตโนมัติ อ่านข้อความไทย/อังกฤษ และส่งออก PDF — เอกสารอยู่ในเครื่องคุณ',
   manifest: '/manifest.webmanifest',
   applicationName: 'DocScan',

@@ -4,7 +4,7 @@
  * - สคริปต์ worker (cv-worker.js, detect-worker.js — ชื่อไฟล์คงที่): network-first ได้ตัวใหม่ทันทีที่ออนไลน์
  * - ไฟล์ OCR (tesseract core + ภาษา จาก CDN): cache-first หลังโหลดครั้งแรก → OCR ออฟไลน์ได้
  * เอกสารของผู้ใช้อยู่ใน IndexedDB ไม่ผ่าน service worker และไม่ถูกส่งไปไหน */
-const VERSION = 'docscan-v2';
+const VERSION = 'docscan-v3';
 const SHELL = ['/', '/manifest.webmanifest', '/cv-worker.js', '/detect-worker.js', '/vendor/opencv.js', '/icons/icon-192.png'];
 
 self.addEventListener('install', (e) => {

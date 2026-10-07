@@ -72,7 +72,14 @@ export default function Library({ folderId, ticket, onOpenFolder, onOpenDoc, onS
   return (
     <div className="mx-auto max-w-5xl px-4 pb-28 pt-[calc(1rem+env(safe-area-inset-top))]">
       <header className="mb-3 flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">DocScan</h1>
+        <div className="flex items-center gap-2.5">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/mark.webp" alt="" width={40} height={40} className="h-10 w-10" />
+          <div className="leading-tight">
+            <h1 className="text-2xl font-bold tracking-tight text-navy">DocScan</h1>
+            <p className="text-xs font-semibold text-muted">by ERP <span className="text-primary">SHIP</span><span className="text-accent">ME</span></p>
+          </div>
+        </div>
         <div className="flex">
           <IconButton label={view === 'grid' ? 'มุมมองรายการ' : 'มุมมองตาราง'} onClick={() => { const v = view === 'grid' ? 'list' : 'grid'; setView(v); remember({ view: v }); }}>
             {view === 'grid' ? <List className="h-5 w-5" /> : <Grid2x2 className="h-5 w-5" />}

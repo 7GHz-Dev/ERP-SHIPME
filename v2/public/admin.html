@@ -3,12 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Admin — ระบบเช็คชื่อเข้างาน</title>
+<title>ERP SHIPME — ผู้ดูแลระบบ</title>
+<meta name="theme-color" content="#002967">
+<link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png">
+<link rel="icon" type="image/png" sizes="64x64" href="/brand/favicon-64.png">
+<link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
 <style>
 @font-face{font-family:Sarabun;font-style:normal;font-weight:400;src:url("/fonts/Sarabun-Regular.ttf") format("truetype");font-display:swap}@font-face{font-family:Sarabun;font-style:normal;font-weight:600;src:url("/fonts/Sarabun-SemiBold.ttf") format("truetype");font-display:swap}@font-face{font-family:Sarabun;font-style:normal;font-weight:700;src:url("/fonts/Sarabun-Bold.ttf") format("truetype");font-display:swap}@font-face{font-family:Sarabun;font-style:normal;font-weight:800;src:url("/fonts/Sarabun-ExtraBold.ttf") format("truetype");font-display:swap}
 #tab-invoice,#tab-invoice input,#tab-invoice button,#tab-invoice select{font-family:Sarabun,sans-serif}
 
-  :root { --blue:#1e40af; --blue2:#2563eb; --bg:#f5f7fa; --card:#fff; --muted:#64748b; --line:#e2e8f0; --gridline:#dfe3e8; }
+  /* ธีม ERP SHIPME (สีจากโลโก้): น้ำเงินเข้ม #002967 • น้ำเงิน #0058eb • ฟ้า #0099fd • ส้ม #ffa202 */
+  :root { --blue:#002967; --blue2:#0058eb; --cyan:#0099fd; --accent:#ffa202; --bg:#f3f6fb; --card:#fff; --muted:#64748b; --line:#e2e8f0; --gridline:#dfe3e8; }
   * { box-sizing:border-box; }
   body { margin:0; font-family:-apple-system,'Segoe UI',Roboto,'Noto Sans Thai',sans-serif; background:var(--bg); color:#0f172a; }
   .btn { border:0; border-radius:9px; padding:9px 15px; font-size:14px; font-weight:600; cursor:pointer; }
@@ -43,12 +48,16 @@
   .err { background:#fee2e2; color:#991b1b; padding:10px 12px; border-radius:9px; font-size:13px; margin-bottom:12px; }
 
   /* shell */
-  header.top { background:#fff; border-bottom:1px solid var(--line); padding:12px 20px; display:flex; align-items:center; justify-content:space-between; gap:10px; position:sticky; top:0; z-index:20; }
-  header.top .brand { font-weight:800; font-size:16px; color:var(--blue); display:flex; align-items:center; gap:8px; }
+  header.top { height:57px; background:#fff; border-bottom:1px solid var(--line); padding:0 20px; display:flex; align-items:center; justify-content:space-between; gap:10px; position:sticky; top:0; z-index:20;
+               box-shadow:inset 0 -3px 0 transparent; background-image:linear-gradient(90deg,#002967,#0058eb 45%,#0099fd 75%,#ffa202); background-size:100% 3px; background-repeat:no-repeat; background-position:bottom; }
+  header.top .brand { font-weight:800; font-size:16px; color:var(--blue); display:flex; align-items:center; gap:12px; }
+  header.top .brand-logo { height:40px; width:auto; display:block; }
+  header.top .brand-sep { width:1px; height:26px; background:var(--line); }
   header.top .who { font-size:13px; color:var(--muted); }
-  .nav { display:flex; gap:4px; background:#fff; padding:0 20px; border-bottom:1px solid var(--line); position:sticky; top:53px; z-index:19; overflow-x:auto; white-space:nowrap; }
+  .nav { display:flex; gap:4px; background:#fff; padding:0 20px; border-bottom:1px solid var(--line); position:sticky; top:57px; z-index:19; overflow-x:auto; white-space:nowrap; }
   .navbtn { padding:13px 16px; cursor:pointer; font-weight:600; font-size:14px; color:var(--muted); background:none; border:0; border-bottom:2.5px solid transparent; flex:0 0 auto; }
-  .navbtn.active { color:var(--blue2); border-bottom-color:var(--blue2); }
+  .navbtn.active { color:var(--blue); border-bottom-color:var(--accent); }
+  .navbtn:hover { color:var(--blue2); }
   .wrap { max-width:1180px; margin:0 auto; padding:20px; }
   h3.sec { margin:4px 2px 14px; font-size:16px; }
 
@@ -163,7 +172,10 @@
   @media (max-width:600px){
     .wrap { padding:14px; }
     header.top .who { display:none; }
-    .nav { top:52px; }
+    header.top { height:50px; padding:0 14px; }
+    header.top .brand-logo { height:32px; }
+    header.top .brand-sep, #brand-title { display:none; }
+    .nav { top:50px; }
     .toolbar > * { flex:1 1 100%; }
   }
 </style>
@@ -219,7 +231,7 @@
 <!-- ===== APP ===== -->
 <div id="view-app" class="hidden">
   <header class="top">
-    <div class="brand" id="brand-title">🗂️ แดชบอร์ดผู้ดูแล</div>
+    <div class="brand"><img class="brand-logo" src="/brand/logo.webp" alt="ERP SHIPME" width="640" height="270"><span class="brand-sep"></span><span id="brand-title">แดชบอร์ดผู้ดูแล</span></div>
     <div style="display:flex;align-items:center;gap:12px">
       <span class="who" id="who"></span>
       <button id="btn-logout" class="btn btn-ghost btn-sm">ออกจากระบบ</button>
@@ -1153,7 +1165,7 @@ function enterApp(){
   var roleWord = isAccount ? (role==='manager-account' ? ' (ผู้จัดการบัญชี)' : ' (พนักงานบัญชี)')
                            : (isManager ? ' (ผู้จัดการ)' : ' (ผู้ดูแล)');
   $('who').textContent = state.user.name + roleWord;
-  $('brand-title').textContent = isAccount ? '🧾 ใบแจ้งหนี้' : (isManager ? '🗂️ แดชบอร์ด' : '🗂️ แดชบอร์ดผู้ดูแล');
+  $('brand-title').textContent = isAccount ? 'ฝ่ายบัญชี' : (isManager ? 'แดชบอร์ดผู้จัดการ' : 'แดชบอร์ดผู้ดูแล');
 
   if(isAccount){
     // เหลือเฉพาะเมนูของฝ่ายบัญชี (เข้างาน / ปิดบัญชี / ใบแจ้งหนี้ / ใบหัก ณ ที่จ่าย / รายงานรายได้ชิปปิ้ง / กระทบยอดชิปปิ้ง)
@@ -2228,7 +2240,7 @@ function renderSettlements(){
       '<td>'+cntr+'</td>'+
       '<td>'+fmtM(r.totalExpense)+'</td>'+
       '<td>'+fmtM(r.claimTotal)+'</td>'+
-      '<td style="font-weight:700;color:'+(bal>=0?'#1e40af':'#dc2626')+'">'+fmtM(Math.abs(bal))+
+      '<td style="font-weight:700;color:'+(bal>=0?'#002967':'#dc2626')+'">'+fmtM(Math.abs(bal))+
         '<div class="muted" style="font-weight:400">'+(bal>=0?'โอนคืนบริษัท':'บริษัทโอนคืน')+'</div></td>'+
       '<td class="time-cell">'+(r.returnedDate?esc(fmtD(r.returnedDate)):'')+
         ((settleStatus(r)!=='done' || !r.returnedDate) ? ('<div>'+SM_STATUS_TH[settleStatus(r)]+'</div>'+settleOwedText(r)) : '')+'</td>'+
