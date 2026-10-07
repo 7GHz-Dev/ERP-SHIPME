@@ -6,6 +6,7 @@ import {
   index,
   integer,
   pgTable,
+  primaryKey,
   text,
   uniqueIndex
 } from 'drizzle-orm/pg-core';
@@ -356,3 +357,135 @@ export const invoices = pgTable('invoices', {
   index('invoices_period_idx').on(t.kind, t.period, t.seq),
   index('invoices_created_idx').on(t.createdBy, t.issueDate)
 ]);
+
+// ============ แพลนงานตรวจปล่อย + SMS คนขับรถ ============
+
+/**
+ * ชิปปิ้งประจำท่า รายเดือน — ผู้จัดการตั้งไว้ในเมนูตั้งค่าระบบ แพลนงานใช้เลือกชิปปิ้งให้อัตโนมัติ
+ * 1 ท่าต่อเดือน = ชิปปิ้ง 1 คน (เลือกให้อัตโนมัติได้ไม่กำกวม) — แถวที่ต้องแยกคนค่อยเปลี่ยนในแพลน
+ */
+export const portAssignments = pgTable('port_assignments', {
+  period: text('period').notNull(),                   // yyyymm
+  portKey: text('port_key').notNull(),                // ชื่อท่าแบบตัดช่องว่าง/ขีด ตัวใหญ่ (KERRY, D1D2)
+  port: text('port').notNull(),                       // ชื่อท่าตามที่ตั้งไว้ (แสดงผล)
+  username: citext('username').notNull()
+    .references(() => users.username, { onUpdate: 'cascade', onDelete: 'cascade' }),
+  updatedBy: citext('updated_by').notNull().default(''),
+  updatedAt: text('updated_at').notNull()
+}, (t) => [primaryKey({ columns: [t.period, t.portKey] })]);
+
+/** แพลนงานของวันที่ตรวจปล่อย 1 วัน = 1 แพลน — ชิปปิ้งเห็นงานเมื่อผู้จัดการกด Confirm Plan แล้วเท่านั้น */
+export const jobPlans = pgTable('job_plans', {
+  inspectDate: text('inspect_date').primaryKey(),
+  status: text('status').notNull().default('draft'),  // draft | confirmed
+  driverFile: text('driver_file').notNull().default(''),  // ชื่อไฟล์ข้อมูลคนขับรถที่ใช้ล่าสุด
+  confirmCount: integer('confirm_count').notNull().default(0),
+  createdBy: citext('created_by').notNull().default(''),
+  createdAt: text('created_at').notNull(),
+  updatedBy: citext('updated_by').notNull().default(''),
+  updatedAt: text('updated_at').notNull(),
+  confirmedBy: citext('confirmed_by').notNull().default(''),
+  confirmedAt: text('confirmed_at').notNull().default('')
+});
+
+/**
+ * งานในแพลน 1 แถว = 1 ตู้ — งานจากตาราง MAESOT FREEZONE / TRANSIT จับคู่กับไฟล์คนขับรถด้วยเลขตู้
+ * เก็บสำเนาค่าไว้ทั้งแถว (ไม่อ้าง transport_jobs) เพราะ sync ชีตลบแล้วใส่ใหม่ทั้งแท็บทุกรอบ id เปลี่ยนตลอด
+ */
+export const jobPlanItems = pgTable('job_plan_items', {
+  id: text('id').primaryKey(),
+  inspectDate: text('inspect_date').notNull()
+    .references(() => jobPlans.inspectDate, { onDelete: 'cascade' }),
+  seq: integer('seq').notNull().default(0),
+  bl: text('bl').notNull().default(''),
+  containerNo: text('container_no').notNull().default(''),
+  port: text('port').notNull().default(''),
+  destination: text('destination').notNull().default(''),
+  customer: text('customer').notNull().default(''),
+  source: text('source').notNull().default(''),       // MAESOT FREEZONE | TRANSIT | DRIVER FILE (มีในไฟล์คนขับ แต่ไม่มีในตาราง)
+  sheetShipping: text('sheet_shipping').notNull().default(''),
+  driverName: text('driver_name').notNull().default(''),
+  plate: text('plate').notNull().default(''),
+  phone: text('phone').notNull().default(''),
+  username: citext('username').notNull().default(''),  // ชิปปิ้งที่รับผิดชอบ ('' = ยังไม่กำหนด)
+  assignedBy: text('assigned_by').notNull().default(''),  // port | sheet | manual
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull()
+}, (t) => [
+  index('job_plan_items_date_idx').on(t.inspectDate, t.seq),
+  index('job_plan_items_user_idx').on(t.username, t.inspectDate)
+]);
+
+/** รูปแผนที่นัดหมายคนขับรถ (แผนที่ + รูปหน้างานจริง รวมเป็นไฟล์เดียว) — ผูกท่าไว้เพื่อเลือกให้อัตโนมัติ */
+export const meetingMaps = pgTable('meeting_maps', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  port: text('port').notNull().default(''),
+  portKey: text('port_key').notNull().default(''),
+  storageKey: text('storage_key').notNull(),
+  url: text('url').notNull(),
+  width: integer('width').notNull().default(0),
+  height: integer('height').notNull().default(0),
+  size: integer('size').notNull().default(0),
+  active: boolean('active').notNull().default(true),
+  createdBy: citext('created_by').notNull().default(''),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull()
+});
+
+/**
+ * SMS ที่ชิปปิ้งส่งหาคนขับรถ — 1 แถว = 1 เบอร์ต่อการกดส่ง 1 ครั้ง (คนขับคนเดียวลากหลายตู้ = SMS เดียว)
+ * SMS ไม่มีสถานะ "อ่านแล้ว" จริง ๆ จึงนับจากการกดลิงก์ในข้อความ (/d/<code>) แทน
+ */
+export const smsMessages = pgTable('sms_messages', {
+  id: text('id').primaryKey(),
+  code: text('code').notNull().default(''),           // รหัสลิงก์สั้น ('' = ข้อความไม่มีลิงก์)
+  inspectDate: text('inspect_date').notNull(),
+  itemIdsJson: text('item_ids_json').notNull().default('[]'),
+  username: citext('username').notNull().default(''),  // ชิปปิ้งเจ้าของงาน
+  sentBy: citext('sent_by').notNull().default(''),     // คนที่กดส่งจริง (ผู้จัดการส่งแทนได้)
+  phone: text('phone').notNull(),
+  driverName: text('driver_name').notNull().default(''),
+  plate: text('plate').notNull().default(''),
+  containers: text('containers').notNull().default(''),
+  kind: text('kind').notNull().default('appoint'),     // appoint | ask | custom
+  body: text('body').notNull().default(''),            // ข้อความที่พิมพ์ (ไม่รวมลิงก์) — หน้าลิงก์แสดงข้อความนี้
+  message: text('message').notNull().default(''),      // ข้อความที่ส่งจริงทั้งก้อน
+  withLocation: boolean('with_location').notNull().default(false),
+  mapId: text('map_id').notNull().default(''),
+  mapKey: text('map_key').notNull().default(''),       // storage key ของรูปแผนที่ ณ ตอนส่ง
+  provider: text('provider').notNull().default('thaibulksms'),  // thaibulksms | device | dry-run
+  status: text('status').notNull().default('queued'),  // queued | sent | failed
+  providerId: text('provider_id').notNull().default(''),
+  credit: doublePrecision('credit').notNull().default(0),
+  error: text('error').notNull().default(''),
+  sentAt: text('sent_at').notNull().default(''),
+  previewAt: text('preview_at').notNull().default(''),  // แอปข้อความของคนขับโหลดตัวอย่างลิงก์ (thumbnail)
+  openedAt: text('opened_at').notNull().default(''),
+  lastOpenedAt: text('last_opened_at').notNull().default(''),
+  openCount: integer('open_count').notNull().default(0),
+  locationStatus: text('location_status').notNull().default(''),  // shared | denied | unavailable
+  latitude: doublePrecision('latitude'),
+  longitude: doublePrecision('longitude'),
+  accuracyM: doublePrecision('accuracy_m'),
+  locationAt: text('location_at').notNull().default(''),
+  createdAt: text('created_at').notNull()
+}, (t) => [
+  uniqueIndex('sms_messages_code_idx').on(t.code).where(sql`${t.code} <> ''`),
+  index('sms_messages_date_idx').on(t.inspectDate, t.username)
+]);
+
+/** ตำแหน่งคนขับรถทุกครั้งที่กดลิงก์แล้วอนุญาต — เก็บประวัติไว้ใช้งานส่วนอื่นต่อ (sms_messages เก็บแค่ล่าสุด) */
+export const driverLocations = pgTable('driver_locations', {
+  id: text('id').primaryKey(),
+  smsId: text('sms_id').notNull().references(() => smsMessages.id, { onDelete: 'cascade' }),
+  inspectDate: text('inspect_date').notNull(),
+  phone: text('phone').notNull(),
+  driverName: text('driver_name').notNull().default(''),
+  plate: text('plate').notNull().default(''),
+  latitude: doublePrecision('latitude').notNull(),
+  longitude: doublePrecision('longitude').notNull(),
+  accuracyM: doublePrecision('accuracy_m').notNull().default(0),
+  userAgent: text('user_agent').notNull().default(''),
+  createdAt: text('created_at').notNull()
+}, (t) => [index('driver_locations_phone_idx').on(t.phone, t.createdAt)]);

@@ -221,6 +221,41 @@
   .gps-step img { width:100%; display:block; border:1px solid var(--line); border-radius:10px; background:#0f172a; }
   .gps-step .miss { font-size:12px; color:var(--muted); background:#f7f9fc; border:1px dashed #cbd5e1;
                     border-radius:10px; padding:10px; }
+  /* ---- งานปล่อย + SMS คนขับรถ (release-jobs.js) ---- */
+  .rl-badge { display:inline-block; min-width:18px; padding:0 5px; margin-left:5px; border-radius:999px; background:var(--accent); color:#002967; font-size:11px; font-weight:800; line-height:18px; text-align:center; }
+  .rl-dates { display:flex; gap:6px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:2px; }
+  .rl-day { flex:0 0 auto; border:1px solid #cbd5e1; background:#fff; border-radius:12px; padding:7px 11px; font-size:13px; font-weight:700; color:#0f172a; cursor:pointer; text-align:center; }
+  .rl-day small { display:block; font-weight:600; color:var(--muted); font-size:11px; }
+  .rl-day.on { border-color:var(--blue2); background:#eff6ff; color:var(--blue2); }
+  .rl-day.today small { color:#c2410c; }
+  .rl-tools { display:flex; gap:6px; flex-wrap:wrap; margin:0 0 10px; }
+  .rl-tools button { border:1px solid #cbd5e1; background:#fff; border-radius:10px; padding:7px 11px; font-size:13px; font-weight:600; cursor:pointer; }
+  .rl-item { background:#fff; border:1.5px solid #e2e8f0; border-radius:14px; padding:12px; margin-bottom:10px; }
+  .rl-item.on { border-color:var(--blue2); background:#f8fbff; }
+  .rl-top { display:flex; gap:10px; align-items:flex-start; margin:0; cursor:pointer; color:#0f172a; font-size:14px; font-weight:400; }
+  .rl-top input { width:22px; height:22px; flex:0 0 auto; margin:2px 0 0; accent-color:var(--blue2); }
+  .rl-top .cnt { font-weight:800; font-size:16px; letter-spacing:.3px; }
+  .rl-port { display:inline-block; background:#eef4ff; color:var(--blue); border-radius:8px; padding:1px 8px; font-size:12px; font-weight:700; margin-left:4px; }
+  .rl-drv { margin:8px 0 0 32px; font-size:14px; line-height:1.7; }
+  .rl-drv a { font-weight:700; text-decoration:none; }
+  .rl-nophone { color:var(--err); font-size:13px; font-weight:600; }
+  .rl-track { margin:8px 0 0 32px; display:flex; gap:5px; flex-wrap:wrap; }
+  .rl-tag { display:inline-block; background:#f1f5f9; color:#334155; border-radius:8px; padding:3px 8px; font-size:12px; font-weight:700; text-decoration:none; }
+  .rl-tag.ok { background:#dcfce7; color:#166534; }
+  .rl-tag.wait { background:#fef9c3; color:#854d0e; }
+  .rl-tag.bad { background:#fee2e2; color:#991b1b; }
+  .rl-dev { margin:8px 0 0 32px; border:0; background:#e2e8f0; border-radius:10px; padding:7px 11px; font-size:13px; font-weight:600; cursor:pointer; }
+  .rl-kinds { display:flex; gap:6px; margin-bottom:10px; }
+  .rl-kinds button { flex:1; border:1px solid #cbd5e1; background:#fff; border-radius:12px; padding:10px 4px; font-size:14px; font-weight:700; cursor:pointer; color:#0f172a; }
+  .rl-kinds button.on { border-color:var(--blue2); background:var(--blue2); color:#fff; }
+  .rl-text { width:100%; padding:12px; border:1px solid #cbd5e1; border-radius:12px; font-size:15px; font-family:inherit; resize:vertical; }
+  .rl-ph { display:flex; gap:5px; flex-wrap:wrap; margin-top:6px; }
+  .rl-ph button { border:1px dashed #94a3b8; background:#f8fafc; border-radius:8px; padding:4px 8px; font-size:12px; cursor:pointer; color:#334155; }
+  .rl-map-prev img { width:100%; max-height:200px; object-fit:cover; border-radius:12px; border:1px solid #e2e8f0; display:block; margin-bottom:10px; }
+  .rl-preview { background:#f1f5f9; border-radius:14px; padding:12px; margin:4px 0 12px; font-size:13px; }
+  .rl-bubble { background:#fff; border-radius:14px 14px 14px 4px; padding:10px 12px; margin:6px 0; white-space:pre-wrap; word-break:break-word; font-size:14px; box-shadow:0 1px 2px rgba(0,0,0,.08); }
+  .rl-bubble .lnk { color:var(--blue2); text-decoration:underline; }
+  .rl-res { font-size:13px; border-radius:10px; padding:10px 12px; margin-bottom:6px; }
 </style>
 </head>
 <body>
@@ -251,6 +286,7 @@
     <header>
       <div style="display:flex;align-items:center;gap:10px"><img class="hmark" src="/brand/mark.webp" alt="ERP SHIPME" width="40" height="40"><div><div class="title" id="hi-name">สวัสดี</div><div class="sub" id="hi-role">พนักงาน</div></div></div>
       <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end">
+        <button id="btn-gorelease" class="btn-link hidden">งานปล่อย<span id="rl-badge" class="rl-badge hidden"></span></button>
         <button id="btn-goclaim" class="btn-link hidden">เบิก</button>
         <button id="btn-goreceipt" class="btn-link hidden">ส่งใบเสร็จ</button>
         <button id="btn-gohistory" class="btn-link">ประวัติ</button>
@@ -584,6 +620,40 @@
     </div>
   </div>
 
+  <!-- ======= งานปล่อย (แพลนจากผู้จัดการ) + ส่ง SMS หาคนขับรถ — logic อยู่ใน release-jobs.js ======= -->
+  <div id="screen-release" class="hidden">
+    <header>
+      <div><div class="title">งานปล่อย</div><div class="sub">งานจากแพลนของผู้จัดการ • ส่ง SMS หาคนขับรถ</div></div>
+      <button id="btn-release-back" class="btn-link">กลับ</button>
+    </header>
+    <div class="content">
+      <div class="card">
+        <label>วันที่ตรวจปล่อย</label>
+        <div id="rl-dates" class="rl-dates"></div>
+        <input id="rl-date" type="date" class="date-fit" style="margin:10px 0 0">
+      </div>
+      <div id="rl-list"><div class="center-load"><span class="spinner"></span> กำลังโหลด…</div></div>
+      <div class="card hidden" id="rl-compose">
+        <label>ส่ง SMS หาคนขับรถ <span class="muted" id="rl-pick-count"></span></label>
+        <div id="rl-sms-off" class="status wait hidden"></div>
+        <div class="rl-kinds" id="rl-kinds">
+          <button type="button" data-kind="appoint" class="on">📅 นัดหมาย</button>
+          <button type="button" data-kind="ask">❓ สอบถาม</button>
+          <button type="button" data-kind="custom">✏️ พิมพ์เอง</button>
+        </div>
+        <textarea id="rl-text" rows="4" class="rl-text" placeholder="พิมพ์ข้อความถึงคนขับรถ"></textarea>
+        <div class="rl-ph" id="rl-ph"></div>
+        <label class="cl-toggle" style="margin-top:12px"><input type="checkbox" id="rl-loc" checked style="width:20px;height:20px;margin:0;accent-color:var(--blue2)"> แนบลิงก์ขอตำแหน่งคนขับ (คนขับกดแล้วมือถือจะขออนุญาตแชร์ตำแหน่ง)</label>
+        <label>รูปแผนที่นัดหมาย</label>
+        <select id="rl-map" class="cl-sel"></select>
+        <div id="rl-map-prev" class="rl-map-prev"></div>
+        <div class="rl-preview" id="rl-preview"></div>
+        <button id="rl-send" class="btn btn-primary">ส่ง SMS</button>
+        <div id="rl-result" style="margin-top:12px"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- ======= ส่งใบเสร็จ (ถ่ายรูปสด คล้ายเมนูเข้างาน แต่ส่งได้หลายครั้งต่อวัน) ======= -->
   <div id="screen-receipt" class="hidden">
     <header>
@@ -705,7 +775,7 @@ function isWindowsDevice(){
 
 // ---------- helpers ----------
 function show(screen){
-  ['login','checkin','success','report','history','claim','settle','receipt'].forEach(function(s){
+  ['login','checkin','success','report','history','claim','settle','receipt','release'].forEach(function(s){
     $('screen-'+s).classList.toggle('hidden', s!==screen);
   });
 }
@@ -867,6 +937,9 @@ function enterApp(){
   // เมนูการเบิก + ส่งใบเสร็จ — เฉพาะพนักงานจัดส่ง (ปุ่มปิดบัญชีอยู่ในรายการประวัติการเบิก ทีละใบ)
   $('btn-goclaim').classList.toggle('hidden', state.user.role!=='employee-shipping');
   $('btn-goreceipt').classList.toggle('hidden', state.user.role!=='employee-shipping');
+  // งานปล่อย (แพลนที่ผู้จัดการ Confirm แล้ว + ส่ง SMS หาคนขับ) — เฉพาะพนักงานจัดส่ง
+  $('btn-gorelease').classList.toggle('hidden', state.user.role!=='employee-shipping');
+  if(state.user.role==='employee-shipping' && typeof releaseBadge==='function') releaseBadge();
   // role ที่ไม่ต้องถ่ายรูป ไม่ต้องเห็นการ์ดกล้องเลย
   $('cam-card').classList.toggle('hidden', !state.policy.photo);
   $('ci-foot').textContent = state.policy.photo
@@ -4303,5 +4376,6 @@ function photoFull(url){
   var id=driveId(url); return id?('https://drive.google.com/thumbnail?id='+id+'&sz=w1600'):url;
 }
 </script>
+<script src="/release-jobs.js"></script>
 </body>
 </html>

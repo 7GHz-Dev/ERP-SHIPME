@@ -8,7 +8,7 @@ const normPerson = (value: unknown) => String(value ?? '').toLowerCase().replace
 
 type LookupUser = { username: string; name: string; shippingCode?: string };
 
-function personMatches(value: unknown, user: LookupUser) {
+export function personMatches(value: unknown, user: LookupUser) {
   const cell = normPerson(value);
   if (!cell) return false;
   // ตั้งรหัสชิปปิ้งไว้ = ใช้รหัสตรง ๆ อย่างเดียว แม่นกว่าเดาจากชื่อ

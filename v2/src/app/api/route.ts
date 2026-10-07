@@ -35,6 +35,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: 'bad_request' }, { status: 400, headers: noStore });
   }
 
+  // ลิงก์ใน SMS ใช้โดเมนเดียวกับที่ผู้ใช้เปิดอยู่ และหน้าลิงก์เก็บ user agent ของคนขับไว้กับตำแหน่ง
+  // เขียนทับเสมอ ไม่เชื่อค่าที่เบราว์เซอร์ส่งมาเอง
+  body._origin = new URL(request.url).origin;
+  body._ua = request.headers.get('user-agent') || '';
+
   try {
     return NextResponse.json(await dispatch(body), { headers: noStore });
   } catch (error) {

@@ -78,6 +78,13 @@
       "when": 1791273236131,
       "tag": "0010_high_calypso",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791352193219,
+      "tag": "0011_puzzling_pyro",
+      "breakpoints": true
     }
   ]
 }

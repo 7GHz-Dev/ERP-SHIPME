@@ -124,3 +124,10 @@ export async function signedUrlFor(key: string) {
   if (error || !data) return null;
   return data.signedUrl;
 }
+
+/** ดึงไฟล์ดิบจาก Storage — หน้าลิงก์ SMS ส่งรูปแผนที่ตรง ๆ (แอปข้อความทำ thumbnail ได้โดยไม่ต้องตาม signed URL) */
+export async function downloadFile(key: string) {
+  const { data, error } = await supabaseAdmin.storage.from(bucket).download(key);
+  if (error || !data) return null;
+  return { buffer: Buffer.from(await data.arrayBuffer()), contentType: data.type || 'image/jpeg' };
+}

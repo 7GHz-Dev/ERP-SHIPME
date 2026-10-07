@@ -4,6 +4,12 @@ import {
   scanLogin, scanTicketInfo, scanUploadDone, scanUploadSign, signInspectionUpload
 } from './inspection';
 import { serviceInvoiceData } from './service-invoices';
+import {
+  myReleaseJobs, planDelete, planLoad, planSave, portAssignmentData, savePortAssignments, smsTracking
+} from './plans';
+import {
+  linkLocation, linkOpened, meetingMapsList, saveMeetingMap, sendDriverSms, signMapUpload, smsConfig
+} from './sms';
 import { withholdingData } from './withholding';
 import { shippingIncomeData } from './shipping-income';
 import { shippingReconcileData } from './shipping-reconcile';
@@ -42,6 +48,9 @@ import type { ApiBody, ApiResult, Handler } from './types';
 import { checkinPolicy, id, isWindowsDevice, nowIso, publicUser, validYmd, ymd } from './utils';
 
 export type { ApiBody, ApiResult };
+
+/** แพลนงาน / ชิปปิ้งประจำท่า / รูปแผนที่นัดหมาย */
+const PLAN_ROLES = ['admin', 'manager'];
 
 /**
  * หน้าเว็บทั้งระบบยิงมาที่ POST /api ปลายทางเดียว แล้วแยกด้วยฟิลด์ "action"
@@ -405,6 +414,57 @@ const handlers: Record<string, Handler> = {
     const session = await guard(body, ['admin', 'manager']);
     return session.error || transportSyncStatus();
   },
+
+  // ---- แพลนงานตรวจปล่อย (ผู้จัดการ) ----
+  portAssignmentData: async (body) => {
+    const session = await guard(body, PLAN_ROLES);
+    return session.error || portAssignmentData(body);
+  },
+  savePortAssignments: async (body) => {
+    const session = await guard(body, PLAN_ROLES);
+    return session.error || savePortAssignments(body, session.user);
+  },
+  planLoad: async (body) => {
+    const session = await guard(body, PLAN_ROLES);
+    return session.error || planLoad(body);
+  },
+  planSave: async (body) => {
+    const session = await guard(body, PLAN_ROLES);
+    return session.error || planSave(body, session.user);
+  },
+  planDelete: async (body) => {
+    const session = await guard(body, PLAN_ROLES);
+    return session.error || planDelete(body);
+  },
+  meetingMaps: async (body) => {
+    const session = await guard(body, PLAN_ROLES);
+    return session.error || { ok: true, maps: await meetingMapsList(false), ports: (await readAppOptions()).ports, smsConfig: smsConfig() };
+  },
+  signMapUpload: async (body) => {
+    const session = await guard(body, PLAN_ROLES);
+    return session.error || signMapUpload();
+  },
+  saveMeetingMap: async (body) => {
+    const session = await guard(body, PLAN_ROLES);
+    return session.error || saveMeetingMap(body, session.user);
+  },
+
+  // ---- งานปล่อย + SMS คนขับรถ (ชิปปิ้ง — ผู้จัดการส่งแทนได้) ----
+  myReleaseJobs: async (body) => {
+    const session = await guard(body, ['employee-shipping']);
+    return session.error || myReleaseJobs(body, session.user);
+  },
+  smsTracking: async (body) => {
+    const session = await guard(body, ['employee-shipping', ...PLAN_ROLES]);
+    return session.error || smsTracking(body, session.user);
+  },
+  sendDriverSms: async (body) => {
+    const session = await guard(body, ['employee-shipping', ...PLAN_ROLES]);
+    return session.error || sendDriverSms(body, session.user);
+  },
+  // หน้าลิงก์ใน SMS — คนขับรถไม่มีบัญชี จึงไม่มี token ใช้รหัสลิงก์แทน
+  linkOpened,
+  linkLocation,
 
   // ---- ใบแจ้งหนี้ (ฝ่ายบัญชี) ----
   // employee-account ออกใบได้ แต่อนุมัติเองไม่ได้ — manager-account เป็นคนอนุมัติ

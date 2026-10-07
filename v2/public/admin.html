@@ -216,6 +216,57 @@
     input.inv-row-number:disabled{background:#eef1f6;color:#5a6377;border-color:#dfe3ea;font-weight:600}
 .inv-cost-total{display:flex;justify-content:space-between;gap:10px;margin-top:12px;padding-top:9px;border-top:1px solid #dbe3ed;font-size:12px}
 .inv-row-actions{display:grid;gap:8px;min-width:112px}.inv-source-table .pill{display:block;margin-bottom:5px}
+/* ---- แพลนงานตรวจปล่อย (job-plan.js) ---- */
+.wrap:has(#tab-plan:not(.hidden)){max-width:1780px}
+.pl-recent{display:flex;gap:6px;flex-wrap:wrap;margin:-6px 0 14px}
+.pl-day{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 11px;font-size:12px;font-weight:700;color:#334155;cursor:pointer}
+.pl-day span{color:var(--muted);font-weight:600}
+.pl-day.on{border-color:var(--blue2);background:#eff6ff;color:var(--blue2)}
+.pl-head{margin:0 0 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.pl-drv{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px}
+.pl-drv-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.pl-ok{margin-top:10px;background:#f0fdf4;color:#166534;border-radius:9px;padding:9px 12px;font-size:13px}
+.pl-map-help{margin-top:10px;font-size:13px}
+.pl-map-help summary{cursor:pointer;color:var(--blue2);font-weight:600}
+.pl-new{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.pl-summary{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 0 10px}
+.pl-chip{background:#eef4ff;color:var(--blue);border-radius:999px;padding:4px 11px;font-size:12px}
+.pl-chip.bad{background:#fee2e2;color:#991b1b}
+.pl-chip.warn{background:#fff7ed;color:#9a3412}
+.pl-wrap{max-height:66vh}
+.pl-tbl td{padding:5px 6px;vertical-align:top}
+.pl-tbl th{padding:8px 6px}
+.pl-tbl .pl-in{width:100%;min-width:110px;padding:6px 7px;font-size:13px;border-radius:7px}
+.pl-tbl .pl-in.short{min-width:72px;width:84px}
+.pl-tbl .pl-in.mid{min-width:118px}
+.pl-tbl .pl-in.wide{min-width:220px}
+.pl-tbl .pl-in.mono{font-family:ui-monospace,Menlo,monospace;min-width:128px}
+.pl-tbl .pl-in.bad{border-color:#f87171;background:#fff5f5}
+.pl-tbl select.pl-in{min-width:130px}
+.pl-tbl tr.pl-extra td{background:#fff7ed}
+.pl-tbl tr.pl-unassigned td:nth-child(10){background:#fef2f2}
+.pl-sub{font-size:11px;color:var(--muted);margin-top:3px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pl-sub.bad{color:#b91c1c}
+.pl-src{display:inline-block;background:#e0ecff;color:#1e40af;border-radius:6px;padding:2px 7px;font-size:11px;font-weight:700;white-space:nowrap;margin-top:6px}
+.pl-src.extra{background:#ffedd5;color:#9a3412}
+.pl-sms{min-width:150px}
+.pl-tag{display:inline-block;background:#f1f5f9;color:#334155;border-radius:6px;padding:2px 7px;font-size:11px;font-weight:700;margin:2px 0;white-space:nowrap;text-decoration:none}
+.pl-tag.ok{background:#dcfce7;color:#166534}
+.pl-tag.wait{background:#fef9c3;color:#854d0e}
+.pl-tag.bad{background:#fee2e2;color:#991b1b}
+.pl-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:14px 0 30px}
+.pl-actions .grow{flex:1;min-width:10px}
+.pa-summary{display:flex;flex-direction:column;gap:6px;margin:0 0 14px;max-width:640px}
+.pa-sum{background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:13px}
+.pa-sum b{color:var(--blue);margin-right:6px}
+.mm-preview img{max-width:100%;max-height:420px;display:block;border:1px solid var(--line);border-radius:10px;margin-top:12px}
+.mm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+.mm-card{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+.mm-card.off{opacity:.55}
+.mm-card img{width:100%;height:170px;object-fit:cover;display:block;background:#eef2f7}
+.mm-meta{padding:10px 12px 4px;font-size:13px}
+.mm-acts{display:flex;gap:6px;padding:8px 12px 12px;flex-wrap:wrap}
+#mm-upload:disabled,.pl-actions .btn:disabled{opacity:.5;cursor:not-allowed}
 </style>
 <!-- ตัวอ่านไฟล์ .xlsx สำหรับตรวจยอดลูกหนี้ — ถ้าโหลดไม่ได้ยังใช้ .csv ได้ -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -225,6 +276,7 @@
 <script src="/withholding.js"></script>
 <script src="/shipping-income.js"></script>
 <script src="/shipping-reconcile.js"></script>
+<script src="/job-plan.js"></script>
 </head>
 <body>
 
@@ -243,6 +295,7 @@
     <button class="navbtn" data-tab="attend">การเข้างาน</button>
     <button class="navbtn" data-tab="claim">การเบิก</button>
     <button class="navbtn" data-tab="settle">ปิดบัญชี</button>
+    <button class="navbtn hidden" data-tab="plan">แพลนงาน</button>
     <button class="navbtn" data-tab="invoice">ใบแจ้งหนี้</button>
     <button class="navbtn" data-tab="wht">ใบหัก ณ ที่จ่าย</button>
     <button class="navbtn" data-tab="income">รายงานรายได้ชิปปิ้ง</button>
@@ -380,13 +433,65 @@
 
     </section>
 
+    <!-- แพลนงานตรวจปล่อย (admin + manager) — เนื้อหาสร้างจาก job-plan.js ตอนเปิดแท็บ -->
+    <section id="tab-plan" class="hidden"></section>
+
     <!-- ตั้งค่าระบบ (admin + manager) — รวมการตั้งค่าทั้งหมดไว้ที่เดียว แยกเป็น 3 เรื่อง -->
     <section id="tab-settings" class="hidden">
       <div class="subnav">
         <button class="subbtn active" data-sub="claim">รายการเบิก</button>
         <button class="subbtn" data-sub="settle">ปิดบัญชี</button>
         <button class="subbtn hidden" id="subbtn-sheet" data-sub="sheet">ใบปิดบัญชี (รูป)</button>
+        <button class="subbtn" data-sub="portassign">ชิปปิ้งประจำท่า</button>
+        <button class="subbtn" data-sub="maps">แผนที่นัดหมาย / SMS</button>
         <button class="subbtn" data-sub="transport">ตรวจสอบการเชื่อมต่อ</button>
+      </div>
+
+      <!-- ตั้งค่า: ชิปปิ้งประจำท่า (รายเดือน) — แพลนงานใช้เลือกชิปปิ้งให้อัตโนมัติ -->
+      <div id="sub-portassign" class="hidden">
+        <h3 class="sec">ชิปปิ้งประจำท่า (รายเดือน)</h3>
+        <p class="muted" style="margin:0 0 14px">
+          เลือกว่าเดือนนี้ <b>ชิปปิ้งคนไหนได้ท่าอะไรบ้าง</b> — แพลนงานจะเลือกชิปปิ้งให้อัตโนมัติจาก <b>PORT</b> ในไฟล์คนขับรถ ตามเดือนของวันที่ตรวจปล่อย
+          • ท่าที่ไม่กำหนด ระบบใช้ชื่อชิปปิ้งในชีตงานขนส่งแทน • ผู้จัดการเปลี่ยนชิปปิ้งรายแถวในแพลนได้เสมอ
+        </p>
+        <div class="toolbar">
+          <label class="muted" style="display:flex;align-items:center;gap:8px;font-weight:600">เดือน <input type="month" id="pa-month"></label>
+          <button id="pa-copy" class="btn btn-ghost btn-sm">คัดลอกจากเดือนก่อน</button>
+        </div>
+        <div id="pa-summary" class="pa-summary"></div>
+        <div class="tbl-wrap" style="max-width:640px">
+          <table class="grid">
+            <thead><tr><th style="width:44px">#</th><th>ท่า</th><th>ชิปปิ้งประจำท่า</th></tr></thead>
+            <tbody id="pa-body"></tbody>
+          </table>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:14px 0 10px">
+          <button id="pa-add" class="btn btn-ghost btn-sm">＋ เพิ่มท่าอื่น</button>
+          <button id="pa-save" class="btn btn-primary">บันทึก</button>
+          <span class="muted" id="pa-hint"></span>
+        </div>
+      </div>
+
+      <!-- ตั้งค่า: รูปแผนที่นัดหมายคนขับรถ + สถานะระบบ SMS -->
+      <div id="sub-maps" class="hidden">
+        <h3 class="sec">รูปแผนที่นัดหมายคนขับรถ</h3>
+        <p class="muted" style="margin:0 0 12px">
+          อัปรูป <b>แผนที่จุดนัด</b> + <b>รูปหน้างานจริง</b> (ถ้ามี) ระบบรวมเป็นไฟล์เดียวให้ • ผูกกับท่าไว้ ชิปปิ้งเลือก “อัตโนมัติตามท่า” ตอนส่ง SMS ได้
+          • คนขับเห็นเป็นรูปตัวอย่างใต้ข้อความ (แอปข้อความที่รองรับ) แตะลิงก์แล้วเปิดรูปเต็มได้
+        </p>
+        <div id="mm-sms" style="margin:0 0 14px"></div>
+        <div class="opt-card" style="max-width:760px; margin-bottom:18px">
+          <h4>อัปรูปใหม่</h4>
+          <div class="grid2">
+            <div><label>ชื่อรูป</label><input id="mm-name" style="width:100%" placeholder="เช่น จุดนัด KERRY ประตู 2"></div>
+            <div><label>ผูกกับท่า</label><select id="mm-port" style="width:100%"></select></div>
+            <div><label>รูปแผนที่จุดนัด <b style="color:#b91c1c">*</b></label><input type="file" id="mm-map" accept="image/*" style="width:100%"></div>
+            <div><label>รูปหน้างานจริง (ถ้ามี)</label><input type="file" id="mm-photo" accept="image/*" style="width:100%"></div>
+          </div>
+          <div id="mm-preview" class="mm-preview"></div>
+          <button id="mm-upload" class="btn btn-primary" disabled style="margin-top:12px">⬆ อัปโหลดรูป</button>
+        </div>
+        <div id="mm-list" class="mm-grid"></div>
       </div>
 
       <!-- ตั้งค่า: รายการเบิก -->
@@ -1183,6 +1288,8 @@ function enterApp(){
     ['invoice','wht','income','reconcile'].forEach(function(tab){
       document.querySelector('.navbtn[data-tab="'+tab+'"]').classList.toggle('hidden', isManager);
     });
+    // แพลนงานตรวจปล่อย — ผู้จัดการ + admin
+    document.querySelector('.navbtn[data-tab="plan"]').classList.remove('hidden');
   }
   $('subbtn-sheet').classList.toggle('hidden', !canEditSheet());   // หน้าตารูปใบปิดบัญชี = เฉพาะ admin
   $('view-app').classList.remove('hidden');
@@ -1197,7 +1304,8 @@ Array.prototype.forEach.call(document.querySelectorAll('.navbtn'), function(t){
 });
 function switchTab(name){
   Array.prototype.forEach.call(document.querySelectorAll('.navbtn'), function(t){ t.classList.toggle('active', t.getAttribute('data-tab')===name); });
-  ['checkin','dash','attend','claim','settle','invoice','wht','income','reconcile','receipt','leave','emp','settings'].forEach(function(s){ $('tab-'+s).classList.toggle('hidden', s!==name); });
+  ['checkin','dash','attend','claim','settle','plan','invoice','wht','income','reconcile','receipt','leave','emp','settings'].forEach(function(s){ $('tab-'+s).classList.toggle('hidden', s!==name); });
+  if(name==='plan') initPlanTab();
   if(name==='checkin') initCheckin();   // ขอสิทธิ์ตำแหน่งเฉพาะตอนเปิดแท็บเข้างานจริง ๆ
   if(name==='claim') initClaimTab();    // โหลดใบเบิกของพนักงานตอนเปิดแท็บครั้งแรก
   if(name==='settle') initSettleTab();
@@ -1211,7 +1319,7 @@ function switchTab(name){
 }
 
 // ---------- ตั้งค่าระบบ: แท็บย่อย รายการเบิก / ปิดบัญชี / ตรวจสอบการเชื่อมต่อ ----------
-var SETTINGS_SUBS = ['claim','settle','sheet','transport'];
+var SETTINGS_SUBS = ['claim','settle','sheet','portassign','maps','transport'];
 
 Array.prototype.forEach.call(document.querySelectorAll('.subbtn'), function(b){
   b.addEventListener('click', function(){ switchSub(b.getAttribute('data-sub')); });
@@ -1231,6 +1339,8 @@ function switchSub(name){
     b.classList.toggle('active', b.getAttribute('data-sub')===name);
   });
   SETTINGS_SUBS.forEach(function(s){ $('sub-'+s).classList.toggle('hidden', s!==name); });
+  if(name==='portassign') initPortAssign();
+  if(name==='maps') initMaps();
 }
 
 function loadAll(){

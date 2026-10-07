@@ -46,7 +46,7 @@ export const APP_OPTION_DEFAULTS: AppOptions = {
 };
 
 /** เทียบชื่อท่าแบบไม่สนตัวพิมพ์/ช่องว่าง/ขีด — ชีตงานขนส่งเขียนได้หลายแบบ (D1D2 / d1-d2) */
-const portKey = (value: unknown) => String(value ?? '').toUpperCase().replace(/[^A-Z0-9ก-๙]/g, '');
+export const portKey = (value: unknown) => String(value ?? '').toUpperCase().replace(/[^A-Z0-9ก-๙]/g, '');
 
 function normTextList(value: unknown, fallback: string[], allowEmpty = false): string[] {
   let raw: unknown = value;

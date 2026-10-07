@@ -35,6 +35,9 @@ export function requireUrl(name: string, hint = ''): string {
   return value.replace(/\/+$/, '');            // ตัด / ท้ายออก กัน //auth/v1 ซ้อน
 }
 
+/** ตัดช่องว่าง/เครื่องหมายคำพูดหัวท้ายที่มักติดมาตอนวางค่าในหน้า Vercel */
+const clean = (value: string | undefined) => String(value ?? '').trim().replace(/^['"]|['"]$/g, '');
+
 /** ดึงไอดีโฟลเดอร์ออกจากค่าที่ผู้ใช้วางมา — รับได้ทั้งไอดีล้วนและลิงก์เต็ม */
 const folderId = (value: string | undefined) => {
   const raw = String(value ?? '').trim().replace(/^['"]|['"]$/g, '');
@@ -82,5 +85,16 @@ export const env = {
   /** แอป DocScan (คนละลิงก์กับ ERP) — หน้าปิดบัญชีเปิดไปถ่ายเอกสารตรวจปล่อย */
   docscanUrl: (process.env.DOCSCAN_URL || 'https://docscan-shipme.vercel.app').replace(/\/+$/, ''),
   /** กุญแจลงลายเซ็น ticket ของ DocScan — ไม่ตั้งก็ได้ ระบบใช้ค่าที่ได้จาก DATABASE_URL แทน */
-  scanTicketSecret: process.env.SCAN_TICKET_SECRET || ''
+  scanTicketSecret: process.env.SCAN_TICKET_SECRET || '',
+  // ---- SMS หาคนขับรถ (ThaiBulkSMS) — ไม่ตั้ง key = ปุ่มส่ง SMS ใช้ไม่ได้ (ยังส่งจากแอป SMS ในมือถือได้) ----
+  smsApiKey: clean(process.env.THAIBULKSMS_API_KEY),
+  smsApiSecret: clean(process.env.THAIBULKSMS_API_SECRET),
+  /** ชื่อผู้ส่งที่ ThaiBulkSMS อนุมัติแล้ว — เว้นว่าง = ใช้ชื่อตั้งต้นของบัญชี */
+  smsSender: clean(process.env.THAIBULKSMS_SENDER),
+  /** standard | corporate — ต้องตรงกับประเภทเครดิตที่ซื้อไว้ */
+  smsForce: clean(process.env.THAIBULKSMS_FORCE) || 'standard',
+  /** true = ไม่ส่งจริง บันทึกเหมือนส่งสำเร็จ (ไว้ทดสอบหน้าจอก่อนเติมเครดิต) */
+  smsDryRun: bool(process.env.SMS_DRY_RUN),
+  /** โดเมนที่ใส่ในลิงก์ SMS (เช่นโดเมนสั้นของบริษัท) — เว้นว่าง = ใช้โดเมนที่ผู้ใช้เปิดอยู่ */
+  smsLinkBase: clean(process.env.SMS_LINK_BASE).replace(/\/+$/, '')
 } as const;
