@@ -2,6 +2,7 @@ import { and, inArray, ne, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { invoices, settlements } from '@/db/schema';
 import { INVOICE_CUSTOMER, INVOICE_DEPOSIT_LABEL } from './constants';
+import { blKey, invoiceOccurrences, jobKey, reusedBls } from './bl-occurrence';
 import { invoiceSeqOf, invoiceTotals, type InvoiceItem } from './invoices';
 import { nowIso, validYmd } from './utils';
 import type { ApiBody, ApiResult } from './types';
@@ -67,8 +68,9 @@ export async function saveInvoicePairs(body: ApiBody, actor: { username: string;
     seqOwner.set(entry.seq, entry.bl.toUpperCase());
   }
   const sourceIds = [...new Set(prepared.map(entry => entry.settlementId))];
-  const sources = await db.select({ id: settlements.id, rowsJson: settlements.rowsJson })
+  const sources = await db.select({ id: settlements.id, rowsJson: settlements.rowsJson, inspectDate: settlements.inspectDate })
     .from(settlements).where(inArray(settlements.id, sourceIds));
+  const sourceDate = new Map(sources.map((row) => [row.id, row.inspectDate]));
   for (const entry of prepared) {
     const source = sources.find(row => row.id === entry.settlementId);
     let rows: any[] = [];
@@ -88,15 +90,20 @@ export async function saveInvoicePairs(body: ApiBody, actor: { username: string;
       // BL ที่เคยออกใบชนิดเดียวกันไปแล้ว — กันออกซ้ำโดยไม่ตั้งใจ
       // ใบที่ถูกยกเลิกไม่นับ เพราะตั้งใจออกใหม่แทนใบเดิม
       const blList = [...new Set(prepared.map(entry => entry.bl.toUpperCase()))];
-      const already = await tx.select({ bl: invoices.bl, kind: invoices.kind, number: invoices.number })
-        .from(invoices)
+      const already = await tx.select({
+        bl: invoices.bl, kind: invoices.kind, number: invoices.number,
+        settlementId: invoices.settlementId, issueDate: invoices.issueDate
+      }).from(invoices)
         .where(and(inArray(sql`upper(${invoices.bl})`, blList), ne(invoices.status, 'cancelled')));
+      // BL ที่สายเรือใช้ซ้ำ (SEALS) ชนกันเฉพาะงานวันเดียวกัน — คนละวันคือคนละงาน ออกใบได้
+      const reused = await reusedBls(blList, tx);
+      const occ = await invoiceOccurrences(already.filter(row => reused.has(blKey(row.bl))), tx);
+      const keyOfExisting = (row: typeof already[number]) => jobKey(row.bl, occ.get(row.number)?.date || '', reused);
+      const keyOfEntry = (entry: typeof prepared[number]) => jobKey(entry.bl, sourceDate.get(entry.settlementId) || '', reused);
       const clash = prepared
-        .filter(entry => already.some(row =>
-          row.bl.toUpperCase() === entry.bl.toUpperCase() && row.kind === entry.kind))
+        .filter(entry => already.some(row => keyOfExisting(row) === keyOfEntry(entry) && row.kind === entry.kind))
         .map(entry => {
-          const hit = already.find(row =>
-            row.bl.toUpperCase() === entry.bl.toUpperCase() && row.kind === entry.kind)!;
+          const hit = already.find(row => keyOfExisting(row) === keyOfEntry(entry) && row.kind === entry.kind)!;
           return { bl: entry.bl, kind: entry.kind, number: hit.number };
         });
       // ห้ามออกใบซ้ำ BL + ชนิดเดิมเสมอ ไม่มีทางลัดจากฝั่งหน้าเว็บ

@@ -87,6 +87,13 @@ export const SETTLE_RATE_DEFAULTS: Record<string, number> = {
   seal: 0
 };
 
+/**
+ * สายเรือ (คอลัมน์ VESSEL ในชีตงานขนส่ง) ที่เอาเลข BL เดิมกลับมาใช้ซ้ำกับงานใหม่
+ * เช่น SEALS: KBLC-015 วันที่ 30/09 (HEIWA AUTO) กับ KBLC-015 วันที่ 06/10 (JMT) เป็นคนละงาน
+ * BL ของสายเรือเหล่านี้จึงต้องแยกงานด้วย "BL + วันที่ตรวจปล่อย" ไม่ใช่ BL อย่างเดียว
+ */
+export const REUSED_BL_VESSELS = ['SEALS'];
+
 export const TRANSPORT_SOURCE_ORDER = ['MAESOT FREEZONE', 'TRANSIT'];
 export const TRANSPORT_SOURCE_STYLE: Record<string, string> = { TRANSIT: 'transit' };
 

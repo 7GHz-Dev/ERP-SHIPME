@@ -2,7 +2,7 @@ import { and, asc, gte, lte } from 'drizzle-orm';
 import { db } from '@/db';
 import { transportJobs } from '@/db/schema';
 import {
-  INVOICE_COMPANY, INVOICE_CUSTOMER, SERVICE_EXTRA_RULES, SERVICE_RATES,
+  INVOICE_COMPANY, INVOICE_CUSTOMER, REUSED_BL_VESSELS, SERVICE_EXTRA_RULES, SERVICE_RATES,
   SERVICE_BANK_ACCOUNT_NO, SERVICE_BRIDGE_INSPECTOR_FEE, SERVICE_BRIDGE_INSPECTOR_LABEL,
   SERVICE_NO_CAR_PATTERN, SERVICE_RORO_INSPECTOR_LABEL, SERVICE_WITHHOLDING_RATE, VAT_RATE
 } from './constants';
@@ -29,7 +29,7 @@ function trailingAmount(segment: string) {
 
 export type JobRow = {
   id: number; transportDate: string; bl: string; containerNo: string;
-  inspectorFee: number; otherFee: number; note: string; sourceFile: string;
+  inspectorFee: number; otherFee: number; note: string; sourceFile: string; vessel?: string;
 };
 
 export type ExtraLine = { label: string; amount: number; bl: string; date: string; source: string; segment: string };
@@ -78,7 +78,8 @@ export async function serviceInvoiceData(body: ApiBody): Promise<ApiResult> {
   const rows = await db.select({
     id: transportJobs.id, transportDate: transportJobs.transportDate, bl: transportJobs.bl,
     containerNo: transportJobs.containerNo, inspectorFee: transportJobs.inspectorFee,
-    otherFee: transportJobs.otherFee, note: transportJobs.note, sourceFile: transportJobs.sourceFile
+    otherFee: transportJobs.otherFee, note: transportJobs.note, sourceFile: transportJobs.sourceFile,
+    vessel: transportJobs.vessel
   }).from(transportJobs)
     .where(and(gte(transportJobs.transportDate, from), lte(transportJobs.transportDate, to)))
     .orderBy(asc(transportJobs.transportDate), asc(transportJobs.id));
@@ -91,6 +92,12 @@ export async function serviceInvoiceData(body: ApiBody): Promise<ApiResult> {
   };
 }
 
+/** BL เดียวกัน = งานเดียวกัน ยกเว้นสายเรือที่ใช้เลข BL ซ้ำ (SEALS) ต้องแยกตามวันที่ตรวจปล่อย */
+function jobOf(row: JobRow) {
+  const bl = String(row.bl).toUpperCase();
+  return REUSED_BL_VESSELS.includes(String(row.vessel || '').trim().toUpperCase()) ? `${bl}|${row.transportDate}` : bl;
+}
+
 /** จัดกลุ่มแถวชีตเป็นใบสรุปจำนวนตู้ต่อไฟล์ + ค่าบริการเพิ่มเติม (แยกออกมาให้ทดสอบได้โดยไม่ต้องต่อฐานข้อมูล) */
 export function buildServiceData(rows: JobRow[]) {
   const bySource = new Map<string, Map<string, { bl: string; containers: number; roro: boolean; date: string }>>();
@@ -100,7 +107,7 @@ export function buildServiceData(rows: JobRow[]) {
     const source = row.sourceFile || 'อื่นๆ';
     if (isNoCar(row)) {
       // ค่านายตรวจข้ามสะพาน BL ละครั้ง (BL หลายแถวก็คิดครั้งเดียว) แล้วไม่นับตู้ของแถวนี้
-      const blKey = String(row.bl).toUpperCase();
+      const blKey = jobOf(row);
       if (!bridgeDone.has(blKey)) {
         bridgeDone.add(blKey);
         extras.push({ label: SERVICE_BRIDGE_INSPECTOR_LABEL, amount: SERVICE_BRIDGE_INSPECTOR_FEE,
@@ -112,7 +119,7 @@ export function buildServiceData(rows: JobRow[]) {
     }
     const roro = isRoro(row.containerNo);
     // BL เดียวกันแต่มีทั้งตู้ปกติและ RORO แยกบรรทัด เพราะคิดคนละราคา
-    const key = `${String(row.bl).toUpperCase()}|${roro ? 'R' : 'C'}`;
+    const key = `${jobOf(row)}|${roro ? 'R' : 'C'}`;
     const group = bySource.get(source) || new Map();
     const entry = group.get(key) || { bl: row.bl, containers: 0, roro, date: row.transportDate };
     entry.containers += 1;

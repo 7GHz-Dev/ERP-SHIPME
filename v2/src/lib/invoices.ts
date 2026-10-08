@@ -6,6 +6,7 @@ import {
   INVOICE_COMPANY, INVOICE_CUSTOMER, INVOICE_NO_VAT_ITEMS, INVOICE_VAT_ITEMS,
   INVOICE_VAT_EXEMPT_LABELS, INVOICE_DIVISOR, VAT_RATE
 } from './constants';
+import { blKey, invoiceOccurrences, jobKey, reusedBls } from './bl-occurrence';
 import { id, nowIso, validYmd, ymd } from './utils';
 import type { ApiBody, ApiResult } from './types';
 
@@ -123,9 +124,12 @@ export async function buildItems(kind: string, settlementId: string, bl: string)
     let raw = picked.reduce((sum, row) => sum + (Number(row?.costs?.[item.key]) || 0), 0);
     // Prefer settlement amounts; retain transport DO fallback for older settlements.
     if (kind === 'NV' && item.key === 'do_fee' && raw <= 0) {
-      const jobs = await db.select({ doFee: transportJobs.doFee }).from(transportJobs)
+      const jobs = await db.select({ doFee: transportJobs.doFee, transportDate: transportJobs.transportDate }).from(transportJobs)
         .where(eq(sql`upper(${transportJobs.bl})`, wanted));
-      raw = jobs.reduce((sum, job) => sum + (Number(job.doFee) || 0), 0);
+      // BL ที่สายเรือใช้ซ้ำ (SEALS) — เอาเฉพาะแถวของวันที่ตรวจปล่อยนี้ ไม่งั้นได้ค่า DO ของสองงานบวกกัน
+      const reused = (await reusedBls([wanted])).has(wanted);
+      raw = jobs.filter((job) => !reused || job.transportDate === settlement.inspectDate)
+        .reduce((sum, job) => sum + (Number(job.doFee) || 0), 0);
     }
     if (raw <= 0) continue;
     const amount = money(kind === 'V' ? raw / INVOICE_DIVISOR : raw);
@@ -153,31 +157,15 @@ export function jobTypeCode(source: unknown) {
   return '';
 }
 
-/** ประเภทงาน + วันที่ตรวจปล่อย (Transport) ของ BL ในใบแจ้งหนี้ */
-export async function invoiceJobInfo(settlementId: string, bl: string) {
-  const wanted = text(bl).toUpperCase();
-  let jobType = '', transportDate = '';
-  if (settlementId) {
-    const [settlement] = await db.select({ inspectDate: settlements.inspectDate, rowsJson: settlements.rowsJson })
-      .from(settlements).where(eq(settlements.id, settlementId)).limit(1);
-    if (settlement) {
-      transportDate = settlement.inspectDate;
-      let rows: any[] = [];
-      try { rows = JSON.parse(settlement.rowsJson || '[]'); } catch { rows = []; }
-      const row = rows.find((r) => String(r?.bl || '').toUpperCase() === wanted && jobTypeCode(r?.source));
-      if (row) jobType = jobTypeCode(row.source);
-    }
-  }
-  if ((!jobType || !transportDate) && wanted) {
-    const jobs = await db.select({ sourceName: transportJobs.sourceName, transportDate: transportJobs.transportDate })
-      .from(transportJobs).where(eq(sql`upper(${transportJobs.bl})`, wanted)).orderBy(asc(transportJobs.id));
-    const job = jobs.find((j) => jobTypeCode(j.sourceName)) || jobs[0];
-    if (job) {
-      if (!jobType) jobType = jobTypeCode(job.sourceName);
-      if (!transportDate) transportDate = job.transportDate;
-    }
-  }
-  return { jobType, transportDate };
+/**
+ * ประเภทงาน + วันที่ตรวจปล่อย (Transport) ของ BL ในใบแจ้งหนี้
+ * ใบที่ไม่ผูกใบปิดบัญชี (ออกเอง) เดิมหยิบแถวแรกของ BL ในชีต — BL ที่สายเรือใช้ซ้ำ (SEALS) จึงได้วันที่ของงานเก่า
+ * ตอนนี้ดูเลขที่ใบในชีตก่อน แล้วค่อยใช้แถวล่าสุดที่ไม่เกินวันออกใบ (ดู invoiceOccurrences)
+ */
+export async function invoiceJobInfo(settlementId: string, bl: string, number = '', issueDate = '') {
+  const ref = number || '(preview)';
+  const occ = (await invoiceOccurrences([{ number: ref, bl: text(bl), settlementId, issueDate }])).get(ref);
+  return { jobType: jobTypeCode(occ?.source), transportDate: occ?.date || '' };
 }
 
 /** หน้าออกใบแจ้งหนี้เปิดมา — ส่งค่าตั้งต้นทั้งหมดที่ฟอร์มต้องใช้ */
@@ -223,14 +211,37 @@ export async function invoiceSources(body: ApiBody): Promise<ApiResult> {
 
   const rows = await query.orderBy(asc(settlements.inspectDate), asc(settlements.id)).limit(300);
 
-  const issued = await db.select({ bl: invoices.bl, kind: invoices.kind, number: invoices.number })
-    .from(invoices).where(sql`${invoices.status} <> 'cancelled'`);
+  const issued = await db.select({
+    bl: invoices.bl, kind: invoices.kind, number: invoices.number,
+    settlementId: invoices.settlementId, issueDate: invoices.issueDate
+  }).from(invoices).where(sql`${invoices.status} <> 'cancelled'`);
+
+  // BL ที่สายเรือใช้เลขซ้ำ (SEALS) — "ออกใบแล้ว" ต้องดูเป็นรายงาน (BL + วันที่ตรวจปล่อย)
+  // เดิมดูแค่ BL: ออกใบให้ KBLC-015 วันที่ 30/09 แล้ว KBLC-015 วันที่ 06/10 ก็หายจากหน้านี้ไปด้วย
+  const sourceBls: string[] = [];
+  for (const settlement of rows) {
+    try { for (const r of JSON.parse(settlement.rowsJson || '[]')) if (r?.bl) sourceBls.push(String(r.bl)); } catch { /* ข้าม */ }
+  }
+  const reused = await reusedBls([...sourceBls, ...issued.map((row) => row.bl)]);
+  const occurrences = await invoiceOccurrences(issued.filter((row) => reused.has(blKey(row.bl))));
+
   const issuedMap = new Map<string, { V?: string; NV?: string; D?: string }>();
   for (const row of issued) {
-    const key = String(row.bl || '').toUpperCase();
+    const key = jobKey(row.bl, occurrences.get(row.number)?.date || '', reused);
     const entry = issuedMap.get(key) || {};
     entry[row.kind as 'V' | 'NV' | 'D'] = row.number;
     issuedMap.set(key, entry);
+  }
+  // งานของ BL ใช้ซ้ำที่ออกใบไปแล้วตั้งแต่สมัยออกในชีต (คอลัมน์เลขที่ใบแจ้งหนี้ในชีตงานขนส่ง)
+  // เช่น YHLC-015 วันที่ 31/08 = V202608136 ไม่มีในระบบ แต่ห้ามโผล่เป็นงานที่ต้องออกใบใหม่
+  if (reused.size) {
+    const sheetIssued = await db.select({ bl: transportJobs.bl, transportDate: transportJobs.transportDate, invoiceNo: transportJobs.invoiceNo })
+      .from(transportJobs)
+      .where(and(inArray(sql`upper(${transportJobs.bl})`, [...reused]), sql`trim(${transportJobs.invoiceNo}) <> ''`));
+    for (const row of sheetIssued) {
+      const key = jobKey(row.bl, row.transportDate, reused);
+      if (!issuedMap.has(key)) issuedMap.set(key, { V: row.invoiceNo.trim() });
+    }
   }
 
   const out: any[] = [];
@@ -255,9 +266,10 @@ export async function invoiceSources(body: ApiBody): Promise<ApiResult> {
       if (!group.jobType) group.jobType = jobTypeCode(row?.source);
       byBl.set(key, group);
     }
-    for (const [key, group] of byBl) {
+    for (const group of byBl.values()) {
       // ออกใบไปแล้วไม่ต้องโชว์ในหน้าออกใบใหม่อีก
       // ยกเลิกใบ = ลบแถวทิ้ง (ดู decideInvoice) BL นั้นจึงกลับมาโผล่เองอัตโนมัติ
+      const key = jobKey(group.bl, settlement.inspectDate, reused);
       if (issuedMap.has(key)) continue;
       out.push({
         settlementId: settlement.id,
@@ -278,14 +290,17 @@ export async function invoiceSources(body: ApiBody): Promise<ApiResult> {
   }
 
   const bls = [...new Set(out.map(row => String(row.bl).toUpperCase()))];
-  const jobs = bls.length ? await db.select({ bl: transportJobs.bl, doFee: transportJobs.doFee, sourceName: transportJobs.sourceName })
-    .from(transportJobs).where(inArray(sql`upper(${transportJobs.bl})`, bls)) : [];
+  const jobs = bls.length ? await db.select({
+    bl: transportJobs.bl, doFee: transportJobs.doFee, sourceName: transportJobs.sourceName, transportDate: transportJobs.transportDate
+  }).from(transportJobs).where(inArray(sql`upper(${transportJobs.bl})`, bls)) : [];
   const doFees = new Map<string, number>();
   const jobTypes = new Map<string, string>();
   for (const job of jobs) {
     const key = String(job.bl).toUpperCase();
     if (!jobTypes.get(key)) jobTypes.set(key, jobTypeCode(job.sourceName));
-    doFees.set(key, (doFees.get(key) || 0) + (Number(job.doFee) || 0));
+    // ค่า DO สำรองจากชีต — BL ที่ใช้ซ้ำนับเฉพาะแถวของวันที่ตรวจปล่อยนั้น
+    const feeKey = jobKey(job.bl, job.transportDate, reused);
+    doFees.set(feeKey, (doFees.get(feeKey) || 0) + (Number(job.doFee) || 0));
   }
   for (const row of out) {
     if (!row.jobType) row.jobType = jobTypes.get(String(row.bl).toUpperCase()) || '';
@@ -294,7 +309,7 @@ export async function invoiceSources(body: ApiBody): Promise<ApiResult> {
       const catalog = kind === 'V' ? INVOICE_VAT_ITEMS : INVOICE_NO_VAT_ITEMS;
       row.invoiceItems[kind] = catalog.map(item => {
         let raw = row.costs[item.key] || 0;
-        if (kind === 'NV' && item.key === 'do_fee' && raw <= 0) raw = doFees.get(String(row.bl).toUpperCase()) || 0;
+        if (kind === 'NV' && item.key === 'do_fee' && raw <= 0) raw = doFees.get(jobKey(row.bl, row.inspectDate, reused)) || 0;
         return { label: item.label, code: item.code, selected: raw > 0,
           amount: money(kind === 'V' ? raw / INVOICE_DIVISOR : raw) };
       });
@@ -626,6 +641,6 @@ export async function getInvoice(body: ApiBody): Promise<ApiResult> {
   if (!row) return { ok: false, error: 'invoice_not_found' };
   let items: InvoiceItem[] = [];
   try { items = JSON.parse(row.itemsJson || '[]'); } catch { items = []; }
-  const job = await invoiceJobInfo(row.settlementId, row.bl);
+  const job = await invoiceJobInfo(row.settlementId, row.bl, row.number, row.issueDate);
   return { ok: true, invoice: { ...row, items, ...job } };
 }
