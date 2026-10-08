@@ -56,12 +56,14 @@ Based on `SHIPME_Driver_Coordination_MASTER_BUILD_PROMPT.md` v2.0, built inside 
 - Meeting points: saving and editing work. A missing name or out-of-range coordinates are rejected.
 - Screenshots reviewed: `/staff` (plan / map / status / more) and `/driver` (timeline and photo slots).
 
+## Verified on real LINE OA (2026-10-09)
+
+- The 4 LINE values are set in Vercel and the system is in LIVE mode (LIFF ID 2011938705-XKuNdvJP).
+- The business owner tested the whole flow on a real phone and it passed: link LINE + add friend → round-1 location request via LINE → share location in LIFF → steps → EIR + seal photos.
+
 ## DEMO only (not real yet)
 
-- **LINE OA:** messages are only written to `line_outbox` with state `demo`. View them under เพิ่มเติม → จำลองแชท LINE.
-  - "ผูกแบบทดลอง" (demo link) and "เปิดหน้าคนขับ (DEMO)" (open the driver page) work only in DEMO.
-- **LIFF login and ID-token check:** the code is written but has not been tested against real LINE (no channel yet).
-- **Webhook signature check:** the code is written; not yet tested with real LINE events.
+- ~~LINE OA~~ is now LIVE (see above). The "ผูกแบบทดลอง" (demo link) button only appears in DEMO mode.
 - **Google Maps:** the code is written but untested because there is no key yet. Without a key the page shows a driver list instead (no fake map is drawn).
 
 ## Not built yet (next phase)
