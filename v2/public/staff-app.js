@@ -213,7 +213,7 @@ function drawMap(){
       S.mapsLoading=true;
       window.__gmReady=function(){ drawMap(); };
       var s=document.createElement('script');
-      s.src='https://maps.googleapis.com/maps/api/js?key='+encodeURIComponent(d.mapsKey)+'&callback=__gmReady&language=th&region=TH';
+      s.src='https://maps.googleapis.com/maps/api/js?key='+encodeURIComponent(d.mapsKey)+'&callback=__gmReady&loading=async&language=th&region=TH';
       s.async=true; s.onerror=function(){ box.innerHTML='<div class="map-empty">โหลด Google Maps ไม่สำเร็จ</div>'; };
       document.head.appendChild(s);
     }

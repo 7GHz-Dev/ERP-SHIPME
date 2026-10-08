@@ -844,7 +844,7 @@ function mpDrawMap(){
   if(!window.google || !google.maps){
     if(!mp.loading){ mp.loading=true; window.__mpReady=mpDrawMap;
       var s=document.createElement('script'); s.async=true;
-      s.src='https://maps.googleapis.com/maps/api/js?key='+encodeURIComponent(mp.key)+'&callback=__mpReady&language=th&region=TH';
+      s.src='https://maps.googleapis.com/maps/api/js?key='+encodeURIComponent(mp.key)+'&callback=__mpReady&loading=async&language=th&region=TH';
       s.onerror=function(){ box.textContent='โหลด Google Maps ไม่สำเร็จ'; }; document.head.appendChild(s); }
     return;
   }
