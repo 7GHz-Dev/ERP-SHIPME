@@ -52,7 +52,20 @@ function liffLogin(liffId){
   document.head.appendChild(s);
 }
 
+/**
+ * LINE เปิด LIFF ครั้งแรกเป็น /driver?liff.state=%3Flink%3DXXXX แล้วค่อยพากลับมาที่ query จริง
+ * อ่านทั้งสองแบบ จะได้ไม่ทำโค้ดผูก LINE / รหัสคำขอหาย
+ */
+function params(){
+  var q=new URLSearchParams(location.search), st=q.get('liff.state');
+  if(st){
+    var i=st.indexOf('?'), inner=new URLSearchParams(i>=0 ? st.slice(i+1) : st.replace(/^\//,''));
+    inner.forEach(function(v, k){ if(!q.get(k)) q.set(k, v); });
+  }
+  return q;
+}
 function auth(extra){
+  D.q=params();
   var p={ action:'driverAuth', link:D.q.get('link')||'', r:D.q.get('r')||'' };
   for(var k in extra) p[k]=extra[k];
   if(!p.link && !p.r && !p.idToken){
