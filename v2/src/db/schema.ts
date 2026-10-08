@@ -31,6 +31,10 @@ export const users = pgTable('users', {
   role: text('role').notNull(),
   active: boolean('active').notNull().default(true),
   shippingCode: text('shipping_code').notNull().default(''),
+  // LINE ของชิปปิ้ง (แจ้งเตือนงานประสานคนขับ + Rich Menu "งานชิปปิ้ง")
+  lineUserId: text('line_user_id').notNull().default(''),
+  lineName: text('line_name').notNull().default(''),
+  lineNotify: text('line_notify').notNull().default('important'),   // important | all | off
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull()
 });
@@ -685,3 +689,44 @@ export const lineWebhookEvents = pgTable('line_webhook_events', {
   type: text('type').notNull(),
   receivedAt: text('received_at').notNull()
 });
+
+/**
+ * นัดหมายแจกการ์ดรับตู้ / ส่งมอบ EIR — 1 แถว = คนขับ 1 คนต่อ 1 นัด (หลายตู้ได้)
+ * mode บอกว่าใครเดินทาง แต่เอกสารไปจากชิปปิ้งถึงคนขับเสมอ
+ */
+export const meetings = pgTable('meetings', {
+  id: text('id').primaryKey(),
+  inspectDate: text('inspect_date').notNull(),
+  username: citext('username').notNull(),
+  driverId: text('driver_id').notNull(),
+  phase: text('phase').notNull(),                     // CARD_PICKUP | EIR_HANDOVER
+  mode: text('mode').notNull(),                       // STAFF_TO_DRIVER | DRIVER_TO_STAFF
+  meetingPointId: text('meeting_point_id').notNull().default(''),
+  label: text('label').notNull().default(''),
+  latitude: doublePrecision('latitude'),
+  longitude: doublePrecision('longitude'),
+  scheduledAt: text('scheduled_at').notNull(),
+  seq: integer('seq').notNull().default(0),
+  status: text('status').notNull().default('PROPOSED'),  // PROPOSED | ACCEPTED | RESCHEDULE_REQUESTED | MET | CANCELLED
+  itemIdsJson: text('item_ids_json').notNull().default('[]'),
+  note: text('note').notNull().default(''),
+  responseNote: text('response_note').notNull().default(''),
+  respondedAt: text('responded_at').notNull().default(''),
+  routeRunId: text('route_run_id').notNull().default(''),
+  createdBy: citext('created_by').notNull().default(''),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull()
+}, (t) => [index('meetings_batch_idx').on(t.inspectDate, t.username, t.phase), index('meetings_driver_idx').on(t.driverId, t.inspectDate)]);
+
+/** ผลวางเส้นทางแต่ละครั้ง — เก็บที่มา (Google Routes / ประมาณการ) ไว้ตรวจย้อนหลัง */
+export const routeRuns = pgTable('route_runs', {
+  id: text('id').primaryKey(),
+  inspectDate: text('inspect_date').notNull(),
+  username: citext('username').notNull(),
+  phase: text('phase').notNull(),
+  source: text('source').notNull(),                   // GOOGLE_ROUTES_API | ESTIMATE
+  status: text('status').notNull(),                   // FEASIBLE | INFEASIBLE | FAILED
+  resultJson: text('result_json').notNull(),
+  createdAt: text('created_at').notNull(),
+  confirmedAt: text('confirmed_at').notNull().default('')
+}, (t) => [index('route_runs_batch_idx').on(t.inspectDate, t.username)]);

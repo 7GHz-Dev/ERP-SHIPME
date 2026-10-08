@@ -180,3 +180,93 @@ export async function lineDiagnostics(origin: string) {
   out.quota = { type: quota.data?.type, limit: quota.data?.value ?? null, used: used.data?.totalUsage ?? null };
   return out;
 }
+
+// ---------------- แจ้งเตือนชิปปิ้งทาง LINE ----------------
+
+/**
+ * level: important = เรื่องที่ต้องลงมือ (ผ่าน X-Ray ครบ / มีปัญหา / ขอเลื่อนนัด / จบงานครบ)
+ *        all = ทุกความเคลื่อนไหว (ส่งพิกัด / ผ่าน X-Ray ทีละตู้ / ส่งรูป) — ชิปปิ้งเลือกรับเองได้ (เปลืองโควตา)
+ * ชิปปิ้งที่ยังไม่ผูก LINE หรือปิดแจ้งเตือน = ไม่ส่ง (ยังเห็นในหน้า /staff ตามปกติ)
+ */
+export async function notifyStaff(o: {
+  username: string; level: 'important' | 'all'; ref: string; title: string; lines: string[]; url: string; button?: string;
+}) {
+  const { users } = await import('@/db/schema');
+  const [u] = await db.select({ lineUserId: users.lineUserId, lineNotify: users.lineNotify }).from(users)
+    .where(eq(users.username, o.username)).limit(1);
+  if (!u?.lineUserId || u.lineNotify === 'off') return;
+  if (o.level === 'all' && u.lineNotify !== 'all') return;
+  await pushToDriver({
+    lineUserId: u.lineUserId, driverId: '', kind: 'STAFF_NOTIFY', ref: `${o.username}:${o.ref}`,
+    messages: [flexMessage(o.title, o.title, o.lines, [{ label: o.button || 'เปิดงานชิปปิ้ง', uri: o.url, primary: true }])]
+  }).catch(() => {});
+}
+
+/** ลิงก์หน้าชิปปิ้งจากข้อความ LINE — เปิดในเบราว์เซอร์ของเครื่อง (ใช้ล็อกอินเดิมได้) */
+export function staffUrl(origin: string, query: string) {
+  return `${origin.replace(/\/+$/, '')}/staff?${query}${query ? '&' : ''}openExternalBrowser=1`;
+}
+
+// ---------------- Rich Menu ----------------
+
+type MenuButton = { label: string; uri: string };
+
+/**
+ * ติดตั้ง Rich Menu 2 ชุด: คนขับ (ตั้งเป็นค่าเริ่มต้นของ OA) และชิปปิ้ง (ผูกรายคนตอนชิปปิ้งผูก LINE)
+ * รูปวาดจากหน้าแอดมิน (2500×843 JPEG) ส่งมาเป็น data URL — ลบเมนูชุดเก่าของระบบทิ้งก่อน
+ */
+export async function installRichMenus(o: { driverImage: string; staffImage: string; driverButtons: MenuButton[]; staffButtons: MenuButton[] }) {
+  if (lineMode() !== 'live') return { ok: false, error: 'line_not_configured' };
+  const auth = { authorization: `Bearer ${env.lineAccessToken}` };
+  const api = async (url: string, init: RequestInit = {}) => {
+    const res = await fetch(url, { ...init, headers: { ...auth, ...(init.headers || {}) }, signal: AbortSignal.timeout(20000) });
+    const data = await res.json().catch(() => ({})) as any;
+    return { ok: res.ok, status: res.status, data };
+  };
+  const decode = (dataUrl: string) => {
+    const m = /^data:image\/(jpeg|png);base64,(.+)$/.exec(dataUrl);
+    if (!m) throw new Error('bad_image');
+    return { type: `image/${m[1]}`, bytes: Buffer.from(m[2], 'base64') };
+  };
+  const create = async (name: string, chatBarText: string, buttons: MenuButton[], image: string) => {
+    const w = Math.floor(2500 / buttons.length);
+    const body = {
+      size: { width: 2500, height: 843 }, selected: true, name, chatBarText,
+      areas: buttons.map((b, i) => ({
+        bounds: { x: i * w, y: 0, width: i === buttons.length - 1 ? 2500 - i * w : w, height: 843 },
+        action: { type: 'uri', label: b.label.slice(0, 20), uri: b.uri }
+      }))
+    };
+    const made = await api('https://api.line.me/v2/bot/richmenu', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    if (!made.ok) throw new Error(`create ${name}: ${made.data?.message || made.status}`);
+    const id = String(made.data.richMenuId);
+    const img = decode(image);
+    if (img.bytes.length > 1024 * 1024) throw new Error('image_too_large');
+    const up = await api(`https://api-data.line.me/v2/bot/richmenu/${id}/content`, { method: 'POST', headers: { 'content-type': img.type }, body: new Uint8Array(img.bytes) });
+    if (!up.ok) throw new Error(`upload ${name}: ${up.data?.message || up.status}`);
+    return id;
+  };
+  try {
+    // ลบเมนูเก่าที่ระบบเคยสร้าง (ชื่อขึ้นต้น SHIPME-) — เมนูที่สร้างเองใน OA Manager ไม่แตะ
+    const list = await api('https://api.line.me/v2/bot/richmenu/list');
+    for (const m of (list.data?.richmenus || []) as any[]) {
+      if (String(m.name || '').startsWith('SHIPME-')) await api(`https://api.line.me/v2/bot/richmenu/${m.richMenuId}`, { method: 'DELETE' });
+    }
+    const driverMenu = await create('SHIPME-driver', 'เมนู SHIPME', o.driverButtons, o.driverImage);
+    const staffMenu = await create('SHIPME-staff', 'งานชิปปิ้ง', o.staffButtons, o.staffImage);
+    const def = await api(`https://api.line.me/v2/bot/user/all/richmenu/${driverMenu}`, { method: 'POST' });
+    if (!def.ok) throw new Error(`default: ${def.data?.message || def.status}`);
+    return { ok: true, driverMenu, staffMenu };
+  } catch (e) {
+    return { ok: false, error: String((e as Error).message || e).slice(0, 200) };
+  }
+}
+
+/** ผูกเมนูชิปปิ้งให้บัญชี LINE ของชิปปิ้ง (คนขับใช้เมนูเริ่มต้นของ OA) */
+export async function linkUserRichMenu(lineUserId: string, richMenuId: string) {
+  if (lineMode() !== 'live' || !richMenuId || !lineUserId) return false;
+  const res = await fetch(`https://api.line.me/v2/bot/user/${encodeURIComponent(lineUserId)}/richmenu/${richMenuId}`, {
+    method: 'POST', headers: { authorization: `Bearer ${env.lineAccessToken}` }, signal: AbortSignal.timeout(10000)
+  }).catch(() => null);
+  return Boolean(res?.ok);
+}

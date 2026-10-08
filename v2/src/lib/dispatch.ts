@@ -7,8 +7,12 @@ import { serviceInvoiceData } from './service-invoices';
 import {
   coordCardHanded, coordDashboard, coordDemo, coordDriverInvite, coordEirHanded, coordOutbox, coordRequestLocations,
   coordTimeline, driverAuth, driverComplete, driverEvidenceCommit, driverEvidenceDelete, driverEvidenceSign,
-  driverHome, driverReportLocation, driverStep, meetingPointList, meetingPointSave
+  driverHome, driverMeeting, driverReportLocation, driverStep, meetingPointList, meetingPointSave
 } from './coord';
+import {
+  coordMeetingCancel, coordMeetingCreate, coordRouteConfirm, coordRoutePlan, coordStaffLineLink, coordStaffNotify,
+  lineRichMenuInstall, staffLineRedeem
+} from './coord-meet';
 import {
   cancelServiceInvoices, getServiceInvoice, issueServiceReceipts, listServiceInvoices, matchServiceReceivables,
   saveServiceInvoices, serviceInvoiceNext, settleServiceReceivables, unsettleServiceReceivables
@@ -557,6 +561,36 @@ const handlers: Record<string, Handler> = {
     const session = await guard(body, COORD_STAFF);
     return session.error || coordTimeline(body, session.user);
   },
+  coordMeetingCreate: async (body) => {
+    const session = await guard(body, COORD_STAFF);
+    return session.error || coordMeetingCreate(body, session.user);
+  },
+  coordMeetingCancel: async (body) => {
+    const session = await guard(body, COORD_STAFF);
+    return session.error || coordMeetingCancel(body, session.user);
+  },
+  coordRoutePlan: async (body) => {
+    const session = await guard(body, COORD_STAFF);
+    return session.error || coordRoutePlan(body, session.user);
+  },
+  coordRouteConfirm: async (body) => {
+    const session = await guard(body, COORD_STAFF);
+    return session.error || coordRouteConfirm(body, session.user);
+  },
+  coordStaffLineLink: async (body) => {
+    const session = await guard(body, COORD_STAFF);
+    return session.error || coordStaffLineLink(body, session.user);
+  },
+  coordStaffNotify: async (body) => {
+    const session = await guard(body, COORD_STAFF);
+    return session.error || coordStaffNotify(body, session.user);
+  },
+  lineRichMenuInstall: async (body) => {
+    const session = await guard(body, PLAN_ROLES);
+    return session.error || lineRichMenuInstall(body);
+  },
+  // ชิปปิ้งเปิดลิงก์ผูก LINE ในแอป LINE (LIFF เดียวกับหน้าคนขับ) — ยืนยันด้วย ID token + ลิงก์ลงลายเซ็น
+  staffLineRedeem,
   meetingPointList: async (body) => {
     const session = await guard(body, COORD_STAFF);
     return session.error || meetingPointList();
@@ -576,6 +610,7 @@ const handlers: Record<string, Handler> = {
   driverHome,
   driverReportLocation,
   driverStep,
+  driverMeeting,
   driverEvidenceSign,
   driverEvidenceCommit,
   driverEvidenceDelete,

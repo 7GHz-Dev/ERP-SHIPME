@@ -108,6 +108,8 @@ export const env = {
   liffId: clean(process.env.LIFF_ID),
   /** Google Maps JavaScript API (ฝั่งเบราว์เซอร์ — จำกัด HTTP referrer ที่ Google Cloud Console) */
   googleMapsBrowserKey: clean(process.env.GOOGLE_MAPS_BROWSER_KEY),
+  /** Google Routes API (ฝั่งเซิร์ฟเวอร์ — จำกัด IP/ไม่จำกัด referrer) ไม่ตั้ง = วางเส้นทางแบบประมาณการจากระยะทาง */
+  googleRoutesServerKey: clean(process.env.GOOGLE_ROUTES_SERVER_KEY),
   /** กุญแจลงลายเซ็น session คนขับ — ไม่ตั้งก็ได้ ใช้ค่าที่ได้จาก DATABASE_URL */
   driverSessionSecret: clean(process.env.DRIVER_SESSION_SECRET)
 } as const;

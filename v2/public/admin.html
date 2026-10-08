@@ -702,6 +702,13 @@
         <p class="muted" style="margin:0 0 12px">ตรวจของจริง: token ใช้ได้ไหม, LINE ยิง webhook ทดสอบ (ลงลายเซ็นจริง) มาถึงระบบไหม, โควตาข้อความเดือนนี้</p>
         <button id="line-check" class="btn btn-ghost btn-sm">💬 ตรวจ LINE OA</button>
         <div id="line-result" style="margin-top:14px"></div>
+        <div style="margin-top:16px">
+          <b>Rich Menu (เมนูล่างในแชท SHIPME)</b>
+          <div class="muted" style="margin:4px 0 8px">คนขับ: งานของฉัน / ส่งตำแหน่ง / ช่วยเหลือ • ชิปปิ้งที่ผูก LINE: งานชิปปิ้ง / แผนที่ / สถานะงาน — กดติดตั้งใหม่ได้ทุกเมื่อ (แทนชุดเดิมของระบบ ไม่แตะเมนูที่สร้างเองใน OA Manager)</div>
+          <div id="rm-preview" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px"></div>
+          <button id="rm-install" class="btn btn-primary btn-sm">📲 ติดตั้ง Rich Menu</button>
+          <span id="rm-msg" class="muted" style="margin-left:8px"></span>
+        </div>
 
         <h3 class="sec" style="margin-top:30px">ระบบอ่านสลิปโอนเงิน (OCR)</h3>
         <p class="muted" style="margin:0 0 12px">
@@ -3436,6 +3443,42 @@ $('line-check').addEventListener('click', function(){
     L.push(['LIFF Endpoint URL ที่ต้องตั้ง', '<code>'+esc(r.liffEndpoint)+'</code>']);
     $('line-result').innerHTML='<div class="tbl-wrap"><table class="grid"><tbody>'+L.map(function(x){ return '<tr><td class="name" style="text-align:left">'+x[0]+'</td><td style="text-align:left">'+x[1]+'</td></tr>'; }).join('')+'</tbody></table></div>';
   }).catch(function(){ b.disabled=false; $('line-result').textContent='เชื่อมต่อเซิร์ฟเวอร์ไม่ได้'; });
+});
+
+// ---------- Rich Menu ของ LINE OA ----------
+/** วาดรูปเมนู 2500×843 (3 ช่อง) — ส่ง JPEG ให้เซิร์ฟเวอร์อัปขึ้น LINE */
+function drawRichMenu(title, buttons, accent){
+  var c=document.createElement('canvas'); c.width=2500; c.height=843;
+  var g=c.getContext('2d'), w=2500/buttons.length;
+  g.fillStyle='#0D2748'; g.fillRect(0,0,2500,843);
+  buttons.forEach(function(b, i){
+    var x=i*w;
+    g.fillStyle=i%2?'#12345c':'#0f2d52'; g.fillRect(x+18,18,w-36,807);
+    g.fillStyle=accent; g.fillRect(x+18,18,w-36,14);
+    g.font='260px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif'; g.textAlign='center'; g.textBaseline='middle';
+    g.fillText(b.icon, x+w/2, 360);
+    g.fillStyle='#ffffff'; g.font='bold 120px "Noto Sans Thai","Sarabun",sans-serif';
+    g.fillText(b.label, x+w/2, 640);
+  });
+  g.fillStyle='rgba(255,255,255,.35)'; g.font='bold 44px sans-serif'; g.textAlign='right'; g.fillText(title, 2470, 805);
+  return c.toDataURL('image/jpeg', 0.82);
+}
+function richMenuImages(){
+  return {
+    driverImage: drawRichMenu('SHIPME • คนขับ', [{icon:'📋',label:'งานของฉัน'},{icon:'📍',label:'ส่งตำแหน่ง'},{icon:'☎️',label:'ช่วยเหลือ'}], '#06C755'),
+    staffImage: drawRichMenu('SHIPME • ชิปปิ้ง', [{icon:'🗂️',label:'งานชิปปิ้ง'},{icon:'🗺️',label:'แผนที่'},{icon:'📦',label:'สถานะงาน'}], '#FFB020')
+  };
+}
+$('rm-install').addEventListener('click', function(){
+  var imgs=richMenuImages();
+  $('rm-preview').innerHTML='<img src="'+imgs.driverImage+'" style="width:300px;border-radius:8px"><img src="'+imgs.staffImage+'" style="width:300px;border-radius:8px">';
+  if(!confirm('ติดตั้ง Rich Menu ให้ SHIPME OA ตามตัวอย่างนี้?\n\nคนขับทุกคนจะเห็นเมนูนี้ทันที')) return;
+  var b=this; b.disabled=true; $('rm-msg').textContent='กำลังติดตั้ง…';
+  api({ action:'lineRichMenuInstall', token:state.token, driverImage:imgs.driverImage, staffImage:imgs.staffImage }).then(function(r){
+    b.disabled=false;
+    if(!guard(r)) return;
+    $('rm-msg').textContent = r.ok ? ('ติดตั้งแล้ว ✓ (ชิปปิ้งที่ผูก LINE ได้เมนูชิปปิ้ง '+r.staffLinked+' คน)') : ('ไม่สำเร็จ: '+(r.error==='line_not_configured'?'ยังไม่ได้ตั้งค่า LINE':r.error));
+  }).catch(function(){ b.disabled=false; $('rm-msg').textContent='เชื่อมต่อเซิร์ฟเวอร์ไม่ได้'; });
 });
 
 // ---------- ใบแจ้งหนี้ ----------

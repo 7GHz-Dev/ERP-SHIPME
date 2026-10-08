@@ -66,6 +66,16 @@ function params(){
 }
 function auth(extra){
   D.q=params();
+  // ลิงก์ผูก LINE ของชิปปิ้ง (เปิดผ่าน LIFF เดียวกัน)
+  if(D.q.get('slink')){
+    if(!extra.idToken) return fail('กรุณาเปิดลิงก์นี้ในแอป LINE');
+    return api({ action:'staffLineRedeem', slink:D.q.get('slink'), idToken:extra.idToken }).then(function(r){
+      if(!r.ok) return fail(errText(r));
+      $('who').textContent=r.name;
+      $('main').innerHTML='<div class="card center"><div class="big">✅</div><h3>ผูก LINE ชิปปิ้งเรียบร้อย</h3><p>'+esc(r.name)+' จะได้รับแจ้งเตือนงานและเมนู "งานชิปปิ้ง" ในแชท SHIPME</p>'+
+        '<a class="btn btn-navy" href="/staff?openExternalBrowser=1">เปิดหน้างานชิปปิ้ง</a></div>';
+    });
+  }
   var p={ action:'driverAuth', link:D.q.get('link')||'', r:D.q.get('r')||'' };
   for(var k in extra) p[k]=extra[k];
   if(!p.link && !p.r && !p.idToken){
@@ -97,6 +107,13 @@ function home(){
       D.openRequest='';
       if(r) openLocation(r);
     }
+    // ทางลัดจาก Rich Menu / ข้อความ: ส่งตำแหน่ง / ช่วยเหลือ / การ์ดนัด
+    var q=D.q||new URLSearchParams();
+    if(q.get('loc') && !D.shortcutDone){ D.shortcutDone=true;
+      if(res.requests.length) openLocation(res.requests[0]); else toast('ยังไม่มีคำขอตำแหน่งจากชิปปิ้งตอนนี้', 3500); }
+    if(q.get('help') && !D.shortcutDone){ D.shortcutDone=true; renderHelp(); }
+    if(q.get('m') && !D.shortcutDone){ D.shortcutDone=true;
+      var el=document.querySelector('[data-meet="'+q.get('m')+'"]'); if(el){ el.scrollIntoView({ block:'center' }); el.style.boxShadow='0 0 0 3px #FFB020'; } }
   });
 }
 
@@ -114,6 +131,20 @@ function render(){
       '<div class="muted">'+jobs.length+' ตู้: '+esc(jobs.map(function(j){ return j.containerNo||j.bl; }).join(', '))+' • ส่งได้ถึง '+hm(r.expiresAt)+'</div>'+
       '<button class="btn btn-green" style="margin-top:10px" data-req="'+esc(r.id)+'">ส่งตำแหน่งตอนนี้</button></div>';
   });
+  (d.meetings||[]).forEach(function(m){
+    var jobs=d.jobs.filter(function(j){ return m.itemIds.indexOf(j.id)>=0; });
+    var acc=m.status==='ACCEPTED', resch=m.status==='RESCHEDULE_REQUESTED';
+    html+='<div class="card req" data-meet="'+esc(m.id)+'" style="border-color:'+(acc?'var(--green)':'var(--amber)')+'"><h3>'+(m.phase==='CARD_PICKUP'?'🎫 นัดรับการ์ดรับตู้':'📄 นัดรับ EIR ขาออก')+'</h3>'+
+      '<div class="kv"><span>เวลา</span><b>'+hm(m.scheduledAt)+' • '+thd(m.inspectDate)+'</b></div>'+
+      '<div class="kv"><span>จุดนัด</span><b>'+esc(m.label)+'</b></div>'+
+      '<div class="kv"><span>การเดินทาง</span><b>'+(m.mode==='STAFF_TO_DRIVER'?'ชิปปิ้งจะไปหาคุณ':'กรุณาไปที่จุดนัด')+'</b></div>'+
+      '<div class="kv"><span>ตู้</span><b>'+esc(jobs.map(function(j){ return j.containerNo||j.bl; }).join(', '))+'</b></div>'+
+      (m.note?'<div class="note wait">'+esc(m.note)+'</div>':'')+
+      (acc?'<div class="note ok">รับนัดแล้ว ✓</div>':(resch?'<div class="note err">ส่งคำขอเลื่อน/เปลี่ยนแล้ว — รอชิปปิ้งนัดใหม่</div>':''))+
+      (m.lat!=null?'<a class="btn btn-ghost" style="margin-top:8px" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination='+m.lat+','+m.lng+'">🧭 นำทางไปจุดนัด</a>':'')+
+      (acc?'':'<button class="btn btn-green" style="margin-top:8px" data-mres="'+esc(m.id)+'" data-acc="1">รับทราบนัด</button>')+
+      '<button class="link" data-mres="'+esc(m.id)+'" data-acc="0">ขอเลื่อน / เปลี่ยนจุดนัด</button></div>';
+  });
   if(!d.jobs.length) html+='<div class="card center"><div class="big">🚚</div><p>ยังไม่มีงานที่ได้รับมอบหมาย</p></div>';
   var lastDate='';
   d.jobs.forEach(function(j){
@@ -125,6 +156,14 @@ function render(){
     openLocation(d.requests.filter(function(r){ return r.id===b.getAttribute('data-req'); })[0]);
   }); });
   Array.prototype.forEach.call(document.querySelectorAll('[data-op]'), function(b){ b.addEventListener('click', function(){ step(b); }); });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-mres]'), function(b){ b.addEventListener('click', function(){
+    var accept=b.getAttribute('data-acc')==='1', note='';
+    if(!accept){ note=prompt('ขอเลื่อนเป็นกี่โมง / สะดวกที่ไหน?'); if(note===null) return; }
+    b.disabled=true;
+    api({ action:'driverMeeting', meetingId:b.getAttribute('data-mres'), accept:accept, note:note }).then(function(r){
+      b.disabled=false; if(!r.ok){ toast(errText(r)); return; } toast(accept?'รับนัดแล้ว ✓':'ส่งคำขอให้ชิปปิ้งแล้ว'); home();
+    });
+  }); });
   Array.prototype.forEach.call(document.querySelectorAll('input[data-up]'), function(inp){ inp.addEventListener('change', function(){ upload(inp); }); });
   Array.prototype.forEach.call(document.querySelectorAll('[data-del]'), function(b){ b.addEventListener('click', function(){ delPhoto(b.getAttribute('data-del')); }); });
 }
@@ -264,4 +303,20 @@ function upload(inp){
 function delPhoto(id){
   if(!confirm('ลบรูปนี้?')) return;
   api({ action:'driverEvidenceDelete', id:id }).then(function(res){ if(!res.ok){ toast(errText(res)); return; } home(); });
+}
+
+
+// ---------------- ช่วยเหลือ ----------------
+function renderHelp(){
+  var d=D.data, staff=(d.help||[]).map(function(s){ return esc(s.name); }).join(', ');
+  $('main').innerHTML='<div class="card"><h3 style="margin:0 0 8px">☎️ ช่วยเหลือ</h3>'+
+    (staff?'<div class="kv"><span>ชิปปิ้งที่ดูแลงานคุณ</span><b>'+staff+'</b></div>':'')+
+    '<p style="font-size:14.5px;line-height:1.7">'+
+    '<b>ขั้นตอนงาน</b><br>1) ชิปปิ้งขอตำแหน่ง → กด "ส่งตำแหน่งตอนนี้"<br>2) รับการ์ดรับตู้ตามนัด → กด "ได้รับการ์ดรับตู้แล้ว"<br>'+
+    '3) รับตู้ → กด "รับตู้แล้ว"<br>4) ผ่าน X-Ray → กด "ผ่าน X-Ray แล้ว"<br>5) รอชิปปิ้งนัดส่ง EIR (เมื่อตู้ทั้งกลุ่มผ่าน X-Ray) → กด "ได้รับ EIR แล้ว"<br>'+
+    '6) ตรวจปล่อยเสร็จ → ถ่ายรูปการ์ด EIR + รูป Seal ของแต่ละตู้ → "ยืนยันจบงาน"</p>'+
+    '<p style="font-size:14px"><b>หาตำแหน่งไม่ได้?</b><br>iPhone: ตั้งค่า → ความเป็นส่วนตัว → บริการหาตำแหน่ง → LINE → ขณะใช้งาน<br>Android: ตั้งค่า → แอป → LINE → สิทธิ์ → ตำแหน่ง → อนุญาต</p>'+
+    '<p style="font-size:14px">ติดปัญหากับตู้ไหน กด <b>"แจ้งปัญหา"</b> ใต้ตู้นั้น ชิปปิ้งจะได้รับแจ้งทันที</p>'+
+    '<button class="btn btn-navy" id="help-back">กลับไปงานของฉัน</button></div>';
+  $('help-back').addEventListener('click', render);
 }

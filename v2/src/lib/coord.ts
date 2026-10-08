@@ -5,7 +5,7 @@ import {
   driverLinkInvites, drivers, evidenceFiles, jobEvents, jobPlanItems, jobPlans, jobSteps,
   lineOutbox, locationReports, locationRequests, meetingPoints
 } from '@/db/schema';
-import { driverUrl, flexMessage, lineMode, pushToDriver, verifyLineIdToken } from './coord-line';
+import { driverUrl, flexMessage, lineMode, notifyStaff, pushToDriver, staffUrl, verifyLineIdToken } from './coord-line';
 import { env } from './env';
 import { sendPlainSms, smsConfig, smsPhone, thShortDate } from './sms';
 import { createSignedUpload, fileExists } from './storage';
@@ -83,7 +83,7 @@ type ItemRow = typeof jobPlanItems.$inferSelect;
 type StepRow = typeof jobSteps.$inferSelect;
 type DriverRow = typeof drivers.$inferSelect;
 
-async function logEvents(rows: { itemId: string; inspectDate: string; username: string }[], actorType: string, actorId: string, event: string, meta: Record<string, unknown> = {}) {
+export async function logEvents(rows: { itemId: string; inspectDate: string; username: string }[], actorType: string, actorId: string, event: string, meta: Record<string, unknown> = {}) {
   if (!rows.length) return;
   const at = nowIso();
   await db.insert(jobEvents).values(rows.map((r) => ({
@@ -144,7 +144,7 @@ function emptyStep(): Omit<StepRow, 'itemId' | 'inspectDate' | 'username' | 'dri
     eirHandedAt: '', eirHandedBy: '', eirReceivedAt: '', completedAt: '', problem: '', version: 0 };
 }
 
-async function loadBatch(date: string, username: string) {
+export async function loadBatch(date: string, username: string) {
   const [plan] = await db.select().from(jobPlans).where(eq(jobPlans.inspectDate, date)).limit(1);
   const confirmed = plan?.status === 'confirmed';
   const items = confirmed
@@ -157,7 +157,7 @@ async function loadBatch(date: string, username: string) {
 }
 
 /** ประตูรอบสอง: ทุกตู้ในชุดต้องรายงานผ่าน X-Ray — ไม่มีตู้เลย (0/0) ไม่นับว่าผ่าน */
-function xrayGate(items: ItemRow[], steps: Map<string, StepRow>, driverMap: Map<string, DriverRow>) {
+export function xrayGate(items: ItemRow[], steps: Map<string, StepRow>, driverMap: Map<string, DriverRow>) {
   const blockers = items.filter((i) => steps.get(i.id)?.xrayStatus !== 'passed').map((i) => {
     const s = steps.get(i.id);
     return { itemId: i.id, containerNo: i.containerNo || i.bl, driverName: driverMap.get(s?.driverId || '')?.name || i.driverName,
@@ -167,7 +167,7 @@ function xrayGate(items: ItemRow[], steps: Map<string, StepRow>, driverMap: Map<
 }
 
 /** สรุปขั้นของตู้ (ไว้แสดงผล — ตัวจริงคือเวลาของแต่ละขั้น) */
-function stageOf(s: StepRow | undefined) {
+export function stageOf(s: StepRow | undefined) {
   if (!s) return 'PLANNED';
   if (s.completedAt) return 'DONE';
   if (s.eirReceivedAt) return 'EIR_RECEIVED';
@@ -191,7 +191,7 @@ function config(origin: string) {
 type Staff = { username: string; name: string; role: string };
 
 /** ชิปปิ้งดูได้เฉพาะชุดของตัวเอง — ผู้จัดการ/admin เลือกดูของชิปปิ้งคนไหนก็ได้ */
-function staffScope(body: ApiBody, user: Staff) {
+export function staffScope(body: ApiBody, user: Staff) {
   if (user.role === 'employee-shipping') return user.username;
   return text(body.staff, 60) || user.username;
 }
@@ -250,6 +250,8 @@ export async function coordDashboard(body: ApiBody, user: Staff): Promise<ApiRes
   });
   const count = (fn: (s: StepRow | undefined) => boolean) => items.filter((i) => fn(steps.get(i.id))).length;
   const gate = xrayGate(items, steps, driverMap);
+  const meet = await import('./coord-meet');
+  const meetingRows = items.length ? await meet.meetingsFor(date, username) : [];
   return {
     ok: true, today, date, dates, username, planStatus: batch.plan?.status || '', ...config(String(body._origin || '')),
     items: view, drivers: driverList, gate,
@@ -262,7 +264,10 @@ export async function coordDashboard(body: ApiBody, user: Staff): Promise<ApiRes
       gpsCard: driverList.filter((d) => d.phases.CARD_PICKUP.location).length,
       gpsEir: driverList.filter((d) => d.phases.EIR_HANDOVER.location).length
     },
-    meetingPoints: await db.select().from(meetingPoints).where(eq(meetingPoints.active, true)).orderBy(asc(meetingPoints.port), asc(meetingPoints.name))
+    meetingPoints: await db.select().from(meetingPoints).where(eq(meetingPoints.active, true)).orderBy(asc(meetingPoints.port), asc(meetingPoints.name)),
+    meetings: meetingRows.map((m) => ({ ...m, username: String(m.username), createdBy: String(m.createdBy), itemIds: JSON.parse(m.itemIdsJson || '[]') })),
+    me: await meet.staffLineStatus(user.username),
+    routesSource: env.googleRoutesServerKey ? 'GOOGLE_ROUTES_API' : 'ESTIMATE'
   };
 }
 
@@ -396,6 +401,12 @@ async function staffMark(body: ApiBody, user: Staff, field: 'card' | 'eir'): Pro
   }
   await logEvents(changed.map((i) => ({ itemId: i.id, inspectDate: date, username })), 'staff', user.username,
     field === 'card' ? (undo ? 'PICKUP_CARD_HANDED_UNDONE' : 'PICKUP_CARD_HANDED') : (undo ? 'EIR_STAFF_HANDED_UNDONE' : 'EIR_STAFF_HANDED_OVER'));
+  if (changed.length && !undo) {
+    // ส่งมอบครบทุกตู้ของนัด = นัดนั้นจบ
+    const fresh = await db.select().from(jobSteps).where(inArray(jobSteps.itemId, items.map((i) => i.id)));
+    const { closeMetMeetings } = await import('./coord-meet');
+    await closeMetMeetings(date, username, field === 'card' ? 'CARD_PICKUP' : 'EIR_HANDOVER', new Map(fresh.map((f) => [f.itemId, f])));
+  }
   return { ok: true, count: changed.length };
 }
 export const coordCardHanded = (body: ApiBody, user: Staff) => staffMark(body, user, 'card');
@@ -477,6 +488,22 @@ export async function meetingPointSave(body: ApiBody, user: Staff): Promise<ApiR
   const row = { id: id('mp_'), ...values, createdBy: user.username, createdAt: at };
   await db.insert(meetingPoints).values(row);
   return { ok: true, id: row.id };
+}
+
+
+/** สรุปชุดงานหลังคนขับอัปเดต — ใช้แต่งข้อความแจ้งเตือนชิปปิ้ง */
+async function batchProgress(date: string, username: string) {
+  const rows = await db.select().from(jobSteps).where(and(eq(jobSteps.inspectDate, date), eq(jobSteps.username, username)));
+  return {
+    total: rows.length,
+    xray: rows.filter((r) => r.xrayStatus === 'passed').length,
+    eirReceived: rows.filter((r) => r.eirReceivedAt).length,
+    completed: rows.filter((r) => r.completedAt).length
+  };
+}
+async function containerOf(itemId: string) {
+  const [i] = await db.select({ containerNo: jobPlanItems.containerNo, bl: jobPlanItems.bl }).from(jobPlanItems).where(eq(jobPlanItems.id, itemId)).limit(1);
+  return i ? (i.containerNo || i.bl) : itemId;
 }
 
 // ---------------- คนขับ: เข้าใช้งาน ----------------
@@ -565,8 +592,16 @@ export async function driverHome(body: ApiBody): Promise<ApiResult> {
   const active = requests.filter((r) => Date.parse(r.expiresAt) > now && r.status !== 'received').map((r) => ({
     id: r.id, phase: r.phase, inspectDate: r.inspectDate, expiresAt: r.expiresAt, itemIds: JSON.parse(r.itemIdsJson || '[]') }));
 
+  const { meetings: meetingsTable } = await import('@/db/schema');
+  const myMeetings = await db.select().from(meetingsTable).where(and(eq(meetingsTable.driverId, driver.id),
+    gte(meetingsTable.inspectDate, only || shiftDate(today, -2)), inArray(meetingsTable.status, ['PROPOSED', 'ACCEPTED', 'RESCHEDULE_REQUESTED'])))
+    .orderBy(asc(meetingsTable.scheduledAt));
+  const { driverHelp } = await import('./coord-meet');
   return {
     ok: true, today, driver: { id: driver.id, name: driver.name, plate: driver.plate, lineName: driver.lineName, linked: Boolean(driver.lineUserId) },
+    meetings: myMeetings.map((m) => ({ id: m.id, phase: m.phase, mode: m.mode, label: m.label, lat: m.latitude, lng: m.longitude,
+      scheduledAt: m.scheduledAt, status: m.status, note: m.note, inspectDate: m.inspectDate, itemIds: JSON.parse(m.itemIdsJson || '[]') })),
+    help: await driverHelp(driver.id),
     lineMode: lineMode(), liffId: lineMode() === 'live' ? env.liffId : '',
     requests: active,
     jobs: visible.sort((a, b) => a.inspectDate.localeCompare(b.inspectDate) || a.seq - b.seq).map((i) => {
@@ -615,6 +650,20 @@ export async function driverReportLocation(body: ApiBody): Promise<ApiResult> {
   const itemIds: string[] = JSON.parse(req.itemIdsJson || '[]');
   await logEvents(itemIds.map((itemId) => ({ itemId, inspectDate: req.inspectDate, username: String(req.username) })), 'driver', driver.id,
     `LOCATION_${req.phase}_RECEIVED`, { requestId: req.id, accuracy: Number(body.accuracy) || 0 });
+  // แจ้งชิปปิ้ง: ทุกคนในรอบนี้ (ที่ยังไม่หมดอายุ) ส่งพิกัดครบ = สำคัญ / รายคน = ทุกความเคลื่อนไหว
+  const round = await db.select({ status: locationRequests.status, driverId: locationRequests.driverId }).from(locationRequests)
+    .where(and(eq(locationRequests.inspectDate, req.inspectDate), eq(locationRequests.username, String(req.username)), eq(locationRequests.phase, req.phase)));
+  const drv = [...new Set(round.map((r) => r.driverId))];
+  const got = drv.filter((d) => round.some((r) => r.driverId === d && r.status === 'received')).length;
+  const phaseText = req.phase === 'CARD_PICKUP' ? 'รอบแรก (การ์ดรับตู้)' : 'รอบสอง (EIR)';
+  const url = staffUrl(String(body._origin || ''), `date=${req.inspectDate}&tab=map&phase=${req.phase}`);
+  if (got === drv.length) {
+    await notifyStaff({ username: String(req.username), level: 'important', ref: `loc-all:${req.inspectDate}:${req.phase}:${got}`,
+      title: `📍 ได้พิกัด${phaseText} ครบ ${got}/${drv.length} คน`, lines: [`งานวันที่ ${thShortDate(req.inspectDate)}`, 'เปิดแผนที่เพื่อนัดหมายได้เลย'], url, button: 'เปิดแผนที่' });
+  } else {
+    await notifyStaff({ username: String(req.username), level: 'all', ref: `loc:${req.id}:${at}`,
+      title: `📍 ${driver.name} ส่งพิกัด${phaseText} แล้ว`, lines: [`ได้พิกัดแล้ว ${got}/${drv.length} คน`], url, button: 'เปิดแผนที่' });
+  }
   return { ok: true, receivedAt: at };
 }
 
@@ -661,6 +710,27 @@ export async function driverStep(body: ApiBody): Promise<ApiResult> {
   await db.update(jobSteps).set({ ...patch, updatedAt: at, version: s.version + 1 }).where(eq(jobSteps.itemId, s.itemId));
   await logEvents([{ itemId: s.itemId, inspectDate: s.inspectDate, username: String(s.username) }], 'driver', driver.id, event,
     op === 'xray' || op === 'problem' ? { note: text(body.note, 300) } : {});
+
+  const staff = String(s.username), origin = String(body._origin || '');
+  const cn = await containerOf(s.itemId);
+  if (op === 'xray' && body.status === 'passed') {
+    const p = await batchProgress(s.inspectDate, staff);
+    if (p.xray === p.total) {
+      await notifyStaff({ username: staff, level: 'important', ref: `xray-all:${s.inspectDate}`, title: `✅ ผ่าน X-Ray ครบ ${p.total}/${p.total} ตู้`,
+        lines: [`งานวันที่ ${thShortDate(s.inspectDate)}`, 'ขอตำแหน่งรอบสองเพื่อนัดส่งมอบ EIR ได้แล้ว'],
+        url: staffUrl(origin, `date=${s.inspectDate}&tab=map&phase=EIR_HANDOVER`), button: 'ขอตำแหน่งรอบสอง' });
+    } else {
+      await notifyStaff({ username: staff, level: 'all', ref: `xray:${s.itemId}`, title: `🛃 ${cn} ผ่าน X-Ray`,
+        lines: [`คนขับ ${driver.name}`, `ผ่านแล้ว ${p.xray}/${p.total} ตู้`], url: staffUrl(origin, `date=${s.inspectDate}&tab=status`) });
+    }
+  } else if ((op === 'xray' && body.status === 'hold') || op === 'problem') {
+    await notifyStaff({ username: staff, level: 'important', ref: `problem:${s.itemId}:${at}`, title: `⚠️ ${cn} แจ้งปัญหา`,
+      lines: [`คนขับ ${driver.name}`, text(body.note, 200) || (op === 'xray' ? 'ติดปัญหา X-Ray' : '-')], url: staffUrl(origin, `date=${s.inspectDate}&tab=status`) });
+  } else if (op === 'eir-received') {
+    const p = await batchProgress(s.inspectDate, staff);
+    await notifyStaff({ username: staff, level: 'all', ref: `eir:${s.itemId}`, title: `📄 ${driver.name} ยืนยันรับ EIR ${cn}`,
+      lines: [`รับ EIR แล้ว ${p.eirReceived}/${p.total} ตู้`], url: staffUrl(origin, `date=${s.inspectDate}&tab=status`) });
+  }
   return { ok: true, at };
 }
 
@@ -726,6 +796,16 @@ export async function driverComplete(body: ApiBody): Promise<ApiResult> {
   await db.update(jobSteps).set({ completedAt: at, updatedAt: at, version: s.version + 1 }).where(eq(jobSteps.itemId, s.itemId));
   await logEvents([{ itemId: s.itemId, inspectDate: s.inspectDate, username: String(s.username) }], 'driver', driver.id,
     'DRIVER_RELEASE_COMPLETION_SUBMITTED', { photos: files.length });
+  const p = await batchProgress(s.inspectDate, String(s.username));
+  const url = staffUrl(String(body._origin || ''), `date=${s.inspectDate}&tab=status`);
+  const cn = await containerOf(s.itemId);
+  if (p.completed === p.total) {
+    await notifyStaff({ username: String(s.username), level: 'important', ref: `done-all:${s.inspectDate}`, title: `🎉 จบงานครบ ${p.total}/${p.total} ตู้`,
+      lines: [`งานวันที่ ${thShortDate(s.inspectDate)}`, 'คนขับส่งรูปการ์ด EIR + Seal ครบทุกตู้แล้ว'], url });
+  } else {
+    await notifyStaff({ username: String(s.username), level: 'all', ref: `done:${s.itemId}`, title: `📷 ${cn} ส่งรูปจบงานแล้ว`,
+      lines: [`คนขับ ${driver.name}`, `จบงานแล้ว ${p.completed}/${p.total} ตู้`], url });
+  }
   return { ok: true, at };
 }
 
@@ -736,4 +816,12 @@ export async function coordTimeline(body: ApiBody, user: Staff): Promise<ApiResu
   if (user.role === 'employee-shipping' && String(s.username).toLowerCase() !== user.username.toLowerCase()) return { ok: false, error: 'forbidden' };
   const rows = await db.select().from(jobEvents).where(eq(jobEvents.itemId, s.itemId)).orderBy(asc(jobEvents.createdAt));
   return { ok: true, rows: rows.map((r) => ({ ...r, meta: JSON.parse(r.metaJson || '{}') })) };
+}
+
+/** คนขับกดรับนัด / ขอเลื่อน */
+export async function driverMeeting(body: ApiBody): Promise<ApiResult> {
+  const driver = await driverFromSession(body);
+  if (!driver) return { ok: false, error: 'session_expired' };
+  const { driverMeetingRespond } = await import('./coord-meet');
+  return driverMeetingRespond(body, driver.id, driver.name);
 }
