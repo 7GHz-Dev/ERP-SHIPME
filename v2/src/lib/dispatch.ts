@@ -54,7 +54,7 @@ import {
   saveInvoice, saveInvoiceBatch
 } from './invoices';
 import type { ApiBody, ApiResult, Handler } from './types';
-import { lineMode } from './coord-line';
+import { lineDiagnostics, lineMode } from './coord-line';
 import { checkinPolicy, id, isWindowsDevice, nowIso, publicUser, validYmd, ymd } from './utils';
 
 export type { ApiBody, ApiResult };
@@ -566,6 +566,10 @@ const handlers: Record<string, Handler> = {
     return session.error || meetingPointSave(body, session.user);
   },
   // ---- หน้าคนขับ (/driver) — ไม่มีบัญชี ERP ใช้ session ที่ได้จาก LINE (LIFF) หรือลิงก์ ----
+  lineDiagnostics: async (body) => {
+    const session = await guard(body, PLAN_ROLES);
+    return session.error || { ok: true, ...(await lineDiagnostics(String(body._origin || ''))) };
+  },
   driverConfig: async () => ({ ok: true, lineMode: lineMode(), liffId: lineMode() === 'live' ? env.liffId : '' }),
   driverAuth,
   driverHome,

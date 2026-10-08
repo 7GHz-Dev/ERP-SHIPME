@@ -142,3 +142,41 @@ function bubble(title: string, lines: string[], buttons: { label: string; uri: s
 export function flexMessage(altText: string, title: string, lines: string[], buttons: { label: string; uri: string; primary?: boolean }[]) {
   return { type: 'flex', altText: altText.slice(0, 400), contents: bubble(title, lines, buttons) };
 }
+
+/**
+ * ตรวจการเชื่อมต่อ LINE OA (ปุ่มในตั้งค่าระบบ) — ทดสอบของจริงทุกข้อ ไม่ใช่แค่ดูว่าตั้งค่าไว้
+ *   token: เรียกข้อมูลบอท / webhook: ให้ LINE ยิงข้อความทดสอบ (ลงลายเซ็นจริง) มาที่ระบบ / โควตาข้อความเดือนนี้
+ */
+export async function lineDiagnostics(origin: string) {
+  const out: Record<string, unknown> = {
+    mode: lineMode(),
+    configured: {
+      accessToken: Boolean(env.lineAccessToken), channelSecret: Boolean(env.lineChannelSecret),
+      loginChannelId: Boolean(env.lineLoginChannelId), liffId: Boolean(env.liffId)
+    },
+    liffIdFormat: /^\d{10}-[A-Za-z0-9]{8}$/.test(env.liffId), loginChannelIdFormat: /^\d{10}$/.test(env.lineLoginChannelId),
+    expectedWebhook: `${origin}/api/line/webhook`, liffEndpoint: `${origin}/driver`
+  };
+  if (!env.lineAccessToken) return out;
+  const call = async (path: string, init: RequestInit = {}) => {
+    try {
+      const res = await fetch(`https://api.line.me${path}`, {
+        ...init, headers: { authorization: `Bearer ${env.lineAccessToken}`, 'content-type': 'application/json', ...(init.headers || {}) },
+        signal: AbortSignal.timeout(15000)
+      });
+      return { status: res.status, data: await res.json().catch(() => ({})) as any };
+    } catch { return { status: 0, data: { message: 'เชื่อมต่อ LINE ไม่ได้' } }; }
+  };
+  const bot = await call('/v2/bot/info');
+  out.bot = bot.status === 200 ? { ok: true, displayName: bot.data.displayName, basicId: bot.data.basicId, chatMode: bot.data.chatMode }
+    : { ok: false, error: bot.data?.message || `HTTP ${bot.status}` };
+  if (bot.status !== 200) return out;
+  const hook = await call('/v2/bot/channel/webhook/endpoint');
+  out.webhook = { endpoint: hook.data?.endpoint || '', active: Boolean(hook.data?.active), matches: hook.data?.endpoint === out.expectedWebhook };
+  const test = await call('/v2/bot/channel/webhook/test', { method: 'POST', body: JSON.stringify({ endpoint: out.expectedWebhook }) });
+  out.webhookTest = { ok: Boolean(test.data?.success), statusCode: test.data?.statusCode, reason: test.data?.reason || test.data?.message || '', detail: test.data?.detail || '' };
+  const quota = await call('/v2/bot/message/quota');
+  const used = await call('/v2/bot/message/quota/consumption');
+  out.quota = { type: quota.data?.type, limit: quota.data?.value ?? null, used: used.data?.totalUsage ?? null };
+  return out;
+}

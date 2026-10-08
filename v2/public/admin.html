@@ -698,6 +698,11 @@
         <button id="tr-check" class="btn btn-ghost btn-sm">🔌 ตรวจการเชื่อมต่อ</button>
         <div id="tr-result" style="margin-top:14px"></div>
 
+        <h3 class="sec" style="margin-top:30px">LINE OA (ประสานงานคนขับ)</h3>
+        <p class="muted" style="margin:0 0 12px">ตรวจของจริง: token ใช้ได้ไหม, LINE ยิง webhook ทดสอบ (ลงลายเซ็นจริง) มาถึงระบบไหม, โควตาข้อความเดือนนี้</p>
+        <button id="line-check" class="btn btn-ghost btn-sm">💬 ตรวจ LINE OA</button>
+        <div id="line-result" style="margin-top:14px"></div>
+
         <h3 class="sec" style="margin-top:30px">ระบบอ่านสลิปโอนเงิน (OCR)</h3>
         <p class="muted" style="margin:0 0 12px">
           ใช้เมื่อพนักงานต้อง <b>โอนคืนบริษัท</b> — ระบบอ่านยอด/วันที่/เลขที่รายการจากรูปสลิปให้อัตโนมัติ
@@ -3411,6 +3416,27 @@ function renderSheetPreview(){
   } catch(e){ toast('วาดตัวอย่างไม่สำเร็จ: '+(e && e.message ? e.message : e), 4000); }
 }
 
+
+// ---------- ตรวจ LINE OA ----------
+$('line-check').addEventListener('click', function(){
+  var b=this; b.disabled=true; $('line-result').innerHTML='<span class="spinner"></span> กำลังตรวจกับ LINE…';
+  api({ action:'lineDiagnostics', token:state.token }).then(function(r){
+    b.disabled=false;
+    if(!guard(r)) return;
+    if(!r.ok){ $('line-result').innerHTML='<div class="err">'+esc(errTH(r.error))+'</div>'; return; }
+    var ok=function(v){ return v?'<span class="pill approved">ผ่าน</span>':'<span class="pill rejected">ไม่ผ่าน</span>'; };
+    var c=r.configured||{}, L=[];
+    L.push(['โหมด', r.mode==='live'?'<span class="pill approved">LIVE (ส่งจริง)</span>':'<span class="pill pending">DEMO — ค่ายังไม่ครบ 4 ค่า</span>']);
+    L.push(['ค่าที่ตั้งไว้', ['accessToken','channelSecret','loginChannelId','liffId'].map(function(k){ return k+' '+(c[k]?'✓':'✗'); }).join(' • ')]);
+    L.push(['รูปแบบ LIFF ID / Login Channel ID', ok(r.liffIdFormat)+' '+ok(r.loginChannelIdFormat)]);
+    if(r.bot) L.push(['Token / บอท', r.bot.ok ? ok(true)+' '+esc(r.bot.displayName)+' ('+esc(r.bot.basicId)+')'+(r.bot.chatMode==='bot'?'':' • chatMode: '+esc(r.bot.chatMode)) : ok(false)+' '+esc(r.bot.error)]);
+    if(r.webhook) L.push(['Webhook URL ใน LINE', (r.webhook.matches?ok(true):ok(false)+' ควรเป็น <code>'+esc(r.expectedWebhook)+'</code>')+' • '+esc(r.webhook.endpoint||'(ว่าง)')+' • '+(r.webhook.active?'เปิดใช้':'<b>ยังไม่ได้เปิด Use webhook</b>')]);
+    if(r.webhookTest) L.push(['ทดสอบ webhook (LINE ยิงมา)', r.webhookTest.ok ? ok(true)+' HTTP '+esc(r.webhookTest.statusCode) : ok(false)+' '+esc(r.webhookTest.reason)+' '+esc(r.webhookTest.statusCode||'')+(r.webhookTest.statusCode==401?' — Channel secret ไม่ตรง':'')]);
+    if(r.quota) L.push(['โควตาข้อความเดือนนี้', (r.quota.used!=null?r.quota.used:'?')+' / '+(r.quota.limit!=null?r.quota.limit:'ไม่จำกัด')+' ('+esc(r.quota.type||'')+')']);
+    L.push(['LIFF Endpoint URL ที่ต้องตั้ง', '<code>'+esc(r.liffEndpoint)+'</code>']);
+    $('line-result').innerHTML='<div class="tbl-wrap"><table class="grid"><tbody>'+L.map(function(x){ return '<tr><td class="name" style="text-align:left">'+x[0]+'</td><td style="text-align:left">'+x[1]+'</td></tr>'; }).join('')+'</tbody></table></div>';
+  }).catch(function(){ b.disabled=false; $('line-result').textContent='เชื่อมต่อเซิร์ฟเวอร์ไม่ได้'; });
+});
 
 // ---------- ใบแจ้งหนี้ ----------
 // V  = มี VAT   → หัวข้อตามรายการ VAT จากใบปิดบัญชี ÷ 1.04 แล้วบวก VAT 7%
