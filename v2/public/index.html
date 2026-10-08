@@ -505,8 +505,13 @@
         <div class="info-line"><div class="ico">🧾</div><div style="flex:1"><div class="lbl" id="st-balance-lbl">คงเหลือ</div><div class="val" id="st-balance" style="font-size:20px;color:var(--blue)">0 บาท</div></div></div>
         <!-- โอนคืนบริษัท: บังคับเลือกวันที่ + แนบสลิป (โชว์เฉพาะตอนคงเหลือเป็นบวก) -->
         <div id="st-return-wrap" class="hidden">
-          <label style="margin-top:12px">วันที่โอนคืนบริษัท <span style="color:var(--err)">*</span></label>
+          <label style="margin-top:12px">วันที่โอนคืนบริษัท <span class="muted">(ตามสลิปใบแรก)</span> <span style="color:var(--err)">*</span></label>
           <input id="st-returned" type="date" class="date-fit">
+
+          <!-- โอนหลายครั้ง: ใส่ยอดของสลิปใบแรก แล้วแนบใบถัดไปด้านล่าง (แต่ละใบเลือกวันที่โอนเอง) ระบบรวมยอดเทียบให้ -->
+          <label>ยอดที่โอนในสลิปใบแรก (บาท) <span class="muted">— โอนครั้งเดียวไม่ต้องแก้</span></label>
+          <input id="st-slip-expect" type="number" inputmode="decimal" min="0" step="0.01" class="date-fit" style="margin-bottom:6px">
+          <div id="st-slip-split" class="muted" style="margin:0 0 12px">โอนหลายครั้ง: ใส่ยอดของสลิปใบแรก แล้วแนบสลิปใบถัดไปด้านล่าง ระบบรวมยอดโอนทุกใบเทียบกับยอดที่ต้องโอนคืน</div>
 
           <label>สลิปโอนเงิน <span style="color:var(--err)">*</span> <span class="muted">(ทุกธนาคาร — ระบบอ่านยอดและวันที่ให้)</span></label>
           <div class="slip-box">
@@ -539,7 +544,7 @@
 
           <!-- สลิปโอนเพิ่ม: แก้ใบที่แนบสลิปแล้ว แต่ยอดเพิ่มขึ้น → โอนแค่ส่วนต่าง แนบได้หลายใบ -->
           <div id="st-extra-wrap" class="hidden">
-            <label>สลิปโอนเพิ่ม <span class="muted">(ยอดเพิ่มขึ้นหลังแนบสลิปเดิม — โอนเฉพาะส่วนต่าง)</span></label>
+            <label id="st-extra-title">สลิปโอนเพิ่ม <span class="muted">(ยอดเพิ่มขึ้นหลังแนบสลิปเดิม — โอนเฉพาะส่วนต่าง)</span></label>
             <div id="st-extra-list"></div>
             <div id="st-extra-add" class="slip-box">
               <div id="st-extra-need" class="status wait" style="margin:0 0 10px"></div>
@@ -870,8 +875,8 @@ var ERR_TH = {
   slip_mismatch:'สลิปไม่ตรงกับยอด/วันที่ที่ต้องโอนคืน',
   slip_unreadable:'อ่านข้อมูลในสลิปไม่ออก — ถ่าย/แคปสลิปให้ชัดแล้วแนบใหม่',
   slip_recheck_required:'ยอดหรือวันที่เปลี่ยนไปจากสลิปเดิม — แนบสลิปใหม่ให้ตรงก่อน',
-  slip_extra_required:'ยอดเพิ่มขึ้นจากสลิปเดิม — แนบสลิปโอนเพิ่มให้ครบยอดก่อน',
-  slip_extra_too_much:'ยอดสลิปโอนเพิ่มเกินยอดที่ต้องโอนคืน',
+  slip_extra_required:'ยอดโอนรวมยังไม่ครบยอดที่ต้องโอนคืน — แนบสลิปเพิ่มให้ครบก่อน',
+  slip_extra_too_much:'ยอดสลิปรวมเกินยอดที่ต้องโอนคืน',
   extra_slip_date_required:'เลือกวันที่โอนเพิ่มก่อน',
   too_many_slips:'แนบสลิปโอนเพิ่มได้ไม่เกิน 10 ใบ',
   slip_txn_duplicate:'สลิปใบนี้ (เลขที่รายการเดิม) ถูกใช้กับใบปิดบัญชีอื่นไปแล้ว',
@@ -2993,6 +2998,9 @@ function updateSettleSummary(){
     }
   }
   renderOverpay(due, bal);
+  // ช่องยอดสลิปใบแรกตามยอดที่ต้องโอนเอง จนกว่าพนักงานจะแก้ (แบ่งโอน)
+  if(!settle.mainEdited && document.activeElement!==$('st-slip-expect')) $('st-slip-expect').value = due>0 ? due : '';
+  $('st-slip-split').classList.toggle('hidden', !(due>0));
   // ใบใหม่ต้องมีไฟล์หลักฐานการตรวจปล่อย (ใบเก่าที่แก้ไขไม่บังคับ)
   if(ready && !f.id && !(insp.date===f.inspectDate && insp.files.length)) miss.push('แนบหลักฐานการตรวจปล่อย (ข้อ 4)');
   renderExtraSlips(due, f.returnedDate);
@@ -3025,6 +3033,7 @@ function resetSlip(){
   $('st-slip-info').innerHTML='';
   $('st-slip-manual').classList.add('hidden');
   $('st-slip-amt').value=''; $('st-slip-date').value=''; $('st-slip-txn').value='';
+  settle.mainEdited=false; $('st-slip-expect').value='';
   setSlipStatus('wait','แนบสลิปโอนเงินของยอดที่ต้องโอนคืน');
   resetExtraSlips();
 }
@@ -3033,7 +3042,7 @@ function resetSlip(){
 $('st-slip-retry').addEventListener('click', function(){
   var f=settle.form, sp=settle.slip;
   if(!f || !sp || !sp.fileId){ toast('แนบสลิปก่อน'); return; }
-  var bal=settleDue(), date=f.returnedDate;
+  var bal=mainExpect(), date=f.returnedDate;
   setSlipStatus('wait','<span class="spinner"></span> กำลังลองอ่านสลิปอีกครั้ง…');
   api({action:'verifySlip', token:state.token, fileId:sp.fileId, retryOcr:true, expectDate:date, expectAmount:bal})
     .then(function(res){ applySlipResult(res, bal, date); })
@@ -3044,7 +3053,7 @@ $('st-slip-retry').addEventListener('click', function(){
 $('st-slip-confirm').addEventListener('click', function(){
   var f=settle.form, sp=settle.slip;
   if(!f || !sp || !sp.fileId){ toast('แนบสลิปก่อน'); return; }
-  var bal=settleDue(), date=f.returnedDate;
+  var bal=mainExpect(), date=f.returnedDate;
   var manual={ amount:Number($('st-slip-amt').value)||0, date:$('st-slip-date').value, txn:$('st-slip-txn').value.trim() };
   if(!manual.txn){ toast('กรอกเลขที่รายการในสลิปด้วย'); return; }
   if(!manual.date){ toast('เลือกวันที่โอนในสลิป'); return; }
@@ -3058,8 +3067,19 @@ $('st-slip-confirm').addEventListener('click', function(){
 function slipState(bal, date){
   var sp=settle.slip;
   if(!sp) return { ok:false, why:'แนบสลิปโอนเงิน' };
-  var stale = (sp.expectAmount!==bal) || (sp.expectDate!==date);
-  if(!stale) return { ok:!!sp.canSave, why: sp.canSave ? '' : ('สลิปยังไม่ผ่านการตรวจ — '+(sp.label||'')) };
+  // สลิปที่เพิ่งแนบตรวจกับยอดของใบแรก (แบ่งโอนได้) — สลิปที่บันทึกไว้แล้วตรวจกับยอดทั้งหมดเหมือนเดิม
+  var expect = sp.fileId ? mainExpect() : bal;
+  var stale = (sp.expectAmount!==expect) || (sp.expectDate!==date);
+  if(!stale){
+    if(!sp.canSave) return { ok:false, why:'สลิปยังไม่ผ่านการตรวจ — '+(sp.label||'') };
+    if(sp.fileId && bal-expect>extraTol()){
+      // แบ่งโอน: รวมสลิปใบแรก + ใบถัดไป ต้องเท่ายอดที่ต้องโอนคืน
+      var short=extraShort(bal);
+      if(short>extraTol()) return { ok:false, why:'แนบสลิปใบถัดไปอีก '+fmtM(short)+' บาท (ยอดโอนรวมยังไม่ครบ)' };
+      if(short<-extraTol()) return { ok:false, why:'ยอดสลิปรวมเกินยอดที่ต้องโอนคืน '+fmtM(-short)+' บาท' };
+    }
+    return { ok:true, why:'' };
+  }
   if(sp.fileId){ scheduleSlipRecheck(); return { ok:false, why:'กำลังตรวจสลิปกับยอด/วันที่ใหม่' }; }
   // สลิปเดิมที่บันทึกไว้: วันที่เดิม + ยอดเพิ่มขึ้น = แนบสลิปโอนเพิ่มเฉพาะส่วนต่างได้ ไม่ต้องแนบใหม่ทั้งหมด
   var ex=extraSlipState(bal, date);
@@ -3075,7 +3095,7 @@ function scheduleSlipRecheck(){
 function recheckSlip(){
   var f=settle.form, sp=settle.slip;
   if(!f || !sp || !sp.fileId) return;
-  var bal=settleDue();
+  var bal=mainExpect();
   if(!(bal>0) || !f.returnedDate) return;
   if(sp.expectAmount===bal && sp.expectDate===f.returnedDate) return;
   setSlipStatus('wait','<span class="spinner"></span> ตรวจสลิปกับยอด/วันที่ใหม่…');
@@ -3100,7 +3120,27 @@ function resetExtraSlips(){
 }
 function savedSlip(){ var sp=settle.slip; return (sp && !sp.fileId && sp.status==='saved') ? sp : null; }
 function extraTotal(){ return r2((settle.extras||[]).reduce(function(t,x){ return t+(Number(x.amount)||0); },0)); }
-function extraShort(bal){ var sp=savedSlip(); return sp ? r2(bal-(Number(sp.amount)||0)-extraTotal()) : 0; }
+/**
+ * สลิปใบแรกที่สลิปใบถัดไปต่อยอดจาก — ใบที่บันทึกไว้แล้ว (แก้ใบ ยอดเพิ่มขึ้น)
+ * หรือใบที่เพิ่งแนบและตรวจผ่านด้วยยอดบางส่วน (แบ่งโอนหลายครั้งตั้งแต่รอบแรก)
+ */
+function baseSlip(){
+  var sp=savedSlip(); if(sp) return sp;
+  var s=settle.slip;
+  return (s && s.fileId && s.canSave) ? { amount:s.expectAmount, date:s.expectDate, fresh:true } : null;
+}
+function extraShort(bal){ var sp=baseSlip(); return sp ? r2(bal-(Number(sp.amount)||0)-extraTotal()) : 0; }
+
+/** ยอดที่สลิปใบแรกต้องตรง — ค่าในช่อง "ยอดที่โอนในสลิปใบแรก" (ว่าง/มากกว่ายอดที่ต้องโอน = ยอดเต็ม) */
+function mainExpect(){
+  var due=settleDue(), v=r2(Number($('st-slip-expect').value)||0);
+  return (v>0 && v<due) ? v : due;
+}
+$('st-slip-expect').addEventListener('input', function(){
+  settle.mainEdited = this.value!=='' && r2(Number(this.value)||0)!==settleDue();
+  scheduleSlipRecheck();
+  updateSettleSummary();
+});
 
 /** ใช้สลิปโอนเพิ่มกับใบนี้ได้ไหม — null = ไม่เข้าเงื่อนไข ให้ slipState ตัดสินแบบเดิม */
 function extraSlipState(bal, date){
@@ -3133,7 +3173,10 @@ function renderOverpay(due, bal){
 }
 
 function renderExtraSlips(bal, date){
-  var sp=savedSlip();
+  var sp=baseSlip();
+  $('st-extra-title').innerHTML = (sp && sp.fresh)
+    ? 'สลิปใบถัดไป <span class="muted">(โอนหลายครั้ง — แต่ละใบเลือกวันที่โอนของตัวเอง)</span>'
+    : 'สลิปโอนเพิ่ม <span class="muted">(ยอดเพิ่มขึ้นหลังแนบสลิปเดิม — โอนเฉพาะส่วนต่าง)</span>';
   var usable = !!sp && Number(sp.amount)>0 && sp.date===date;
   var list=settle.extras||[];
   var short=usable ? extraShort(bal) : 0;
@@ -3159,8 +3202,8 @@ function renderExtraSlips(bal, date){
   var canAdd = short>extraTol() && list.length<EXTRA_MAX;
   $('st-extra-add').classList.toggle('hidden', !canAdd);
   if(canAdd){
-    $('st-extra-need').textContent='ต้องโอนเพิ่มอีก '+fmtM(short)+' บาท (สลิปเดิม '+fmtM(sp.amount)+
-      (list.length?(' + โอนเพิ่มแล้ว '+fmtM(extraTotal())):'')+' / คงเหลือ '+fmtM(bal)+')';
+    $('st-extra-need').textContent='ต้องโอนอีก '+fmtM(short)+' บาท (สลิป'+(sp.fresh?'ใบแรก ':'เดิม ')+fmtM(sp.amount)+
+      (list.length?(' + ใบถัดไป '+fmtM(extraTotal())):'')+' = '+fmtM(r2(Number(sp.amount)+extraTotal()))+' / ต้องโอนคืน '+fmtM(bal)+')';
     if(!$('st-extra-date').value) $('st-extra-date').value=todayYmd();
     var ex=Number($('st-extra-expect').value)||0;
     if(!(ex>0) || ex-short>extraTol()) $('st-extra-expect').value=short;
@@ -3284,7 +3327,7 @@ function slipSourceImage(){
 function resizeSlipAndSend(maxW, quality){
   var f=settle.form, src=slipSourceImage();
   if(!f || !src){ toast('แนบสลิปก่อน'); return; }
-  var bal=settleDue(), date=f.returnedDate;
+  var bal=mainExpect(), date=f.returnedDate;
   if(!(bal>0) || !date){ toast('ต้องมียอดที่ต้องโอนคืนและวันที่โอนคืนก่อน'); return; }
   settle.slipMaxW=maxW;
   setSlipStatus('wait','<span class="spinner"></span> กำลังเตรียมรูป (กว้าง '+maxW+' px)…');
@@ -3336,6 +3379,8 @@ $('st-slip-file').addEventListener('change', function(){
 });
 
 function sendSlip(dataUrl, bal, date){
+  // สลิปใบแรกใบใหม่ = สลิปใบถัดไป/โอนเพิ่มที่ต่อจากใบเดิมไม่เกี่ยวแล้ว (ตรวจซ้ำกับยอด/วันที่ใหม่ไม่ล้าง)
+  if(settle.slip && !settle.slip.fileId) resetExtraSlips();
   setSlipStatus('wait','<span class="spinner"></span> กำลังอัปโหลดและอ่านสลิป… (อาจใช้เวลาสักครู่)');
   $('st-slip-info').classList.add('hidden');
   var prevId=(settle.slip && settle.slip.fileId)||'';
@@ -3371,7 +3416,6 @@ function applySlipResult(res, bal, date){
   settle.slip={ fileId:res.fileId, url:res.url, txn:res.txn||'', amount:Number(res.amount)||0,
                 date:res.date||'', status:res.status, label:res.label||'', canSave:!!res.canSave,
                 expectAmount:bal, expectDate:date };
-  resetExtraSlips();      // สลิปหลักใบใหม่ต้องครบยอดเอง สลิปโอนเพิ่มของสลิปเดิมไม่เกี่ยวแล้ว
   var icon = (res.status==='verified') ? '✅ ' : (res.status==='mismatch' ? '❌ ' : (res.status==='manual' ? '📝 ' : '⚠️ '));
   var kind = (res.status==='verified'||res.status==='manual') ? 'ok' : (res.status==='mismatch' ? 'err' : 'wait');
   setSlipStatus(kind, icon+esc(res.label||''));
@@ -3386,7 +3430,8 @@ function applySlipResult(res, bal, date){
   L.push(slipInfoRow('วันที่'+read, res.date?fmtD(res.date):'อ่านไม่ออก', !!res.dateOk));
   L.push(slipInfoRow('เลขที่รายการ', res.txn||'อ่านไม่ออก', !!res.txn));
   if(res.bank) L.push(slipInfoRow('ธนาคาร', res.bank, true));
-  L.push('<div class="slip-row"><span>ต้องโอนคืน</span><b>'+fmtM(bal)+' บาท • '+esc(fmtD(date))+'</b></div>');
+  var due=settleDue();
+  L.push('<div class="slip-row"><span>'+(due-bal>extraTol()?'ยอดสลิปใบแรก (จากที่ต้องโอนคืน '+fmtM(due)+')':'ต้องโอนคืน')+'</span><b>'+fmtM(bal)+' บาท • '+esc(fmtD(date))+'</b></div>');
   if(res.status==='mismatch' && res.payeeOk===false){
     L.push('<div style="margin-top:6px">ต้องโอนเข้าบัญชี <b>'+esc(res.payeeLabel||'บริษัท')+'</b> เท่านั้น — สลิปเติมเงินวอลเล็ตหรือโอนเข้าบัญชีอื่นใช้ไม่ได้</div>');
   } else if(res.status==='mismatch'){
@@ -3645,9 +3690,10 @@ $('st-save').addEventListener('click', function(){
     id:f.id, inspectDate:f.inspectDate, rows:f.rows,
     returnedDate:f.returnedDate, companyReturnedDate:f.companyReturnedDate,
     // ส่งแค่ id ของไฟล์สลิป — เซิร์ฟเวอร์ไปอ่านผลตรวจของไฟล์นั้นเอง ไม่เชื่อค่าที่หน้าเว็บส่งมา
-    slip: (settle.slip && settle.slip.fileId) ? { fileId:settle.slip.fileId } : null,
-    // สลิปโอนเพิ่ม: ใบเดิมส่งแค่ url ให้เซิร์ฟเวอร์คงไว้ / ใบใหม่ส่ง id ให้เซิร์ฟเวอร์ตรวจเอง
-    extraSlips: (settle.slip && settle.slip.fileId) ? [] : (settle.extras||[]).map(function(x){
+    // amount = ยอดของสลิปใบแรก (น้อยกว่ายอดที่ต้องโอน = แบ่งโอน ใบถัดไปอยู่ใน extraSlips)
+    slip: (settle.slip && settle.slip.fileId) ? { fileId:settle.slip.fileId, amount:settle.slip.expectAmount } : null,
+    // สลิปโอนเพิ่ม / สลิปใบถัดไป: ใบเดิมส่งแค่ url ให้เซิร์ฟเวอร์คงไว้ / ใบใหม่ส่ง id ให้เซิร์ฟเวอร์ตรวจเอง
+    extraSlips: (settle.extras||[]).map(function(x){
       return x.fileId ? { fileId:x.fileId, date:x.date, amount:x.amount } : { url:x.url };
     })
   }}).then(function(res){

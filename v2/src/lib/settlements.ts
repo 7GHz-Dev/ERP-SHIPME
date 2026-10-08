@@ -356,11 +356,18 @@ async function transferGate(o: {
   if (!o.returnedDate) return { error: { ok: false, error: 'returned_date_required' } };
   if (!fileId) return { error: { ok: false, error: 'slip_required' } };
 
+  // โอนหลายครั้งตั้งแต่รอบแรก: พนักงานบอกยอดของสลิปใบแรก (น้อยกว่ายอดที่ต้องโอน) แล้วแนบใบถัดไปใน extraSlips
+  // ไม่ส่งยอดมา / ส่งยอดเต็ม = สลิปใบเดียวครบยอดเหมือนเดิม
+  const claimed = round2(o.slipInput?.amount);
+  const split = claimed > 0 && due - claimed > env.slipAmountTolerance;
+  const mainExpect = split ? claimed : due;
+
   const stored = await getSlip(fileId, o.owner);
   if (!stored.ok) return { error: stored };
-  const checked = checkStoredSlip(stored.info, o.returnedDate, due);
+  const checked = checkStoredSlip(stored.info, o.returnedDate, mainExpect);
   if (checked.status === 'mismatch') return { error: { ok: false, error: 'slip_mismatch', detail: checked.label } };
-  if (checked.status === 'unreadable' && env.slipStrict) {
+  if (checked.status === 'unreadable' && (env.slipStrict || split)) {
+    // แบ่งโอนหลายใบต้องรู้ยอดจริงของแต่ละใบ — อ่านไม่ออกต้องกรอกค่าจากสลิปเองก่อน
     return { error: { ok: false, error: 'slip_unreadable', detail: checked.label } };
   }
 
@@ -374,15 +381,23 @@ async function transferGate(o: {
     }
   }
 
-  return {
-    returnedDate: o.returnedDate,
-    slip: {
-      url: stored.row.url, txn, amount: round2(values.amount), date: String(values.date || ''),
-      status: checked.label, bank: String(stored.info.bank || '')
-    },
-    // แนบสลิปหลักใบใหม่ = ใบนั้นต้องครบยอดเอง สลิปโอนเพิ่มเดิมไม่เกี่ยวแล้ว
-    extras: []
+  const slip: SlipValues = {
+    // แบ่งโอน = เก็บยอดที่ตรวจผ่านของใบนี้ (เหมือนสลิปโอนเพิ่ม) ไม่ใช่ยอดแรกที่ OCR หยิบมา
+    url: stored.row.url, txn, amount: split ? mainExpect : round2(values.amount), date: String(values.date || ''),
+    status: checked.label, bank: String(stored.info.bank || '')
   };
+  if (!split) {
+    // แนบสลิปหลักใบใหม่ครบยอด = สลิปโอนเพิ่มเดิมไม่เกี่ยวแล้ว
+    return { returnedDate: o.returnedDate, slip, extras: [] };
+  }
+  // สลิปใบถัดไป: แต่ละใบตรวจยอด/วันที่ของตัวเอง แล้วรวมทุกใบต้องเท่ายอดที่ต้องโอนคืน
+  const gate = await gateExtraSlips(due, slip, o.extraInput, [], o.owner, o.selfId);
+  if (gate.error) return gate;
+  const short = round2(due - mainExpect - slipTotal(gate.extras!));
+  if (short > env.slipAmountTolerance) {
+    return { error: { ok: false, error: 'slip_extra_required', detail: `ยอดโอนรวมยังขาดอีก ${fmtBaht(short)} บาท` } };
+  }
+  return { returnedDate: o.returnedDate, slip, extras: gate.extras };
 }
 
 /** วันที่บริษัทโอนคืน: มีสลิปโอนคืน = วันที่สลิปล่าสุดเมื่อคืนครบแล้ว (ยังไม่ครบ = ว่าง) • ไม่มีสลิป = ค่าที่บันทึกเอง */
@@ -504,7 +519,8 @@ export async function saveSettlement(
   const balance = round2(claim.total - totalExpense);
   const gate = await transferGate({
     balance, refunded: 0, returnedDate, slipInput: input?.slip, owner: user.username, selfId: '',
-    previous: null, previousReturnedDate: '', extraInput: null, previousExtras: []
+    // ใบใหม่ก็แบ่งโอนหลายครั้งได้ — สลิปใบถัดไปมาใน extraSlips
+    previous: null, previousReturnedDate: '', extraInput: input?.extraSlips ?? null, previousExtras: []
   });
   if (gate.error) return gate.error;
 
@@ -514,7 +530,8 @@ export async function saveSettlement(
     returnedDate: gate.returnedDate!, companyReturnedDate: isBoss ? companyDate : '',
     slipUrl: gate.slip!.url, slipTxn: gate.slip!.txn, slipAmount: gate.slip!.amount,
     slipDate: gate.slip!.date, slipStatus: gate.slip!.status, slipBank: gate.slip!.bank,
-    extraSlips: [], companySlips: [], imageUrl: ''
+    // แบ่งโอนหลายครั้งตั้งแต่รอบแรก = สลิปใบถัดไปเก็บรวมกับสลิปโอนเพิ่ม (รวมยอดโอนที่ settlementMoney)
+    extraSlips: gate.extras || [], companySlips: [], imageUrl: ''
   };
   record.detail = detail(record);
 
@@ -525,7 +542,8 @@ export async function saveSettlement(
       returnedDate: record.returnedDate, companyReturnedDate: record.companyReturnedDate,
       rowsJson: JSON.stringify(rows), detail: record.detail, imageUrl: '',
       slipUrl: record.slipUrl, slipTxn: record.slipTxn, slipAmount: record.slipAmount,
-      slipDate: record.slipDate, slipStatus: record.slipStatus, slipBank: record.slipBank
+      slipDate: record.slipDate, slipStatus: record.slipStatus, slipBank: record.slipBank,
+      extraSlipsJson: JSON.stringify(record.extraSlips)
     });
   } catch (error) {
     const message = String(error);
