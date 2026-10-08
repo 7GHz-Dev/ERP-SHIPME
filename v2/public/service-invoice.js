@@ -4,7 +4,7 @@
  * ดึงงานจากชีตงานขนส่งตามช่วงวันที่ตรวจปล่อย แล้วทำเอกสารชุดเดียวกับที่ฝ่ายบัญชีทำมือ:
  *   ต่อไฟล์ชีต (แม่สอดฟรีโซน / TRANSIT): ใบสรุปจำนวนตู้ + ใบแจ้งหนี้ค่าบริการตรวจปล่อย
  *   รวมทุกไฟล์: ใบสรุปค่าบริการเพิ่มเติม + ใบแจ้งหนี้ค่าบริการเพิ่มเติม
- * ทำ PDF อย่างเดียว ไม่บันทึกใบลงระบบ — เลขที่ใบตั้งจากช่อง "เลขที่เริ่มต้น"
+ * กด "บันทึกเข้าระบบ" แล้วใบเข้าลูกหนี้คงค้างค่าบริการ (service-ar.js) — เลขที่เริ่มต้นได้จากเลขถัดไปในระบบ แก้เองได้
  *
  * ใช้ $, api, state, esc, baht จากสคริปต์หลักของ admin.html (เรียกตอนเปิดแท็บ ไม่ใช่ตอนโหลดไฟล์)
  */
@@ -29,6 +29,7 @@ function initServiceInvoice(){
   $('svc-to').value = svcLocalYmd(to);
   $('svc-issue').value = svcLocalYmd(now);
   $('svc-start').value = 'IN'+svcPeriod()+'01';
+  svcFetchNext();
   // เปลี่ยนช่วงวันที่ = ข้อมูลที่ดึงไว้ไม่ตรงช่วงแล้ว ต้องกด "ดึงข้อมูล" ใหม่
   $('svc-from').addEventListener('change', function(){
     if(this.value && (!$('svc-to').value || $('svc-to').value < this.value)) $('svc-to').value = this.value;
@@ -38,6 +39,7 @@ function initServiceInvoice(){
   $('svc-issue').addEventListener('change', function(){
     // เลขที่ใบผูกกับเดือนที่ออกใบ — เปลี่ยนเดือนแล้วเริ่ม 01 ของเดือนนั้น
     $('svc-start').value = 'IN'+svcPeriod()+'01';
+    svcFetchNext();
     svcRenderDocs();
   });
   ['svc-start','svc-rate-c','svc-rate-r'].forEach(function(id){
@@ -49,6 +51,14 @@ function initServiceInvoice(){
     svcRenderExtras(); svcRenderDocs();
   });
   $('svc-pdf-all').addEventListener('click', function(){ svcOpenPdf(svcDocuments(), 'ชุดใบแจ้งหนี้ค่าบริการ'); });
+}
+
+/** เลขที่เริ่มต้น = เลขถัดไปของเดือนที่ออกใบ (ต่อจากใบที่บันทึกในระบบแล้ว) */
+function svcFetchNext(){
+  var issue = $('svc-issue').value;
+  api({ action:'serviceInvoiceNext', token:state.token, issueDate:issue }).then(function(res){
+    if(res.ok && $('svc-issue').value===issue){ $('svc-start').value = res.number; svcRenderDocs(); }
+  }).catch(function(){});
 }
 
 function svcRangeChanged(){
@@ -148,7 +158,8 @@ function svcDocuments(){
 
   data.sources.forEach(function(src){
     if(!(src.containers+src.roro)) return;
-    docs.push(Object.assign({ kind:'SUMMARY', title:'ใบสรุปจำนวนตู้ ('+src.label+')', subtitle:src.label, monthLabel:monthLabel, date:to,
+    var sumDoc;
+    docs.push(sumDoc = Object.assign({ kind:'SUMMARY', title:'ใบสรุปจำนวนตู้ ('+src.label+')', subtitle:src.label, monthLabel:monthLabel, date:to,
       headers:['ลำดับ','รายการ (BL)','จำนวน (ตู้)','หมายเหตุ'],
       rows:src.rows.map(function(r){ return { label:r.bl, qty:String(r.containers), note:r.roro?'งาน : RORO':'', highlight:r.roro }; }),
       total:String(src.containers+src.roro), sum:src.containers+src.roro }, base));
@@ -156,18 +167,22 @@ function svcDocuments(){
     var head = 'ค่าบริการตรวจปล่อยสินค้าผ่านพิธีการศุลกากร\n';
     if(src.containers) items.push({ no:items.length+1, label:head+monthLine+'\n'+range, qty:src.containers, unitPrice:rateC, amount:svcRound2(src.containers*rateC), note:'', fit:true });
     if(src.roro) items.push({ no:items.length+1, label:head+monthLine+' - งาน : RORO\n'+range, qty:src.roro, unitPrice:rateR, amount:svcRound2(src.roro*rateR), note:'', fit:true });
-    docs.push(invoice('ใบแจ้งหนี้ค่าบริการตรวจปล่อย ('+src.label+')', items));
+    // ข้อมูลประกอบตอนบันทึก: ประเภท/ไฟล์/ช่วงวันที่ + ใบสรุปที่แนบคู่ (พิมพ์ซ้ำได้หน้าตาเดิม)
+    docs.push(Object.assign(invoice('ใบแจ้งหนี้ค่าบริการตรวจปล่อย ('+src.label+')', items),
+      { category:'inspect', source:src.file, rangeFrom:from, rangeTo:to, summary:sumDoc }));
   });
 
   var extras = svcState.extras.filter(function(x){ return String(x.label||'').trim() && Number(x.amount)>0; });
   if(extras.length){
     var sum = svcRound2(extras.reduce(function(s, x){ return s+Number(x.amount); }, 0));
-    docs.push(Object.assign({ kind:'SUMMARY', title:'ใบสรุปค่าบริการเพิ่มเติม', subtitle:'ค่าบริการเพิ่มเติม', monthLabel:monthLabel, date:to,
+    var extraSum;
+    docs.push(extraSum = Object.assign({ kind:'SUMMARY', title:'ใบสรุปค่าบริการเพิ่มเติม', subtitle:'ค่าบริการเพิ่มเติม', monthLabel:monthLabel, date:to,
       headers:['ลำดับ','รายการ (BL)','จำนวน','หมายเหตุ'],
       rows:extras.map(function(x){ return { label:x.label, qty:svcMoney(x.amount), note:x.bl, highlight:false }; }),
       total:svcMoney(sum), sum:sum }, base));
-    docs.push(invoice('ใบแจ้งหนี้ค่าบริการเพิ่มเติม',
-      [{ no:1, label:'ค่าบริการเพิ่มเติม '+monthLine+'\n'+range, qty:1, unitPrice:sum, amount:sum, note:'', fit:true }]));
+    docs.push(Object.assign(invoice('ใบแจ้งหนี้ค่าบริการเพิ่มเติม',
+      [{ no:1, label:'ค่าบริการเพิ่มเติม '+monthLine+'\n'+range, qty:1, unitPrice:sum, amount:sum, note:'', fit:true }]),
+      { category:'extra', source:'', rangeFrom:from, rangeTo:to, summary:extraSum }));
   }
   return docs;
 }

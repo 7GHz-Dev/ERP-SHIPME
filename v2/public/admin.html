@@ -218,6 +218,19 @@
 .inv-row-actions{display:grid;gap:8px;min-width:112px}.inv-source-table .pill{display:block;margin-bottom:5px}
 /* ---- แพลนงานตรวจปล่อย (job-plan.js) ---- */
 .wrap:has(#tab-plan:not(.hidden)){max-width:1780px}
+/* ใบแจ้งหนี้: แยกส่วน ADV / ค่าบริการ */
+.inv-groups{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}
+.inv-grp{border:1.5px solid var(--line);background:#fff;border-radius:12px;padding:10px 18px;font:700 15px inherit;font-family:inherit;color:#334155;cursor:pointer}
+.inv-grp small{font-weight:600;color:var(--muted);margin-left:4px}
+.inv-grp.active{border-color:var(--blue2);background:var(--blue2);color:#fff}
+.inv-grp.active small{color:#dbeafe}
+/* การ์ดสรุปลูกหนี้คงค้าง */
+.ar-sum{display:grid;grid-template-columns:1.3fr repeat(4,1fr);gap:10px;margin:0 0 10px}
+.ar-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.ar-card .l{font-size:12px;color:var(--muted)}.ar-card .n{font-size:20px;font-weight:800;color:var(--blue);margin-top:2px}.ar-card .s{font-size:12px;color:var(--muted)}
+.ar-card.main{background:var(--blue);border-color:var(--blue)}.ar-card.main .l,.ar-card.main .s{color:#cbd5e1}.ar-card.main .n{color:#fff;font-size:24px}
+.ar-card.late{border-color:#fca5a5;background:#fff5f5}.ar-card.late .n{color:#b91c1c}
+@media (max-width:900px){.ar-sum{grid-template-columns:1fr 1fr}}
 /* รายการปิดบัญชีของพนักงาน — กว้างเต็มจอ + กดหัวคอลัมน์เพื่อเรียง */
 .wrap:has(#tab-settle:not(.hidden)){max-width:1780px}
 #sm-head th.sm-sort{cursor:pointer;user-select:none}
@@ -286,6 +299,8 @@
 <script src="/shipping-income.js"></script>
 <script src="/shipping-reconcile.js"></script>
 <script src="/job-plan.js"></script>
+<script src="/ar-report.js"></script>
+<script src="/service-ar.js"></script>
 </head>
 <body>
 
@@ -672,18 +687,27 @@
     <!-- RECEIPT (ใบเสร็จที่พนักงานถ่ายส่ง) -->
     <section id="tab-invoice" class="hidden">
       <h3 class="sec">ใบแจ้งหนี้</h3>
-      <p class="muted" style="margin:0 0 14px">
+      <!-- แยก 2 ส่วน: ADV (สำรองจ่าย จากใบปิดบัญชี) / ค่าบริการ (IN จากชีตงานขนส่ง) — แต่ละส่วนมีเมนูย่อยของตัวเอง -->
+      <div class="inv-groups">
+        <button type="button" class="inv-grp active" data-grp="adv">📦 ใบแจ้งหนี้ ADV <small>สำรองจ่าย</small></button>
+        <button type="button" class="inv-grp" data-grp="svc">🧾 ใบแจ้งหนี้ค่าบริการ <small>IN</small></button>
+      </div>
+      <p class="muted inv-grp-adv" style="margin:0 0 14px">
         เลือกงานจากใบปิดบัญชีของพนักงานชิปปิ้งมาออกใบแจ้งหนี้ —
         <b>V</b> = มี VAT (หัวข้อตามรายการ VAT จากใบปิดบัญชี <b>หาร 1.04</b> เพื่อถอดค่าบริการ 4% แล้วบวก VAT 7%),
         <b>NV</b> = ไม่มี VAT (ค่าแลก DO และค่า ORDER FORM)
       </p>
 
-      <div class="subnav">
+      <div class="subnav inv-grp-adv">
         <button type="button" class="btn btn-ghost btn-sm inv-sub active" data-sub="new">➕ ออกใบใหม่</button>
         <button type="button" class="btn btn-ghost btn-sm inv-sub" data-sub="list">📄 ใบที่ออกแล้ว</button>
         <button type="button" class="btn btn-ghost btn-sm inv-sub" data-sub="wait">📮 รอลูกค้ารับเอกสาร</button>
-        <button type="button" class="btn btn-ghost btn-sm inv-sub" data-sub="ar">💰 ลูกหนี้สำรองจ่ายคงค้าง</button>
-        <button type="button" class="btn btn-ghost btn-sm inv-sub" data-sub="svc">🧾 ใบแจ้งหนี้ค่าบริการ</button>
+        <button type="button" class="btn btn-ghost btn-sm inv-sub" data-sub="ar">💰 ลูกหนี้คงค้าง ADV</button>
+      </div>
+      <div class="subnav inv-grp-svc hidden">
+        <button type="button" class="btn btn-ghost btn-sm inv-sub" data-sub="svc">➕ ออกใบแจ้งหนี้ค่าบริการ</button>
+        <button type="button" class="btn btn-ghost btn-sm inv-sub" data-sub="svclist">📄 ใบที่ออกแล้ว</button>
+        <button type="button" class="btn btn-ghost btn-sm inv-sub" data-sub="svcar">💰 ลูกหนี้คงค้างค่าบริการ</button>
       </div>
 
       <!-- ---------- ออกใบใหม่ ---------- -->
@@ -789,7 +813,7 @@
         <p class="muted" style="margin:0 0 12px">
           ดึงงานจากชีตงานขนส่ง <b>MAESOT FREEZONE</b> และ <b>TRANSIT</b> ตามช่วงวันที่ตรวจปล่อย →
           ใบสรุปจำนวนตู้ + ใบแจ้งหนี้ค่าบริการตรวจปล่อย (แยกตามไฟล์) และใบสรุป + ใบแจ้งหนี้ค่าบริการเพิ่มเติม
-          • ค่าบริการ VAT 7% หัก ณ ที่จ่าย 3% • ทำเป็น PDF อย่างเดียว ไม่บันทึกใบลงระบบ
+          • ค่าบริการ VAT 7% หัก ณ ที่จ่าย 3% • ตรวจแล้วกด <b>💾 บันทึกเข้าระบบ</b> ใบจะเข้า “ลูกหนี้คงค้างค่าบริการ”
         </p>
         <div class="toolbar">
           <label style="display:flex;align-items:center;gap:6px">วันที่ตรวจปล่อย ตั้งแต่ <input id="svc-from" type="date"></label>
@@ -808,7 +832,8 @@
         <div id="svc-docs-wrap" class="hidden">
           <div class="toolbar">
             <b>เอกสารที่จะออก</b><span class="grow"></span>
-            <button id="svc-pdf-all" class="btn btn-primary btn-sm">📄 PDF ทั้งชุด</button>
+            <button id="svc-pdf-all" class="btn btn-ghost btn-sm">📄 PDF ทั้งชุด</button>
+            <button id="svc-save" class="btn btn-primary btn-sm">💾 บันทึกเข้าระบบ (ลูกหนี้ค่าบริการ)</button>
           </div>
           <div class="tablewrap" style="margin-bottom:16px">
             <table class="inv-tbl">
@@ -842,16 +867,21 @@
       <!-- ---------- ลูกหนี้สำรองจ่ายคงค้าง ---------- -->
       <div id="inv-pane-ar" class="hidden">
         <div class="toolbar">
+          <label style="display:flex;align-items:center;gap:6px">วันที่ใบแจ้งหนี้ <input id="ar-from" type="date"></label>
+          <label style="display:flex;align-items:center;gap:6px">ถึง <input id="ar-to" type="date"></label>
           <label style="display:flex;align-items:center;gap:6px">
             <input type="checkbox" id="ar-show-paid"> แสดงที่ชำระครบแล้วด้วย</label>
           <button id="ar-reload" class="btn btn-ghost btn-sm">โหลดใหม่</button>
           <span class="grow"></span>
+          <button id="ar-report" class="btn btn-primary btn-sm">🖨 รายงานติดตามลูกค้า</button>
+          <button id="ar-excel" class="btn btn-ghost btn-sm">⬇ Excel</button>
           <label class="btn btn-ghost btn-sm" style="cursor:pointer">📁 อัปไฟล์ Excel ตรวจยอด
             <input id="ar-file" type="file" accept=".xlsx,.xls,.csv" hidden></label>
         </div>
         <div id="ar-msg" class="muted" style="margin:0 2px 10px">
           ไฟล์ Excel: คอลัมน์ A = เลข BL, B = เลขใบแจ้งหนี้, C = ยอดชำระ (แถวแรกเป็นหัวตารางได้)
         </div>
+        <div id="ar-summary"></div>
         <div id="ar-match" class="hidden" style="margin-bottom:12px"></div>
         <div class="tablewrap">
           <table class="inv-tbl">
@@ -872,6 +902,61 @@
           <span class="grow"></span>
           <button id="ar-unsettle" class="btn btn-danger btn-sm" disabled>ยกเลิกการชำระ</button>
           <button id="ar-receipt" class="btn btn-primary btn-sm" disabled>ออกใบเสร็จ</button>
+        </div>
+      </div>
+
+      <!-- ---------- ใบแจ้งหนี้ค่าบริการที่ออกแล้ว (service-ar.js) ---------- -->
+      <div id="inv-pane-svclist" class="hidden">
+        <div class="toolbar">
+          <input id="svl-search" type="text" placeholder="ค้นหา เลขที่ใบ / รายการ" class="grow">
+          <label style="display:flex;align-items:center;gap:6px">วันที่ใบแจ้งหนี้ <input id="svl-from" type="date"></label>
+          <label style="display:flex;align-items:center;gap:6px">ถึง <input id="svl-to" type="date"></label>
+          <button id="svl-reload" class="btn btn-ghost btn-sm">โหลดใหม่</button>
+        </div>
+        <div id="svl-msg" class="muted" style="margin:0 2px 10px"></div>
+        <div class="tablewrap">
+          <table class="inv-tbl">
+            <thead><tr><th>เลขที่ / วันที่</th><th>รายการ</th><th>ช่วงวันที่ตรวจปล่อย</th>
+              <th class="num">รวม VAT</th><th class="num">หัก 3%</th><th class="num">ยอดชำระสุทธิ</th><th>สถานะ</th><th></th></tr></thead>
+            <tbody id="svl-body"><tr><td colspan="8" class="muted">กำลังโหลด…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ---------- ลูกหนี้คงค้างค่าบริการ (service-ar.js) ---------- -->
+      <div id="inv-pane-svcar" class="hidden">
+        <div class="toolbar">
+          <label style="display:flex;align-items:center;gap:6px">วันที่ใบแจ้งหนี้ <input id="sar-from" type="date"></label>
+          <label style="display:flex;align-items:center;gap:6px">ถึง <input id="sar-to" type="date"></label>
+          <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="sar-show-paid"> แสดงที่ชำระครบแล้วด้วย</label>
+          <button id="sar-reload" class="btn btn-ghost btn-sm">โหลดใหม่</button>
+          <span class="grow"></span>
+          <button id="sar-report" class="btn btn-primary btn-sm">🖨 รายงานติดตามลูกค้า</button>
+          <button id="sar-excel" class="btn btn-ghost btn-sm">⬇ Excel</button>
+          <label class="btn btn-ghost btn-sm" style="cursor:pointer">📁 อัปไฟล์ Excel ตรวจยอด
+            <input id="sar-file" type="file" accept=".xlsx,.xls,.csv" hidden></label>
+        </div>
+        <div id="sar-msg" class="muted" style="margin:0 2px 10px">
+          ไฟล์ Excel ตรวจยอด: คอลัมน์ A = เลขใบแจ้งหนี้ค่าบริการ, B = ยอดเงิน (แถวแรกเป็นหัวตารางได้) • ยอดที่ต้องชำระ = รวม VAT หลังหัก ณ ที่จ่าย 3%
+        </div>
+        <div id="sar-summary"></div>
+        <div id="sar-match" class="hidden" style="margin-bottom:12px"></div>
+        <div class="tablewrap">
+          <table class="inv-tbl">
+            <thead><tr>
+              <th style="width:34px"><input type="checkbox" id="sar-all" title="เลือกทั้งหมด"></th>
+              <th class="no">No</th><th>เลขใบแจ้งหนี้ / วันที่</th><th>รายการ</th>
+              <th class="num">ยอดที่ต้องชำระ</th><th class="num">ค้างชำระ</th><th class="num">ชำระแล้ว</th><th>ใบเสร็จ</th>
+            </tr></thead>
+            <tbody id="sar-body"><tr><td colspan="8" class="muted">กำลังโหลด…</td></tr></tbody>
+          </table>
+        </div>
+        <div class="toolbar" style="margin-top:10px">
+          <span id="sar-picked" class="muted">เลือกไว้ 0 รายการ</span>
+          <span class="grow"></span>
+          <label style="display:flex;align-items:center;gap:6px">วันที่ใบเสร็จ <input id="sar-receipt-date" type="date"></label>
+          <button id="sar-unsettle" class="btn btn-danger btn-sm" disabled>ยกเลิกการชำระ</button>
+          <button id="sar-receipt" class="btn btn-primary btn-sm" disabled>ออกใบเสร็จรับเงิน / ใบกำกับภาษี</button>
         </div>
       </div>
     </section>
@@ -3324,6 +3409,20 @@ function initInvoiceTab(){
   loadInvoiceBatches();
 }
 
+// ส่วน ADV / ค่าบริการ — กดสลับแล้วกลับไปเมนูย่อยล่าสุดของส่วนนั้น
+function invGroupOf(sub){ return ['svc','svclist','svcar'].indexOf(sub)>=0 ? 'svc' : 'adv'; }
+invState.sub = { adv:'new', svc:'svc' };
+Array.prototype.forEach.call(document.querySelectorAll('.inv-grp'), function(btn){
+  btn.addEventListener('click', function(){
+    var grp = btn.getAttribute('data-grp');
+    Array.prototype.forEach.call(document.querySelectorAll('.inv-grp'), function(b){ b.classList.toggle('active', b===btn); });
+    Array.prototype.forEach.call(document.querySelectorAll('.inv-grp-adv'), function(el){ el.classList.toggle('hidden', grp!=='adv'); });
+    Array.prototype.forEach.call(document.querySelectorAll('.inv-grp-svc'), function(el){ el.classList.toggle('hidden', grp!=='svc'); });
+    var target = document.querySelector('.inv-sub[data-sub="'+invState.sub[grp]+'"]');
+    if(target) target.click();
+  });
+});
+
 Array.prototype.forEach.call(document.querySelectorAll('.inv-sub'), function(btn){
   btn.addEventListener('click', function(){
     var sub = btn.getAttribute('data-sub');
@@ -3333,8 +3432,13 @@ Array.prototype.forEach.call(document.querySelectorAll('.inv-sub'), function(btn
     $('inv-pane-wait').classList.toggle('hidden', sub!=='wait');
     $('inv-pane-ar').classList.toggle('hidden', sub!=='ar');
     $('inv-pane-svc').classList.toggle('hidden', sub!=='svc');
+    $('inv-pane-svclist').classList.toggle('hidden', sub!=='svclist');
+    $('inv-pane-svcar').classList.toggle('hidden', sub!=='svcar');
+    invState.sub[invGroupOf(sub)] = sub;
     if(sub==='ar') loadReceivables();
     if(sub==='svc') initServiceInvoice();
+    if(sub==='svclist') svcListOpen();
+    if(sub==='svcar') svcArOpen();
     if(sub==='wait') loadPendingDocs();
   });
 });
@@ -4091,18 +4195,36 @@ function bindWaitAction(selector, pick, kind){
 $('wait-reload').addEventListener('click', loadPendingDocs);
 
 /* ---------- ลูกหนี้สำรองจ่ายคงค้าง ---------- */
-var arState = { rows:[], matched:[] };
+var arState = { rows:[], matched:[], today:'' };
 function loadReceivables(){
   $('ar-body').innerHTML = '<tr><td colspan="7" class="muted">กำลังโหลด…</td></tr>';
-  api({ action:'listReceivables', token:state.token, showPaid:$('ar-show-paid').checked })
+  api({ action:'listReceivables', token:state.token, showPaid:$('ar-show-paid').checked, from:$('ar-from').value, to:$('ar-to').value })
     .then(function(res){
       if(!res.ok){ $('ar-body').innerHTML = '<tr><td colspan="7" class="muted">โหลดไม่สำเร็จ: '+esc(res.error)+'</td></tr>'; return; }
       arState.rows = res.rows || [];
+      arState.today = res.today;
       renderReceivables();
     });
 }
+/** แถวสำหรับสรุป/รายงาน — ใบ ADV ไม่มีหัก ณ ที่จ่าย ยอดที่ต้องชำระ = ยอดตามใบ */
+function arReportRows(){
+  return arState.rows.map(function(r){
+    return { number:r.number, issueDate:r.issueDate, ref:r.bl, detail:(r.kind==='NV'?'NON VAT':'VAT')+(r.batchName?' • '+r.batchName:''),
+      total:r.total, net:r.total, paid:r.paidAmount, outstanding:r.outstanding };
+  });
+}
+function arReportOpts(){
+  var co = (invState.cfg && invState.cfg.company) || {}, cu = (invState.cfg && invState.cfg.customer) || {};
+  return { title:'รายงานลูกหนี้คงค้าง — ใบแจ้งหนี้ ADV', subtitle:'ค่าใช้จ่ายสำรองจ่ายแทนลูกค้า', rows:arReportRows(),
+    from:$('ar-from').value, to:$('ar-to').value, today:arState.today, company:co, customer:cu, refLabel:'B/L',
+    preparedBy:(state.user&&state.user.name)||'', fileName:'ลูกหนี้คงค้าง-ADV-'+arState.today+'.xlsx' };
+}
+$('ar-report').addEventListener('click', function(){ ArReport.open(arReportOpts()); });
+$('ar-excel').addEventListener('click', function(){ ArReport.excel(arReportOpts()); });
+['ar-from','ar-to'].forEach(function(id){ $(id).addEventListener('change', loadReceivables); });
 function renderReceivables(){
   var rows = arState.rows;
+  $('ar-summary').innerHTML = ArReport.summaryHtml(arReportRows(), arState.today, ArReport.rangeText($('ar-from').value, $('ar-to').value));
   if(!rows.length){ $('ar-body').innerHTML = '<tr><td colspan="7" class="muted" style="padding:20px">ไม่มีรายการคงค้าง</td></tr>'; updateArPicked(); return; }
   $('ar-body').innerHTML = rows.map(function(r, i){
     var done = r.outstanding <= 0;

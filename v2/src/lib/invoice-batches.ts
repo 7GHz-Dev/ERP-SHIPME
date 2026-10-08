@@ -323,18 +323,21 @@ export async function listReceivables(body: ApiBody): Promise<ApiResult> {
   const clauses = [eq(invoices.sentToKola, true), ne(invoices.status, 'cancelled'),
     ne(invoices.docStatus, 'waiting')];
   if (!showPaid) clauses.push(sql`${invoices.paidAmount} < ${invoices.total}`);
+  // กรองตามวันที่ออกใบแจ้งหนี้ (เมนูลูกหนี้คงค้าง ADV + รายงานติดตามลูกค้า)
+  if (validYmd(body.from)) clauses.push(sql`${invoices.issueDate} >= ${String(body.from)}`);
+  if (validYmd(body.to)) clauses.push(sql`${invoices.issueDate} <= ${String(body.to)}`);
 
   const rows = await db.select({
     number: invoices.number, kind: invoices.kind, issueDate: invoices.issueDate,
     bl: invoices.bl, total: invoices.total, paidAmount: invoices.paidAmount,
     paidAt: invoices.paidAt, receiptNo: invoices.receiptNo,
-    batchNo: invoices.batchNo, batchPeriod: invoices.batchPeriod
+    batchNo: invoices.batchNo, batchPeriod: invoices.batchPeriod, batchName: invoices.batchName
   })
     .from(invoices).where(and(...clauses))
-    .orderBy(asc(invoices.issueDate), asc(invoices.number)).limit(500);
+    .orderBy(asc(invoices.issueDate), asc(invoices.number)).limit(1000);
 
   return {
-    ok: true,
+    ok: true, today: ymd(),
     rows: rows.map(r => ({ ...r, outstanding: money(Number(r.total) - Number(r.paidAmount)) }))
   };
 }

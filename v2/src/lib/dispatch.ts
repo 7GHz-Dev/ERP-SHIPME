@@ -5,6 +5,10 @@ import {
 } from './inspection';
 import { serviceInvoiceData } from './service-invoices';
 import {
+  cancelServiceInvoices, getServiceInvoice, issueServiceReceipts, listServiceInvoices, matchServiceReceivables,
+  saveServiceInvoices, serviceInvoiceNext, settleServiceReceivables, unsettleServiceReceivables
+} from './service-ar';
+import {
   myReleaseJobs, planDelete, planLoad, planSave, portAssignmentData, savePortAssignments, smsTracking
 } from './plans';
 import {
@@ -511,6 +515,43 @@ const handlers: Record<string, Handler> = {
   serviceInvoiceData: async (body) => {
     const session = await guard(body, ACCOUNT_ROLES);
     return session.error || serviceInvoiceData(body);
+  },
+  // ---- ใบแจ้งหนี้ค่าบริการ (IN) + ลูกหนี้คงค้างค่าบริการ + ใบเสร็จ RE ----
+  serviceInvoiceNext: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || serviceInvoiceNext(body);
+  },
+  saveServiceInvoices: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || saveServiceInvoices(body, session.user);
+  },
+  listServiceInvoices: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || listServiceInvoices(body);
+  },
+  getServiceInvoice: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || getServiceInvoice(body);
+  },
+  cancelServiceInvoices: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || cancelServiceInvoices(body);
+  },
+  matchServiceReceivables: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || matchServiceReceivables(body);
+  },
+  settleServiceReceivables: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || settleServiceReceivables(body);
+  },
+  unsettleServiceReceivables: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || unsettleServiceReceivables(body);
+  },
+  issueServiceReceipts: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || issueServiceReceipts(body);
   },
   listInvoices: async (body) => {
     const session = await guard(body, ACCOUNT_ROLES);

@@ -489,3 +489,45 @@ export const driverLocations = pgTable('driver_locations', {
   userAgent: text('user_agent').notNull().default(''),
   createdAt: text('created_at').notNull()
 }, (t) => [index('driver_locations_phone_idx').on(t.phone, t.createdAt)]);
+
+/**
+ * ใบแจ้งหนี้ค่าบริการ (IN) — เดิมทำเป็น PDF อย่างเดียว ตอนนี้บันทึกลงระบบเพื่อตามลูกหนี้ค่าบริการและออกใบเสร็จ
+ *
+ * 1 แถว = ใบแจ้งหนี้ 1 ใบ (ค่าบริการตรวจปล่อยต่อไฟล์ชีต หรือค่าบริการเพิ่มเติม)
+ * summaryJson เก็บใบสรุปที่แนบคู่กัน (ใบสรุปจำนวนตู้ / ใบสรุปค่าบริการเพิ่มเติม) ไว้พิมพ์ซ้ำได้หน้าตาเดิม
+ * ลูกค้าจ่ายยอดหลังหัก ณ ที่จ่าย 3% — ลูกหนี้จึงนับจาก netTotal ไม่ใช่ total
+ */
+export const serviceInvoices = pgTable('service_invoices', {
+  number: text('number').primaryKey(),                // IN + yyyymm + เลขรัน
+  period: text('period').notNull(),
+  seq: integer('seq').notNull(),
+  issueDate: text('issue_date').notNull(),
+  title: text('title').notNull(),
+  category: text('category').notNull().default('inspect'),   // inspect | extra
+  source: text('source').notNull().default(''),               // MAESOT FREEZONE | TRANSIT | '' (ค่าบริการเพิ่มเติมรวมทุกไฟล์)
+  rangeFrom: text('range_from').notNull().default(''),        // ช่วงวันที่ตรวจปล่อยของงานในใบ
+  rangeTo: text('range_to').notNull().default(''),
+  customerName: text('customer_name').notNull().default(''),
+  customerAddress: text('customer_address').notNull().default(''),
+  customerTaxId: text('customer_tax_id').notNull().default(''),
+  itemsJson: text('items_json').notNull(),
+  summaryJson: text('summary_json').notNull().default(''),
+  subtotal: doublePrecision('subtotal').notNull().default(0),
+  vat: doublePrecision('vat').notNull().default(0),
+  total: doublePrecision('total').notNull().default(0),
+  withholding: doublePrecision('withholding').notNull().default(0),
+  netTotal: doublePrecision('net_total').notNull().default(0),
+  preparedBy: text('prepared_by').notNull().default(''),
+  // ---- ลูกหนี้คงค้างค่าบริการ ----
+  paidAmount: doublePrecision('paid_amount').notNull().default(0),
+  paidAt: text('paid_at').notNull().default(''),
+  // ---- ใบเสร็จรับเงิน / ใบกำกับภาษี (RE + yyyymm + เลขรัน แยกจากเลขใบแจ้งหนี้) ----
+  receiptNo: text('receipt_no').notNull().default(''),
+  receiptDate: text('receipt_date').notNull().default(''),
+  createdBy: citext('created_by').notNull().default(''),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull()
+}, (t) => [
+  index('service_invoices_issue_idx').on(t.issueDate),
+  uniqueIndex('service_invoices_receipt_idx').on(t.receiptNo).where(sql`${t.receiptNo} <> ''`)
+]);

@@ -169,11 +169,15 @@
     text('เลขประจำตัวผู้เสียภาษี : '+invoice.customerTaxId,38,hy[2],13,false,'left',453);
     text('วันที่',612,hy[0],13,false,'right');
     text(String(invoice.issueDate).split('-').reverse().join('/'),619,hy[0],13);
-    text('ใบแจ้งหนี้เลขที่',612,hy[1],13,false,'right');
+    // ใบเสร็จใช้ฟอร์มเดียวกัน แค่เปลี่ยนป้าย (numberLabel / ref = เลขใบแจ้งหนี้ที่อ้างถึง)
+    text(invoice.numberLabel||(options&&options.numberLabel)||'ใบแจ้งหนี้เลขที่',612,hy[1],13,false,'right');
     text(invoice.number,619,hy[1],13,true,'left',158);
     if(invoice.bl){
       text('B/L',612,hy[2],13,false,'right');
       text(invoice.bl,619,hy[2],13,false,'left',158);
+    } else if(invoice.ref){
+      text(invoice.refLabel||'อ้างอิง',612,hy[2],13,false,'right');
+      text(invoice.ref,619,hy[2],13,false,'left',158);
     }
     // "วันที่ตรวจปล่อย 26/08/2026 TRNS" — ประเภทงานย่อ (MSFZ / TRNS) ต่อท้ายวันที่ ไม่มีหัวข้อ Job Type แยก
     if(invoice.jobType||invoice.transportDate){
@@ -205,7 +209,7 @@
     }
     if(pageIndex===pageCount-1){
       var wht=Number(invoice.withholding)>0?Number(invoice.withholding):null;
-      var totalRows=[['ค่าบริการรวม',invoice.subtotal],['ภาษีมูลค่าเพิ่ม 7%',invoice.kind==='V'?invoice.vat:null],['รวมเงินทั้งสิ้น',invoice.total],['หักภาษี ณ ที่จ่าย 3%',wht],['รวมเงินที่ต้องชำระ',wht?invoice.netTotal:invoice.total]];
+      var totalRows=[['ค่าบริการรวม',invoice.subtotal],['ภาษีมูลค่าเพิ่ม 7%',invoice.kind==='V'?invoice.vat:null],['รวมเงินทั้งสิ้น',invoice.total],['หักภาษี ณ ที่จ่าย 3%',wht],[invoice.payLabel||'รวมเงินที่ต้องชำระ',wht?invoice.netTotal:invoice.total]];
       totalRows.forEach(function(row,i){
         var emphasized=i===2||i===4;
         rule(38,y,490,28,'#d9d9d9'); rule(528,y,125,28,'#d9d9d9'); rule(653,y,125,28,'#d9d9d9');
@@ -226,7 +230,7 @@
       var noteHeight=wrapped(note.replace(email[0],'').trim(),38,981,518,17,13);
       text(email[0].replace(/\s+/g,' ').trim(),38,981+noteHeight,13);
     } else wrapped(note,38,981,518,17,13);
-    text('ผู้จัดทำใบแจ้งหนี้',38,1037,13);
+    text(invoice.preparedLabel||'ผู้จัดทำใบแจ้งหนี้',38,1037,13);
     text(invoice.preparedBy||'',143,1037,13);
     if(images[1]){
       var scale=Math.min(177/images[1].width,116/images[1].height)*1.05;
