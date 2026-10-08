@@ -794,3 +794,97 @@ function mmUpload(){
     mmLoad();
   }).catch(function(e){ reset(); toast('อัปโหลดไม่สำเร็จ: '+plErr(String(e && e.message || e))); });
 }
+
+// ======================= ตั้งค่า: จุดนัดพบที่อนุญาต (หน้า /staff แสดงเป็นหมุด) =======================
+
+var mp = { ready:false, rows:[], key:'', gmap:null, markers:[], draft:null, editing:'' };
+
+function initMeetingPoints(){
+  if(mp.ready){ mpLoad(); return; }
+  mp.ready=true;
+  $('mp-save').addEventListener('click', mpSave);
+  $('mp-cancel').addEventListener('click', mpResetForm);
+  $('mp-here').addEventListener('click', function(){
+    if(!navigator.geolocation){ toast('เบราว์เซอร์ไม่รองรับตำแหน่ง'); return; }
+    navigator.geolocation.getCurrentPosition(function(p){ mpSetDraft(p.coords.latitude, p.coords.longitude, true); },
+      function(){ toast('หาตำแหน่งไม่ได้'); }, { enableHighAccuracy:true, timeout:15000 });
+  });
+  ['mp-lat','mp-lng'].forEach(function(id){ $(id).addEventListener('change', function(){
+    var la=Number($('mp-lat').value), ln=Number($('mp-lng').value); if(la && ln) mpSetDraft(la, ln, true); }); });
+  $('mp-body').addEventListener('click', function(e){
+    var b=e.target.closest('[data-mp]'); if(!b) return;
+    var r=mp.rows.filter(function(x){ return x.id===b.getAttribute('data-mp'); })[0]; if(!r) return;
+    if(b.getAttribute('data-act')==='edit'){
+      mp.editing=r.id; $('mp-name').value=r.name; $('mp-port').value=r.port; $('mp-note').value=r.note;
+      $('mp-form-title').textContent='แก้ไขจุดนัดพบ'; $('mp-cancel').classList.remove('hidden');
+      mpSetDraft(r.latitude, r.longitude, true); window.scrollTo(0,0);
+    } else {
+      api({ action:'meetingPointSave', token:state.token, id:r.id, name:r.name, port:r.port, lat:r.latitude, lng:r.longitude, note:r.note, active:!r.active })
+        .then(function(res){ if(!res.ok){ toast(plErr(res.error)); return; } mpLoad(); });
+    }
+  });
+  mpLoad();
+}
+function mpLoad(){
+  api({ action:'meetingPointList', token:state.token }).then(function(res){
+    if(!guard(res) || !res.ok) return;
+    mp.rows=res.rows||[]; mp.key=res.mapsKey||'';
+    $('mp-body').innerHTML=mp.rows.length ? mp.rows.map(function(r){
+      return '<tr'+(r.active?'':' style="opacity:.5"')+'><td class="name">'+esc(r.name)+'</td><td>'+esc(r.port||'-')+'</td>'+
+        '<td><a target="_blank" rel="noopener" href="https://www.google.com/maps?q='+r.latitude+','+r.longitude+'">'+r.latitude.toFixed(5)+', '+r.longitude.toFixed(5)+'</a></td>'+
+        '<td>'+esc(r.note||'')+'</td><td>'+(r.active?'<span class="pill approved">ใช้งาน</span>':'<span class="pill">ปิด</span>')+'</td>'+
+        '<td><button class="btn btn-ghost btn-sm" data-mp="'+esc(r.id)+'" data-act="edit">แก้ไข</button> <button class="btn btn-ghost btn-sm" data-mp="'+esc(r.id)+'" data-act="toggle">'+(r.active?'ปิด':'เปิด')+'</button></td></tr>';
+    }).join('') : '<tr><td colspan="6" class="muted" style="padding:16px">ยังไม่มีจุดนัดพบ — แตะบนแผนที่เพื่อปักหมุดจุดแรก</td></tr>';
+    mpDrawMap();
+  });
+}
+function mpDrawMap(){
+  var box=$('mp-map');
+  if(!mp.key){ box.innerHTML='ยังไม่ได้ตั้งค่า Google Maps (GOOGLE_MAPS_BROWSER_KEY) — กรอกละติจูด/ลองจิจูดเอง หรือกด "ใช้ตำแหน่งปัจจุบัน" ได้'; return; }
+  if(!window.google || !google.maps){
+    if(!mp.loading){ mp.loading=true; window.__mpReady=mpDrawMap;
+      var s=document.createElement('script'); s.async=true;
+      s.src='https://maps.googleapis.com/maps/api/js?key='+encodeURIComponent(mp.key)+'&callback=__mpReady&language=th&region=TH';
+      s.onerror=function(){ box.textContent='โหลด Google Maps ไม่สำเร็จ'; }; document.head.appendChild(s); }
+    return;
+  }
+  if(!mp.gmap){
+    box.innerHTML=''; box.style.display='block';
+    mp.gmap=new google.maps.Map(box, { center:{lat:13.08,lng:100.91}, zoom:13, mapTypeId:'hybrid', streetViewControl:false });
+    mp.gmap.addListener('click', function(e){ mpSetDraft(e.latLng.lat(), e.latLng.lng(), false); });
+  }
+  mp.markers.forEach(function(m){ m.setMap(null); }); mp.markers=[];
+  var b=new google.maps.LatLngBounds();
+  mp.rows.forEach(function(r){
+    var m=new google.maps.Marker({ map:mp.gmap, position:{lat:r.latitude,lng:r.longitude}, title:r.name, opacity:r.active?1:.45,
+      label:{ text:(r.port||'•').slice(0,3), color:'#fff', fontSize:'10px', fontWeight:'700' } });
+    mp.markers.push(m); b.extend(m.getPosition());
+  });
+  if(mp.rows.length>1) mp.gmap.fitBounds(b, 50); else if(mp.rows.length===1){ mp.gmap.setCenter(b.getCenter()); mp.gmap.setZoom(16); }
+}
+function mpSetDraft(lat, lng, pan){
+  $('mp-lat').value=Number(lat).toFixed(6); $('mp-lng').value=Number(lng).toFixed(6);
+  if(mp.gmap){
+    if(!mp.draft) mp.draft=new google.maps.Marker({ map:mp.gmap, icon:{ path:google.maps.SymbolPath.CIRCLE, scale:9, fillColor:'#FFB020', fillOpacity:1, strokeColor:'#0D2748', strokeWeight:3 }, title:'จุดใหม่' });
+    mp.draft.setPosition({ lat:Number(lat), lng:Number(lng) });
+    if(pan){ mp.gmap.panTo({ lat:Number(lat), lng:Number(lng) }); mp.gmap.setZoom(17); }
+  }
+  if(!$('mp-name').value) $('mp-name').focus();
+}
+function mpResetForm(){
+  mp.editing=''; ['mp-name','mp-port','mp-note','mp-lat','mp-lng'].forEach(function(id){ $(id).value=''; });
+  $('mp-form-title').textContent='เพิ่มจุดนัดพบ'; $('mp-cancel').classList.add('hidden');
+  if(mp.draft){ mp.draft.setMap(null); mp.draft=null; }
+}
+function mpSave(){
+  var body={ action:'meetingPointSave', token:state.token, name:$('mp-name').value.trim(), port:$('mp-port').value.trim(),
+    lat:Number($('mp-lat').value), lng:Number($('mp-lng').value), note:$('mp-note').value.trim() };
+  if(mp.editing) body.id=mp.editing;
+  if(!body.name){ toast('ตั้งชื่อจุดก่อน'); return; }
+  if(!body.lat || !body.lng){ toast('ปักหมุดบนแผนที่ หรือกรอกพิกัดก่อน'); return; }
+  api(body).then(function(res){
+    if(!guard(res)) return;
+    if(!res.ok){ toast(res.error==='bad_location'?'พิกัดไม่ถูกต้อง':plErr(res.error)); return; }
+    toast('บันทึกจุดนัดพบแล้ว'); mpResetForm(); mpLoad();
+  });
+}

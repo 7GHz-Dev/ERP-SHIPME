@@ -470,6 +470,7 @@
         <button class="subbtn hidden" id="subbtn-sheet" data-sub="sheet">ใบปิดบัญชี (รูป)</button>
         <button class="subbtn" data-sub="portassign">ชิปปิ้งประจำท่า</button>
         <button class="subbtn" data-sub="maps">แผนที่นัดหมาย / SMS</button>
+        <button class="subbtn" data-sub="mpoints">จุดนัดพบ (LINE)</button>
         <button class="subbtn" data-sub="transport">ตรวจสอบการเชื่อมต่อ</button>
       </div>
 
@@ -496,6 +497,30 @@
           <button id="pa-save" class="btn btn-primary">บันทึก</button>
           <span class="muted" id="pa-hint"></span>
         </div>
+      </div>
+
+      <!-- ตั้งค่า: จุดนัดพบที่อนุญาต — ชิปปิ้งเห็นเป็นหมุดบนแผนที่หน้า /staff -->
+      <div id="sub-mpoints" class="hidden">
+        <h3 class="sec">จุดนัดพบที่อนุญาต (แจกการ์ดรับตู้ / ส่งมอบ EIR)</h3>
+        <p class="muted" style="margin:0 0 12px">ปักหมุดจุดที่ชิปปิ้งกับคนขับนัดเจอกันได้อย่างปลอดภัยในแต่ละท่า — แตะบนแผนที่เพื่อวางหมุด แล้วตั้งชื่อ • ชิปปิ้งเห็นจุดเหล่านี้บนแผนที่ในหน้า <b>/staff</b></p>
+        <div id="mp-map" style="height:380px;border-radius:12px;border:1px solid var(--line);background:#eef2f7;margin-bottom:12px;display:flex;align-items:center;justify-content:center;color:#64748b;text-align:center;padding:16px">กำลังโหลด…</div>
+        <div class="opt-card" style="max-width:760px;margin-bottom:16px">
+          <h4 id="mp-form-title">เพิ่มจุดนัดพบ</h4>
+          <div class="grid2">
+            <div><label>ชื่อจุด</label><input id="mp-name" style="width:100%" placeholder="เช่น ลานจอดหน้า Gate 3"></div>
+            <div><label>ท่า</label><input id="mp-port" style="width:100%" placeholder="เช่น A0"></div>
+            <div><label>ละติจูด</label><input id="mp-lat" type="number" step="any" style="width:100%"></div>
+            <div><label>ลองจิจูด</label><input id="mp-lng" type="number" step="any" style="width:100%"></div>
+          </div>
+          <label>หมายเหตุ (ข้อควรระวัง / ทางเข้า)</label><input id="mp-note" style="width:100%">
+          <div class="toolbar" style="margin-top:10px">
+            <button id="mp-here" class="btn btn-ghost btn-sm">📍 ใช้ตำแหน่งปัจจุบัน</button>
+            <span class="grow"></span>
+            <button id="mp-cancel" class="btn btn-ghost btn-sm hidden">ยกเลิกแก้ไข</button>
+            <button id="mp-save" class="btn btn-primary btn-sm">บันทึกจุดนัดพบ</button>
+          </div>
+        </div>
+        <div class="tbl-wrap"><table class="grid"><thead><tr><th>ชื่อจุด</th><th>ท่า</th><th>พิกัด</th><th>หมายเหตุ</th><th>สถานะ</th><th></th></tr></thead><tbody id="mp-body"></tbody></table></div>
       </div>
 
       <!-- ตั้งค่า: รูปแผนที่นัดหมายคนขับรถ + สถานะระบบ SMS -->
@@ -1415,7 +1440,7 @@ function switchTab(name){
 }
 
 // ---------- ตั้งค่าระบบ: แท็บย่อย รายการเบิก / ปิดบัญชี / ตรวจสอบการเชื่อมต่อ ----------
-var SETTINGS_SUBS = ['claim','settle','sheet','portassign','maps','transport'];
+var SETTINGS_SUBS = ['claim','settle','sheet','portassign','maps','mpoints','transport'];
 
 Array.prototype.forEach.call(document.querySelectorAll('.subbtn'), function(b){
   b.addEventListener('click', function(){ switchSub(b.getAttribute('data-sub')); });
@@ -1437,6 +1462,7 @@ function switchSub(name){
   SETTINGS_SUBS.forEach(function(s){ $('sub-'+s).classList.toggle('hidden', s!==name); });
   if(name==='portassign') initPortAssign();
   if(name==='maps') initMaps();
+  if(name==='mpoints') initMeetingPoints();
 }
 
 function loadAll(){

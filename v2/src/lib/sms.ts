@@ -376,3 +376,9 @@ export async function linkLocation(body: ApiBody): Promise<ApiResult> {
   }).where(eq(smsMessages.id, row.id));
   return { ok: true };
 }
+
+/** SMS ธรรมดา 1 เบอร์ (ช่องทางสำรองของงานประสานคนขับ) — ใช้ตัวส่งเดียวกับหน้างานปล่อย */
+export async function sendPlainSms(phone: string, message: string) {
+  if (!smsConfig().ready) return { ok: false, error: 'sms_not_configured' };
+  return providerSend(phone, message);
+}

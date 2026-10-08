@@ -41,7 +41,8 @@ function rlParts(msg){
   return { len:len, parts: len<=one ? 1 : Math.ceil(len/multi) };
 }
 
-$('btn-gorelease').addEventListener('click', function(){ openRelease(''); });
+// ปุ่ม "งานปล่อย" เปิดหน้าประสานงานคนขับ (/staff) — หน้าส่ง SMS แบบเดิมยังเปิดได้จาก /#release (ช่องทางสำรอง)
+$('btn-gorelease').addEventListener('click', function(){ location.href='/staff'; });
 $('btn-release-back').addEventListener('click', function(){ rlStopTimer(); resumeCheckin(); });
 $('rl-date').addEventListener('change', function(){ if(this.value) openRelease(this.value); });
 $('rl-dates').addEventListener('click', function(e){ var b=e.target.closest('[data-date]'); if(b) openRelease(b.getAttribute('data-date')); });
@@ -309,4 +310,7 @@ function rlStartTimer(){
 function rlStopTimer(){ if(rl.timer){ clearInterval(rl.timer); rl.timer=null; } }
 
 // สคริปต์หลักเข้าแอปให้ก่อนไฟล์นี้โหลด (กรณีจำ session ไว้) — ตั้งป้ายจำนวนงานตามมาทีหลัง
-if(state.user && state.user.role==='employee-shipping') releaseBadge();
+if(state.user && state.user.role==='employee-shipping'){
+  releaseBadge();
+  if(location.hash==='#release') openRelease('');
+}

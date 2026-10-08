@@ -6,13 +6,16 @@ const nextConfig = {
   async rewrites() {
     return [
       { source: '/', destination: '/index.html' },
-      { source: '/admin', destination: '/admin.html' }
+      { source: '/admin', destination: '/admin.html' },
+      // ประสานงานคนขับ: หน้าชิปปิ้ง (มือถือ) และหน้าคนขับ (เปิดใน LINE / LIFF)
+      { source: '/staff', destination: '/staff.html' },
+      { source: '/driver', destination: '/driver.html' }
     ];
   },
   async headers() {
     return [
       // หน้าเว็บต้องไม่ถูก cache ค้าง ไม่งั้นแก้ฟอร์มแล้วพนักงานยังเห็นของเก่า
-      { source: '/:page(index|admin).html', headers: [{ key: 'cache-control', value: 'no-cache' }] }
+      { source: '/:page(index|admin|staff|driver).html', headers: [{ key: 'cache-control', value: 'no-cache' }] }
     ];
   }
 };

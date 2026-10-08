@@ -96,5 +96,18 @@ export const env = {
   /** true = ไม่ส่งจริง บันทึกเหมือนส่งสำเร็จ (ไว้ทดสอบหน้าจอก่อนเติมเครดิต) */
   smsDryRun: bool(process.env.SMS_DRY_RUN),
   /** โดเมนที่ใส่ในลิงก์ SMS (เช่นโดเมนสั้นของบริษัท) — เว้นว่าง = ใช้โดเมนที่ผู้ใช้เปิดอยู่ */
-  smsLinkBase: clean(process.env.SMS_LINK_BASE).replace(/\/+$/, '')
+  smsLinkBase: clean(process.env.SMS_LINK_BASE).replace(/\/+$/, ''),
+  // ---- LINE OA (ประสานงานคนขับ) — ไม่ครบ 4 ค่า = DEMO MODE (บันทึกข้อความไว้ในระบบ ไม่ส่งจริง) ----
+  /** Messaging API channel → Channel access token (long-lived) */
+  lineAccessToken: clean(process.env.LINE_CHANNEL_ACCESS_TOKEN),
+  /** Messaging API channel → Channel secret (ตรวจลายเซ็น webhook) */
+  lineChannelSecret: clean(process.env.LINE_CHANNEL_SECRET),
+  /** LINE Login channel → Channel ID (ตรวจ ID token ของ LIFF) — ต้องอยู่ Provider เดียวกับ Messaging API */
+  lineLoginChannelId: clean(process.env.LINE_LOGIN_CHANNEL_ID),
+  /** LIFF ID ของหน้าคนขับ (endpoint = https://<โดเมน>/driver) */
+  liffId: clean(process.env.LIFF_ID),
+  /** Google Maps JavaScript API (ฝั่งเบราว์เซอร์ — จำกัด HTTP referrer ที่ Google Cloud Console) */
+  googleMapsBrowserKey: clean(process.env.GOOGLE_MAPS_BROWSER_KEY),
+  /** กุญแจลงลายเซ็น session คนขับ — ไม่ตั้งก็ได้ ใช้ค่าที่ได้จาก DATABASE_URL */
+  driverSessionSecret: clean(process.env.DRIVER_SESSION_SECRET)
 } as const;

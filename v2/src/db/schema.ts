@@ -531,3 +531,157 @@ export const serviceInvoices = pgTable('service_invoices', {
   index('service_invoices_issue_idx').on(t.issueDate),
   uniqueIndex('service_invoices_receipt_idx').on(t.receiptNo).where(sql`${t.receiptNo} <> ''`)
 ]);
+
+// ============ ประสานงานคนขับ (LINE OA) — การ์ดรับตู้ → X-Ray → EIR → รูปปิดงาน ============
+// ชุดงานของชิปปิ้ง = แถวในแพลนที่ Confirm แล้ว (job_plan_items) ของชิปปิ้งคนนั้นในวันตรวจปล่อยนั้น
+// ตารางด้านล่างเก็บ "สถานะงานจริง" แยกจากแพลน เพราะผู้จัดการบันทึกแพลนซ้ำได้ (id แถวคงเดิม)
+
+/** ทะเบียนคนขับ — สร้างเองจากเบอร์โทรในแพลน ผูก LINE ได้ 1 บัญชีต่อคน */
+export const drivers = pgTable('drivers', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull().default(''),
+  phone: text('phone').notNull(),                     // 0XXXXXXXXX
+  plate: text('plate').notNull().default(''),
+  lineUserId: text('line_user_id').notNull().default(''),
+  lineName: text('line_name').notNull().default(''),
+  linePicture: text('line_picture').notNull().default(''),
+  lineLinkedAt: text('line_linked_at').notNull().default(''),
+  lineFriend: boolean('line_friend').notNull().default(false),   // follow/unfollow จาก webhook
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull()
+}, (t) => [
+  uniqueIndex('drivers_phone_idx').on(t.phone),
+  uniqueIndex('drivers_line_idx').on(t.lineUserId).where(sql`${t.lineUserId} <> ''`)
+]);
+
+/** โค้ดผูก LINE ใช้ครั้งเดียว — ชิปปิ้งออกให้ ส่งทาง SMS หรือให้สแกน QR ต่อหน้า */
+export const driverLinkInvites = pgTable('driver_link_invites', {
+  code: text('code').primaryKey(),
+  driverId: text('driver_id').notNull().references(() => drivers.id, { onDelete: 'cascade' }),
+  createdBy: citext('created_by').notNull().default(''),
+  createdAt: text('created_at').notNull(),
+  expiresAt: text('expires_at').notNull(),
+  usedAt: text('used_at').notNull().default(''),
+  usedLineUserId: text('used_line_user_id').notNull().default('')
+});
+
+/** สถานะงานรายตู้ — แต่ละขั้นเป็นเวลาที่เกิดจริง ('' = ยังไม่เกิด) */
+export const jobSteps = pgTable('job_steps', {
+  itemId: text('item_id').primaryKey(),               // job_plan_items.id
+  inspectDate: text('inspect_date').notNull(),
+  username: citext('username').notNull(),             // ชิปปิ้งเจ้าของชุดงาน
+  driverId: text('driver_id').notNull().default(''),
+  cardHandedAt: text('card_handed_at').notNull().default(''),
+  cardHandedBy: citext('card_handed_by').notNull().default(''),
+  cardAckAt: text('card_ack_at').notNull().default(''),          // คนขับกด "รับการ์ดแล้ว"
+  pickedUpAt: text('picked_up_at').notNull().default(''),
+  xrayStatus: text('xray_status').notNull().default('pending'),  // pending | waiting | hold | passed
+  xrayAt: text('xray_at').notNull().default(''),
+  xrayNote: text('xray_note').notNull().default(''),
+  eirHandedAt: text('eir_handed_at').notNull().default(''),
+  eirHandedBy: citext('eir_handed_by').notNull().default(''),
+  eirReceivedAt: text('eir_received_at').notNull().default(''),
+  completedAt: text('completed_at').notNull().default(''),
+  problem: text('problem').notNull().default(''),
+  version: integer('version').notNull().default(0),
+  updatedAt: text('updated_at').notNull()
+}, (t) => [
+  index('job_steps_batch_idx').on(t.inspectDate, t.username),
+  index('job_steps_driver_idx').on(t.driverId, t.inspectDate)
+]);
+
+/** ประวัติทุกเหตุการณ์ของงาน (ห้ามแก้/ลบ) — ใครทำ ทำอะไร เวลาเซิร์ฟเวอร์ */
+export const jobEvents = pgTable('job_events', {
+  id: text('id').primaryKey(),
+  itemId: text('item_id').notNull(),
+  inspectDate: text('inspect_date').notNull(),
+  username: citext('username').notNull().default(''),
+  actorType: text('actor_type').notNull(),            // staff | driver | system
+  actorId: text('actor_id').notNull().default(''),
+  event: text('event').notNull(),
+  metaJson: text('meta_json').notNull().default('{}'),
+  createdAt: text('created_at').notNull()
+}, (t) => [index('job_events_item_idx').on(t.itemId, t.createdAt), index('job_events_batch_idx').on(t.inspectDate, t.username)]);
+
+/** คำขอพิกัด — แยกรอบเด็ดขาด CARD_PICKUP / EIR_HANDOVER (ห้ามใช้คำตอบข้ามรอบ) */
+export const locationRequests = pgTable('location_requests', {
+  id: text('id').primaryKey(),
+  code: text('code').notNull(),                       // รหัสในลิงก์ (สุ่ม)
+  inspectDate: text('inspect_date').notNull(),
+  username: citext('username').notNull(),
+  driverId: text('driver_id').notNull().references(() => drivers.id, { onDelete: 'cascade' }),
+  phase: text('phase').notNull(),                     // CARD_PICKUP | EIR_HANDOVER
+  channel: text('channel').notNull(),                 // line | demo | sms | none
+  status: text('status').notNull().default('queued'), // queued | sent | failed | received | denied
+  itemIdsJson: text('item_ids_json').notNull().default('[]'),
+  error: text('error').notNull().default(''),
+  requestedBy: citext('requested_by').notNull().default(''),
+  requestedAt: text('requested_at').notNull(),
+  expiresAt: text('expires_at').notNull(),
+  respondedAt: text('responded_at').notNull().default('')
+}, (t) => [
+  uniqueIndex('location_requests_code_idx').on(t.code),
+  index('location_requests_batch_idx').on(t.inspectDate, t.username, t.phase)
+]);
+
+export const locationReports = pgTable('location_reports', {
+  id: text('id').primaryKey(),
+  requestId: text('request_id').notNull().references(() => locationRequests.id, { onDelete: 'cascade' }),
+  driverId: text('driver_id').notNull(),
+  phase: text('phase').notNull(),
+  latitude: doublePrecision('latitude').notNull(),
+  longitude: doublePrecision('longitude').notNull(),
+  accuracyM: doublePrecision('accuracy_m').notNull().default(0),
+  capturedAt: text('captured_at').notNull(),          // เวลาจากเครื่องคนขับ (อ้างอิง)
+  receivedAt: text('received_at').notNull(),          // เวลาเซิร์ฟเวอร์ (ใช้จริง)
+  userAgent: text('user_agent').notNull().default('')
+}, (t) => [index('location_reports_req_idx').on(t.requestId, t.receivedAt)]);
+
+/** จุดนัดพบที่อนุญาต — ผู้จัดการปักหมุดเองในตั้งค่าระบบ */
+export const meetingPoints = pgTable('meeting_points', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  port: text('port').notNull().default(''),
+  latitude: doublePrecision('latitude').notNull(),
+  longitude: doublePrecision('longitude').notNull(),
+  note: text('note').notNull().default(''),
+  active: boolean('active').notNull().default(true),
+  createdBy: citext('created_by').notNull().default(''),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull()
+});
+
+/** รูปปิดงานของคนขับ — ต้องมีรูปการ์ด EIR และรูป Seal อย่างน้อยอย่างละ 1 ต่อตู้ */
+export const evidenceFiles = pgTable('evidence_files', {
+  id: text('id').primaryKey(),
+  itemId: text('item_id').notNull(),
+  driverId: text('driver_id').notNull(),
+  inspectDate: text('inspect_date').notNull(),
+  kind: text('kind').notNull(),                       // EIR_CARD_PHOTO | CONTAINER_SEAL_PHOTO
+  storageKey: text('storage_key').notNull(),
+  url: text('url').notNull(),
+  size: integer('size').notNull().default(0),
+  createdAt: text('created_at').notNull()
+}, (t) => [uniqueIndex('evidence_files_key_idx').on(t.storageKey), index('evidence_files_item_idx').on(t.itemId)]);
+
+/** ข้อความ LINE ทุกข้อความผ่านตารางนี้ก่อนส่ง (สถานะจริงตามผู้ให้บริการ ไม่มี "อ่านแล้ว") */
+export const lineOutbox = pgTable('line_outbox', {
+  id: text('id').primaryKey(),
+  lineUserId: text('line_user_id').notNull(),
+  driverId: text('driver_id').notNull().default(''),
+  kind: text('kind').notNull(),
+  payloadJson: text('payload_json').notNull(),
+  retryKey: text('retry_key').notNull(),              // X-Line-Retry-Key กันส่งซ้ำ
+  state: text('state').notNull().default('queued'),   // queued | sent | failed | demo
+  attempts: integer('attempts').notNull().default(0),
+  error: text('error').notNull().default(''),
+  createdAt: text('created_at').notNull(),
+  sentAt: text('sent_at').notNull().default('')
+}, (t) => [uniqueIndex('line_outbox_retry_idx').on(t.retryKey), index('line_outbox_driver_idx').on(t.driverId, t.createdAt)]);
+
+/** กันประมวลผล webhook ซ้ำ (LINE ส่งซ้ำได้) */
+export const lineWebhookEvents = pgTable('line_webhook_events', {
+  eventId: text('event_id').primaryKey(),
+  type: text('type').notNull(),
+  receivedAt: text('received_at').notNull()
+});

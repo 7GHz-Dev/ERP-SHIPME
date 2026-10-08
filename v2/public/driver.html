@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#06C755">
+<meta name="robots" content="noindex">
+<title>SHIPME — งานของฉัน</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png">
+<style>
+  :root { --navy:#0D2748; --amber:#FFB020; --green:#06C755; --bg:#f2f4f7; --muted:#6b7686; --line:#e3e8ef; --red:#dc2626; --redbg:#fee2e2; --okbg:#dcfce7; --ok:#15803d; --warnbg:#fef3c7; --warn:#92400e; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; background:var(--bg); color:#111827; font-family:-apple-system,'Segoe UI',Roboto,'Noto Sans Thai',sans-serif; font-size:16px; }
+  .app { max-width:520px; margin:0 auto; min-height:100vh; padding-bottom:30px; }
+  header { background:var(--navy); color:#fff; padding:12px 16px; display:flex; align-items:center; gap:10px; position:sticky; top:0; z-index:10; }
+  header img { width:34px; height:34px; border-radius:9px; background:#fff; padding:2px; }
+  header .t { flex:1; } header .t b { color:var(--amber); } header .t span { display:block; font-size:12.5px; opacity:.85; }
+  .demo { background:var(--amber); color:#3b2600; font-weight:800; text-align:center; font-size:12px; padding:5px; }
+  main { padding:12px; }
+  .hidden { display:none !important; }
+  .card { background:#fff; border-radius:16px; padding:14px; margin-bottom:12px; box-shadow:0 1px 2px rgba(0,0,0,.06); }
+  .muted { color:var(--muted); font-size:13.5px; }
+  .btn { display:block; width:100%; border:0; border-radius:12px; padding:14px; font-size:16px; font-weight:800; cursor:pointer; font-family:inherit; text-align:center; text-decoration:none; }
+  .btn:disabled { opacity:.45; }
+  .btn-green { background:var(--green); color:#fff; } .btn-navy { background:var(--navy); color:#fff; } .btn-ghost { background:#e9edf2; color:#1f2937; }
+  .btn-amber { background:var(--amber); color:#2b1b00; }
+  .row { display:flex; gap:8px; } .row > * { flex:1; }
+  .req { border:2px solid var(--green); }
+  .req h3 { margin:0 0 4px; font-size:17px; }
+  .cn { font-size:18px; font-weight:800; letter-spacing:.3px; }
+  .tl { display:flex; align-items:center; margin:12px 0; }
+  .tl .s { flex:1; text-align:center; font-size:10.5px; color:var(--muted); position:relative; }
+  .tl .s i { display:block; width:22px; height:22px; margin:0 auto 3px; border-radius:50%; background:#e5e7eb; color:#fff; font-style:normal; font-size:12px; line-height:22px; font-weight:800; }
+  .tl .s.done i { background:var(--green); } .tl .s.now i { background:var(--amber); color:#3b2600; } .tl .s.done, .tl .s.now { color:#111827; font-weight:700; }
+  .note { border-radius:12px; padding:11px 12px; font-size:14px; margin:8px 0; }
+  .note.ok { background:var(--okbg); color:var(--ok); } .note.wait { background:var(--warnbg); color:var(--warn); } .note.err { background:var(--redbg); color:var(--red); }
+  .slots { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:10px 0; }
+  .slot { border:2px dashed #cbd5e1; border-radius:14px; padding:10px; text-align:center; min-height:150px; display:flex; flex-direction:column; gap:6px; }
+  .slot.has { border-style:solid; border-color:var(--green); }
+  .slot b { font-size:13.5px; } .slot .ph { display:flex; gap:4px; flex-wrap:wrap; justify-content:center; }
+  .slot .ph div { position:relative; } .slot .ph img { width:64px; height:64px; object-fit:cover; border-radius:8px; display:block; }
+  .slot .ph button { position:absolute; top:-6px; right:-6px; border:0; background:var(--red); color:#fff; border-radius:50%; width:22px; height:22px; font-size:12px; }
+  .slot label { margin-top:auto; background:#eef2f7; border-radius:10px; padding:9px 6px; font-weight:700; font-size:13.5px; cursor:pointer; }
+  .link { background:none; border:0; color:#1d4ed8; font-size:14px; padding:8px 0 0; font-family:inherit; text-decoration:underline; }
+  .center { text-align:center; padding:40px 16px; color:var(--muted); }
+  .big { font-size:48px; }
+  .toast { position:fixed; left:50%; bottom:30px; transform:translateX(-50%); background:#0f172a; color:#fff; padding:11px 16px; border-radius:12px; font-size:14px; z-index:90; max-width:90%; text-align:center; }
+  .kv { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #f1f4f8; font-size:14.5px; } .kv span { color:var(--muted); }
+  .date { margin:16px 4px 8px; font-weight:800; color:var(--navy); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header><img src="/brand/mark.webp" alt="SHIPME"><div class="t"><b>SHIPME</b> งานของฉัน<span id="who">กำลังโหลด…</span></div></header>
+  <div id="demo-bar" class="demo hidden">DEMO MODE — ข้อมูลทดลอง ยังไม่ได้เชื่อม LINE OA</div>
+  <main id="main"><div class="center">กำลังโหลด…</div></main>
+</div>
+<div id="toast" class="toast hidden"></div>
+<script src="/driver-app.js"></script>
+</body>
+</html>

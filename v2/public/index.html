@@ -929,6 +929,8 @@ function doLogin(){
 
 // ---------- ENTER APP ----------
 function enterApp(){
+  // มาจากหน้าประสานงานคนขับ (/staff) ที่ยังไม่ได้ล็อกอิน → ล็อกอินเสร็จกลับไปหน้านั้น
+  if(/[?&]next=staff\b/.test(location.search) && state.user.role==='employee-shipping'){ location.href='/staff'; return; }
   state.policy = policyOf(state.user);
   // เคลียร์สถานะหน้าจอของผู้ใช้คนก่อน (เผื่อออกจากระบบแล้วเข้าใหม่ด้วยสิทธิ์คนละแบบ)
   state.blocked=false; state.checkedInToday=false; state.lastRecord=null; state.photo=null;

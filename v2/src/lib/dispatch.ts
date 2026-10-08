@@ -5,6 +5,11 @@ import {
 } from './inspection';
 import { serviceInvoiceData } from './service-invoices';
 import {
+  coordCardHanded, coordDashboard, coordDemo, coordDriverInvite, coordEirHanded, coordOutbox, coordRequestLocations,
+  coordTimeline, driverAuth, driverComplete, driverEvidenceCommit, driverEvidenceDelete, driverEvidenceSign,
+  driverHome, driverReportLocation, driverStep, meetingPointList, meetingPointSave
+} from './coord';
+import {
   cancelServiceInvoices, getServiceInvoice, issueServiceReceipts, listServiceInvoices, matchServiceReceivables,
   saveServiceInvoices, serviceInvoiceNext, settleServiceReceivables, unsettleServiceReceivables
 } from './service-ar';
@@ -49,12 +54,15 @@ import {
   saveInvoice, saveInvoiceBatch
 } from './invoices';
 import type { ApiBody, ApiResult, Handler } from './types';
+import { lineMode } from './coord-line';
 import { checkinPolicy, id, isWindowsDevice, nowIso, publicUser, validYmd, ymd } from './utils';
 
 export type { ApiBody, ApiResult };
 
 /** แพลนงาน / ชิปปิ้งประจำท่า / รูปแผนที่นัดหมาย */
 const PLAN_ROLES = ['admin', 'manager'];
+/** ประสานงานคนขับ — ชิปปิ้งเห็นเฉพาะชุดของตัวเอง ผู้จัดการ/admin ดูของทุกคน */
+const COORD_STAFF = ['employee-shipping', 'admin', 'manager'];
 
 /**
  * หน้าเว็บทั้งระบบยิงมาที่ POST /api ปลายทางเดียว แล้วแยกด้วยฟิลด์ "action"
@@ -516,6 +524,58 @@ const handlers: Record<string, Handler> = {
     const session = await guard(body, ACCOUNT_ROLES);
     return session.error || serviceInvoiceData(body);
   },
+  // ---- ประสานงานคนขับ: หน้าชิปปิ้ง (/staff) ----
+  coordDashboard: async (body) => {
+    const session = await guard(body, COORD_STAFF);
+    return session.error || coordDashboard(body, session.user);
+  },
+  coordRequestLocations: async (body) => {
+    const session = await guard(body, COORD_STAFF);
+    return session.error || coordRequestLocations(body, session.user);
+  },
+  coordCardHanded: async (body) => {
+    const session = await guard(body, COORD_STAFF);
+    return session.error || coordCardHanded(body, session.user);
+  },
+  coordEirHanded: async (body) => {
+    const session = await guard(body, COORD_STAFF);
+    return session.error || coordEirHanded(body, session.user);
+  },
+  coordDriverInvite: async (body) => {
+    const session = await guard(body, COORD_STAFF);
+    return session.error || coordDriverInvite(body, session.user);
+  },
+  coordDemo: async (body) => {
+    const session = await guard(body, COORD_STAFF);
+    return session.error || coordDemo(body, session.user);
+  },
+  coordOutbox: async (body) => {
+    const session = await guard(body, COORD_STAFF);
+    return session.error || coordOutbox(body, session.user);
+  },
+  coordTimeline: async (body) => {
+    const session = await guard(body, COORD_STAFF);
+    return session.error || coordTimeline(body, session.user);
+  },
+  meetingPointList: async (body) => {
+    const session = await guard(body, COORD_STAFF);
+    return session.error || meetingPointList();
+  },
+  meetingPointSave: async (body) => {
+    const session = await guard(body, PLAN_ROLES);
+    return session.error || meetingPointSave(body, session.user);
+  },
+  // ---- หน้าคนขับ (/driver) — ไม่มีบัญชี ERP ใช้ session ที่ได้จาก LINE (LIFF) หรือลิงก์ ----
+  driverConfig: async () => ({ ok: true, lineMode: lineMode(), liffId: lineMode() === 'live' ? env.liffId : '' }),
+  driverAuth,
+  driverHome,
+  driverReportLocation,
+  driverStep,
+  driverEvidenceSign,
+  driverEvidenceCommit,
+  driverEvidenceDelete,
+  driverComplete,
+
   // ---- ใบแจ้งหนี้ค่าบริการ (IN) + ลูกหนี้คงค้างค่าบริการ + ใบเสร็จ RE ----
   serviceInvoiceNext: async (body) => {
     const session = await guard(body, ACCOUNT_ROLES);

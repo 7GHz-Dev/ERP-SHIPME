@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0D2748">
+<title>SHIPME — งานชิปปิ้ง</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png">
+<link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+<style>
+  /* SHIPME Driver Coordination — Navy #0D2748 • Amber #FFB020 • LINE Green #06C755 */
+  :root { --navy:#0D2748; --navy2:#16365f; --amber:#FFB020; --green:#06C755; --bg:#eef1f5; --card:#fff; --line:#e3e8ef;
+          --muted:#6b7686; --text:#111827; --red:#dc2626; --redbg:#fee2e2; --okbg:#dcfce7; --ok:#15803d; --warnbg:#fef3c7; --warn:#92400e; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,'Segoe UI',Roboto,'Noto Sans Thai',sans-serif; font-size:15px; }
+  .app { max-width:520px; margin:0 auto; min-height:100vh; padding-bottom:calc(72px + env(safe-area-inset-bottom)); }
+  header { position:sticky; top:0; z-index:30; background:var(--navy); color:#fff; padding:10px 14px; display:flex; align-items:center; gap:10px; }
+  header img { width:34px; height:34px; border-radius:9px; background:#fff; padding:2px; }
+  header .t { flex:1; min-width:0; line-height:1.2; }
+  header .t b { color:var(--amber); font-size:16px; } header .t span { font-size:12px; opacity:.85; display:block; }
+  header button { background:rgba(255,255,255,.12); color:#fff; border:0; border-radius:10px; width:38px; height:38px; font-size:17px; }
+  .demo { background:repeating-linear-gradient(135deg,#ffb020,#ffb020 12px,#ffc451 12px,#ffc451 24px); color:#3b2600; font-weight:800;
+          text-align:center; font-size:12px; padding:5px 10px; letter-spacing:.3px; }
+  main { padding:12px; }
+  .hidden { display:none !important; }
+  .card { background:var(--card); border-radius:16px; padding:14px; margin-bottom:12px; box-shadow:0 1px 2px rgba(0,0,0,.06); }
+  .muted { color:var(--muted); font-size:13px; }
+  .row { display:flex; gap:8px; align-items:center; }
+  .grow { flex:1; min-width:0; }
+  .dates { display:flex; gap:6px; overflow-x:auto; padding-bottom:2px; }
+  .chip { flex:0 0 auto; border:1px solid var(--line); background:#fff; border-radius:999px; padding:7px 12px; font-size:13px; font-weight:700; color:#334155; }
+  .chip.on { background:var(--navy); color:#fff; border-color:var(--navy); }
+  .chip small { font-weight:600; opacity:.75; margin-left:4px; }
+  .kpis { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .kpi { background:#f6f8fb; border-radius:12px; padding:10px; }
+  .kpi .n { font-size:22px; font-weight:800; color:var(--navy); } .kpi .l { font-size:12px; color:var(--muted); }
+  .bars { display:grid; gap:9px; margin-top:12px; }
+  .bar .lbl { display:flex; justify-content:space-between; font-size:12.5px; margin-bottom:3px; color:#334155; }
+  .bar .track { height:8px; background:#e8edf3; border-radius:999px; overflow:hidden; }
+  .bar .fill { height:100%; background:var(--amber); border-radius:999px; transition:width .3s; }
+  .bar.done .fill { background:var(--green); }
+  .btn { border:0; border-radius:12px; padding:13px 14px; font-size:15px; font-weight:800; width:100%; cursor:pointer; font-family:inherit; }
+  .btn:disabled { opacity:.45; cursor:not-allowed; }
+  .btn-amber { background:var(--amber); color:#2b1b00; }
+  .btn-green { background:var(--green); color:#fff; }
+  .btn-navy { background:var(--navy); color:#fff; }
+  .btn-ghost { background:#e9edf2; color:#1f2937; }
+  .btn-sm { padding:8px 11px; font-size:13px; border-radius:10px; width:auto; }
+  .cta { position:sticky; bottom:calc(70px + env(safe-area-inset-bottom)); z-index:20; margin:4px 0 12px; box-shadow:0 6px 18px rgba(13,39,72,.25); }
+  .search { width:100%; border:1px solid var(--line); border-radius:12px; padding:11px 12px; font-size:15px; font-family:inherit; margin-bottom:10px; background:#fff; }
+  .job { display:flex; gap:10px; padding:11px 2px; border-bottom:1px solid #f0f2f5; align-items:center; }
+  .job:last-child { border-bottom:0; }
+  .job .no { width:22px; color:var(--muted); font-size:12px; text-align:center; }
+  .job .cn { font-weight:800; font-size:14.5px; letter-spacing:.2px; }
+  .job .sub { font-size:12px; color:var(--muted); margin-top:2px; }
+  .stage { font-size:11.5px; font-weight:800; border-radius:999px; padding:4px 9px; white-space:nowrap; background:#eef2f7; color:#334155; }
+  .stage.wait { background:var(--warnbg); color:var(--warn); } .stage.ok { background:var(--okbg); color:var(--ok); }
+  .stage.bad { background:var(--redbg); color:var(--red); } .stage.blue { background:#e0ecff; color:#1d4ed8; }
+  .seg { display:flex; background:#e4e9f0; border-radius:12px; padding:3px; margin-bottom:10px; }
+  .seg button { flex:1; border:0; background:none; border-radius:10px; padding:9px 4px; font-weight:800; font-size:13.5px; color:#475569; font-family:inherit; }
+  .seg button.on { background:#fff; color:var(--navy); box-shadow:0 1px 3px rgba(0,0,0,.12); }
+  .counters { display:flex; gap:6px; flex-wrap:wrap; margin:8px 0 2px; }
+  .cnt { font-size:12px; font-weight:700; background:#f1f5f9; border-radius:8px; padding:4px 8px; color:#334155; }
+  .cnt.ok { background:var(--okbg); color:var(--ok); } .cnt.bad { background:var(--redbg); color:var(--red); }
+  #map { height:330px; border-radius:14px; overflow:hidden; background:#dfe6ee; position:relative; }
+  .map-empty { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; text-align:center; padding:20px; color:#475569; font-size:13px; }
+  .watermark { position:absolute; top:8px; left:8px; z-index:5; background:rgba(255,176,32,.92); color:#3b2600; font-weight:800; font-size:11px; padding:3px 8px; border-radius:6px; pointer-events:none; }
+  .drv { display:flex; gap:10px; align-items:center; padding:10px 2px; border-bottom:1px solid #f0f2f5; }
+  .drv:last-child { border-bottom:0; }
+  .dot { width:12px; height:12px; border-radius:50%; flex:0 0 auto; background:#cbd5e1; }
+  .dot.fresh { background:var(--green); } .dot.stale { background:var(--amber); } .dot.none { background:#cbd5e1; }
+  .gate { border-radius:14px; padding:12px 14px; margin-bottom:12px; font-size:14px; }
+  .gate.closed { background:var(--warnbg); color:var(--warn); } .gate.open { background:var(--okbg); color:var(--ok); }
+  .group h4 { margin:4px 0 8px; font-size:14px; color:var(--navy); }
+  .pick { display:flex; gap:10px; align-items:flex-start; padding:9px 0; border-bottom:1px solid #f0f2f5; }
+  .pick input { width:22px; height:22px; margin:2px 0 0; accent-color:var(--navy); flex:0 0 auto; }
+  .thumbs { display:flex; gap:6px; margin-top:6px; }
+  .thumb { width:58px; height:58px; border-radius:10px; background:#f1f5f9; border:1px dashed #cbd5e1; display:flex; align-items:center; justify-content:center;
+           font-size:10.5px; color:var(--muted); text-align:center; overflow:hidden; }
+  .thumb img { width:100%; height:100%; object-fit:cover; }
+  nav.tabs { position:fixed; bottom:0; left:0; right:0; z-index:40; background:#fff; border-top:1px solid var(--line); display:flex; justify-content:center;
+             padding-bottom:env(safe-area-inset-bottom); }
+  nav.tabs .in { display:flex; width:100%; max-width:520px; }
+  nav.tabs button { flex:1; border:0; background:none; padding:9px 2px 8px; font-size:11.5px; font-weight:700; color:#94a3b8; font-family:inherit; }
+  nav.tabs button .i { display:block; font-size:21px; line-height:1.2; filter:grayscale(1); opacity:.7; }
+  nav.tabs button.on { color:var(--navy); } nav.tabs button.on .i { filter:none; opacity:1; }
+  .sheet-bg { position:fixed; inset:0; background:rgba(15,23,42,.45); z-index:60; display:flex; align-items:flex-end; justify-content:center; }
+  .sheet { background:#fff; width:100%; max-width:520px; border-radius:18px 18px 0 0; padding:16px 16px calc(18px + env(safe-area-inset-bottom)); max-height:86vh; overflow:auto; }
+  .sheet .grab { width:40px; height:5px; background:#d6dde6; border-radius:999px; margin:-6px auto 12px; }
+  .sheet h3 { margin:0 0 8px; font-size:17px; color:var(--navy); }
+  .kv { display:flex; justify-content:space-between; gap:10px; padding:7px 0; border-bottom:1px solid #f1f4f8; font-size:14px; }
+  .kv span { color:var(--muted); } .kv b { text-align:right; word-break:break-word; }
+  .chat { background:#8cabd9; border-radius:14px; padding:10px; }
+  .msg { background:#fff; border-radius:14px; overflow:hidden; margin:0 0 10px; max-width:300px; box-shadow:0 1px 2px rgba(0,0,0,.15); }
+  .msg .h { background:var(--navy); color:#fff; padding:9px 12px; font-weight:800; font-size:14px; } .msg .h small { color:var(--amber); display:block; font-size:11px; }
+  .msg .b { padding:9px 12px; font-size:13px; line-height:1.5; }
+  .msg .f a { display:block; text-align:center; padding:9px; margin:0 10px 8px; border-radius:9px; background:#eef2f7; color:#111; text-decoration:none; font-weight:700; font-size:13px; }
+  .msg .f a.p { background:var(--green); color:#fff; }
+  .msg .meta { font-size:11px; color:var(--muted); padding:0 12px 8px; }
+  .toast { position:fixed; left:50%; bottom:90px; transform:translateX(-50%); background:#0f172a; color:#fff; padding:11px 16px; border-radius:12px; font-size:14px;
+           z-index:90; max-width:90%; text-align:center; box-shadow:0 8px 24px rgba(0,0,0,.25); }
+  .center { text-align:center; padding:30px 10px; color:var(--muted); }
+  a { color:#1d4ed8; }
+  #qr img, #qr canvas { margin:8px auto; display:block; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+<div class="app">
+  <header>
+    <img src="/brand/mark.webp" alt="SHIPME">
+    <div class="t"><b>SHIPME</b> <span id="hd-sub">Shipping Staff</span></div>
+    <button id="btn-refresh" title="โหลดใหม่">↻</button>
+  </header>
+  <div id="demo-bar" class="demo hidden">DEMO MODE — ยังไม่ได้เชื่อม LINE OA: ข้อความไม่ได้ส่งจริง ดูได้ที่ เพิ่มเติม → จำลองแชท LINE</div>
+
+  <main>
+    <!-- แผนงาน -->
+    <section id="v-plan">
+      <div class="card">
+        <div class="row" style="margin-bottom:10px"><b class="grow">แผนงานของฉัน</b><span class="muted" id="plan-staff"></span></div>
+        <div class="dates" id="dates"></div>
+      </div>
+      <div id="plan-body"><div class="center">กำลังโหลด…</div></div>
+    </section>
+
+    <!-- แผนที่ -->
+    <section id="v-map" class="hidden">
+      <div class="seg" id="phase-seg">
+        <button data-phase="CARD_PICKUP" class="on">รอบแรก • การ์ดรับตู้</button>
+        <button data-phase="EIR_HANDOVER">รอบสอง • EIR</button>
+      </div>
+      <div class="card" id="map-req"></div>
+      <div class="seg" id="mapmode-seg" style="margin-bottom:8px">
+        <button data-mode="map" class="on">แผนที่</button><button data-mode="list">รายชื่อ</button>
+      </div>
+      <div id="map-wrap" class="card" style="padding:6px"><div id="map"></div></div>
+      <div id="map-list" class="card hidden"></div>
+    </section>
+
+    <!-- สถานะงาน -->
+    <section id="v-status" class="hidden">
+      <div id="status-body"></div>
+    </section>
+
+    <!-- เพิ่มเติม -->
+    <section id="v-more" class="hidden">
+      <div id="more-body"></div>
+    </section>
+  </main>
+
+  <nav class="tabs"><div class="in">
+    <button data-tab="plan" class="on"><span class="i">📋</span>แผนงาน</button>
+    <button data-tab="map"><span class="i">🗺️</span>แผนที่</button>
+    <button data-tab="status"><span class="i">📦</span>สถานะงาน</button>
+    <button data-tab="more"><span class="i">☰</span>เพิ่มเติม</button>
+  </div></nav>
+</div>
+<div id="toast" class="toast hidden"></div>
+<script src="/staff-app.js"></script>
+</body>
+</html>
