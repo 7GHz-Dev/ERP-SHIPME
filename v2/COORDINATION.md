@@ -61,10 +61,11 @@ Based on `SHIPME_Driver_Coordination_MASTER_BUILD_PROMPT.md` v2.0, built inside 
 - The 4 LINE values are set in Vercel and the system is in LIVE mode (LIFF ID 2011938705-XKuNdvJP).
 - The business owner tested the whole flow on a real phone and it passed: link LINE + add friend → round-1 location request via LINE → share location in LIFF → steps → EIR + seal photos.
 
+- Google Maps (`GOOGLE_MAPS_BROWSER_KEY`) is set; a test load of Maps JavaScript API from the production domain succeeded (Thai map tiles, no auth error).
+
 ## DEMO only (not real yet)
 
 - ~~LINE OA~~ is now LIVE (see above). The "ผูกแบบทดลอง" (demo link) button only appears in DEMO mode.
-- **Google Maps:** the code is written but untested because there is no key yet. Without a key the page shows a driver list instead (no fake map is drawn).
 
 ## Not built yet (next phase)
 
