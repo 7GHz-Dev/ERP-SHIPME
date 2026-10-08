@@ -570,7 +570,8 @@ const handlers: Record<string, Handler> = {
     const session = await guard(body, PLAN_ROLES);
     return session.error || { ok: true, ...(await lineDiagnostics(String(body._origin || ''))) };
   },
-  driverConfig: async () => ({ ok: true, lineMode: lineMode(), liffId: lineMode() === 'live' ? env.liffId : '' }),
+  // mapsKey เป็น browser key (จำกัด HTTP referrer ไว้ที่โดเมนระบบ) ซึ่งต้องอยู่ในหน้าเว็บอยู่แล้ว
+  driverConfig: async () => ({ ok: true, lineMode: lineMode(), liffId: lineMode() === 'live' ? env.liffId : '', mapsKey: env.googleMapsBrowserKey }),
   driverAuth,
   driverHome,
   driverReportLocation,
