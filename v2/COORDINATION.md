@@ -67,14 +67,43 @@ Based on `SHIPME_Driver_Coordination_MASTER_BUILD_PROMPT.md` v2.0, built inside 
 
 - ~~LINE OA~~ is now LIVE (see above). The "ผูกแบบทดลอง" (demo link) button only appears in DEMO mode.
 
-## Not built yet (next phase)
+## Phase 2 (built and deployed 2026-10-09)
 
-- Meeting records (meetings / meeting_jobs): staff goes to the driver or the driver comes to staff, with a meeting time and LINE meeting messages to drivers.
-- Route planner for EIR delivery (Google Routes API) and the meeting sequence.
-- Scheduled reminders (needs Vercel Cron Pro or Supabase pg_cron; Vercel Hobby runs only once a day).
-- Staff logging in through LINE (Rich Menu "งานชิปปิ้ง"). For now staff log in with their ERP username/password.
-- Notifying staff via LINE when a driver passes X-Ray or sends photos. For now the page refreshes every 20 seconds.
+1. **Meetings (card handover / EIR handover)**
+   - Staff choose who travels: staff goes to the driver, or the driver comes to a meeting point. They set the time and the containers, then a meeting card goes out by LINE (SMS as fallback).
+   - Drivers tap "รับทราบนัด" (accept) or "ขอเลื่อน" (ask to reschedule). A reschedule request notifies staff right away.
+   - Rules:
+     - Staff cannot have two meetings at different places within 4–5 minutes of each other (`staff_overlap`).
+     - Replacing a meeting the driver already accepted requires confirmation (`meeting_confirmed_exists`).
+     - The old meeting is cancelled.
+     - Once every container in a meeting is handed over, the meeting becomes MET.
+     - An EIR meeting can't be scheduled before every container has passed X-Ray.
+2. **Staff link their own LINE:** a signed link valid for 30 minutes plus an ID token. Notifications have 3 levels:
+   - **Important:** all drivers sent their location, all containers passed X-Ray, a problem reported, a reschedule request, all jobs completed.
+   - **All:** each location report, each X-Ray pass, each photo upload, each meeting accepted.
+   - **Off.**
+3. **Rich Menu:** the "📲 ติดตั้ง Rich Menu" (install Rich Menu) button under Settings → Connection check:
+   - Driver menu (default for the OA): งานของฉัน / ส่งตำแหน่ง / ช่วยเหลือ (my jobs / send location / help).
+   - Staff menu (linked per person when they link LINE): งานชิปปิ้ง / แผนที่ / สถานะงาน (shipping jobs / map / job status).
+4. **Route planning (card + EIR):**
+   - Chooses per driver whether staff goes to them or they come to the nearest meeting point, then orders the stops (nearest neighbour + 2-opt) to minimise total travel plus waiting time for everyone.
+   - Reports FEASIBLE; it never claims the result is optimal.
+   - Confirming the plan creates meetings in order and sends them by LINE.
+   - Uses Google Routes API if `GOOGLE_ROUTES_SERVER_KEY` is set (and draws the real road polyline). Without it, times are estimated from distance (straight line × 1.35 at 30 km/h), labelled "ประมาณการ" (estimate), and no polyline is drawn.
+   - If a key is set but the call fails, it shows "คำนวณไม่ได้" (can't calculate) and lets staff choose the estimate instead.
+
+Tested against the real DB with temporary data in DEMO mode (deleted afterwards):
+- Meetings: overlap check, permissions, accept/reschedule, replacement, MET.
+- Routes: auto mode / staff goes to everyone, X-Ray gate, confirm once only.
+- All 8 notification types arrive.
+
+Screenshots taken on the real domain (Google Maps rendered with the real key): route plan + map, meeting form, the More tab, and the driver meeting card.
+
+## Not built yet
+
+- Scheduled reminders for drivers who haven't replied (needs Vercel Cron Pro or Supabase pg_cron).
 - Reports / CSV for this flow.
+- Real Google Routes (waiting for `GOOGLE_ROUTES_SERVER_KEY`).
 
 ## LINE OA setup (when the account is ready)
 
