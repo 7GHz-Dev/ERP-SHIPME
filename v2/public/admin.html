@@ -698,9 +698,9 @@
         <button id="tr-check" class="btn btn-ghost btn-sm">🔌 ตรวจการเชื่อมต่อ</button>
         <div id="tr-result" style="margin-top:14px"></div>
 
-        <h3 class="sec" style="margin-top:30px">LINE OA (ประสานงานคนขับ)</h3>
+        <h3 class="sec" style="margin-top:30px">LINE OA / Google Routes / เตือนอัตโนมัติ (ประสานงานคนขับ)</h3>
         <p class="muted" style="margin:0 0 12px">ตรวจของจริง: token ใช้ได้ไหม, LINE ยิง webhook ทดสอบ (ลงลายเซ็นจริง) มาถึงระบบไหม, โควตาข้อความเดือนนี้</p>
-        <button id="line-check" class="btn btn-ghost btn-sm">💬 ตรวจ LINE OA</button>
+        <button id="line-check" class="btn btn-ghost btn-sm">💬 ตรวจ LINE OA + Google Routes</button>
         <div id="line-result" style="margin-top:14px"></div>
         <div style="margin-top:16px">
           <b>Rich Menu (เมนูล่างในแชท SHIPME)</b>
@@ -3440,6 +3440,8 @@ $('line-check').addEventListener('click', function(){
     if(r.webhook) L.push(['Webhook URL ใน LINE', (r.webhook.matches?ok(true):ok(false)+' ควรเป็น <code>'+esc(r.expectedWebhook)+'</code>')+' • '+esc(r.webhook.endpoint||'(ว่าง)')+' • '+(r.webhook.active?'เปิดใช้':'<b>ยังไม่ได้เปิด Use webhook</b>')]);
     if(r.webhookTest) L.push(['ทดสอบ webhook (LINE ยิงมา)', r.webhookTest.ok ? ok(true)+' HTTP '+esc(r.webhookTest.statusCode) : ok(false)+' '+esc(r.webhookTest.reason)+' '+esc(r.webhookTest.statusCode||'')+(r.webhookTest.statusCode==401?' — Channel secret ไม่ตรง':'')]);
     if(r.quota) L.push(['โควตาข้อความเดือนนี้', (r.quota.used!=null?r.quota.used:'?')+' / '+(r.quota.limit!=null?r.quota.limit:'ไม่จำกัด')+' ('+esc(r.quota.type||'')+')']);
+    if(r.routes) L.push(['Google Routes API', r.routes.ok ? ok(true)+' ทดสอบ Gate→B4: '+Math.round(r.routes.seconds/60)+' นาที ('+(r.routes.meters/1000).toFixed(1)+' กม.)' : ok(false)+' '+esc(r.routes.error)]);
+    if(r.cron) L.push(['เตือนอัตโนมัติ (pg_cron)', r.cron.configured ? 'ตั้ง CRON_SECRET แล้ว — ดูผลรอบล่าสุดใน Supabase (cron.job_run_details)' : 'ยังไม่ได้ตั้ง CRON_SECRET']);
     L.push(['LIFF Endpoint URL ที่ต้องตั้ง', '<code>'+esc(r.liffEndpoint)+'</code>']);
     $('line-result').innerHTML='<div class="tbl-wrap"><table class="grid"><tbody>'+L.map(function(x){ return '<tr><td class="name" style="text-align:left">'+x[0]+'</td><td style="text-align:left">'+x[1]+'</td></tr>'; }).join('')+'</tbody></table></div>';
   }).catch(function(){ b.disabled=false; $('line-result').textContent='เชื่อมต่อเซิร์ฟเวอร์ไม่ได้'; });

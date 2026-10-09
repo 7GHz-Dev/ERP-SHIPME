@@ -175,6 +175,22 @@ export async function lineDiagnostics(origin: string) {
   out.webhook = { endpoint: hook.data?.endpoint || '', active: Boolean(hook.data?.active), matches: hook.data?.endpoint === out.expectedWebhook };
   const test = await call('/v2/bot/channel/webhook/test', { method: 'POST', body: JSON.stringify({ endpoint: out.expectedWebhook }) });
   out.webhookTest = { ok: Boolean(test.data?.success), statusCode: test.data?.statusCode, reason: test.data?.reason || test.data?.message || '', detail: test.data?.detail || '' };
+  // Google Routes (ฝั่งเซิร์ฟเวอร์) — ลองคำนวณระยะ 2 จุดในแหลมฉบังจริง
+  if (env.googleRoutesServerKey) {
+    try {
+      const wp = (lat: number, lng: number) => ({ waypoint: { location: { latLng: { latitude: lat, longitude: lng } } } });
+      const res = await fetch('https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix', {
+        method: 'POST', signal: AbortSignal.timeout(15000),
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': env.googleRoutesServerKey, 'x-goog-fieldmask': 'originIndex,destinationIndex,duration,distanceMeters,condition' },
+        body: JSON.stringify({ origins: [wp(13.0790, 100.8990)], destinations: [wp(13.0950, 100.9300)], travelMode: 'DRIVE', routingPreference: 'TRAFFIC_UNAWARE' })
+      });
+      const data = await res.json().catch(() => null) as any;
+      const el = Array.isArray(data) ? data[0] : null;
+      out.routes = el?.duration ? { ok: true, seconds: parseInt(el.duration, 10), meters: el.distanceMeters }
+        : { ok: false, error: String(data?.error?.message || data?.[0]?.error?.message || `HTTP ${res.status}`).slice(0, 200) };
+    } catch { out.routes = { ok: false, error: 'เชื่อมต่อ Google Routes ไม่ได้' }; }
+  } else out.routes = { ok: false, error: 'ยังไม่ได้ตั้ง GOOGLE_ROUTES_SERVER_KEY (ใช้ประมาณการ)' };
+  out.cron = { configured: Boolean(env.cronSecret) };
   const quota = await call('/v2/bot/message/quota');
   const used = await call('/v2/bot/message/quota/consumption');
   out.quota = { type: quota.data?.type, limit: quota.data?.value ?? null, used: used.data?.totalUsage ?? null };
