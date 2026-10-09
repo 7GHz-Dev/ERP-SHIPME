@@ -99,11 +99,24 @@ Tested against the real DB with temporary data in DEMO mode (deleted afterwards)
 
 Screenshots taken on the real domain (Google Maps rendered with the real key): route plan + map, meeting form, the More tab, and the driver meeting card.
 
+## Automatic reminders (2026-10-09)
+
+- Supabase `pg_cron` + `pg_net`: job `shipme-coord-reminders` runs every 5 minutes and calls `POST /api/cron/coord-reminders` with `Authorization: Bearer <CRON_SECRET>`.
+  - First run verified: 03:00 UTC, HTTP 200.
+- Reminds drivers by LINE, once per item, 06:00–21:00 Bangkok time only:
+  - location requests: at 10 / 20 minutes
+  - meetings not yet accepted
+  - X-Ray: 90 minutes after pick-up
+  - EIR receipt: 15 minutes after staff handover
+  - closing photos: 60 minutes after EIR receipt
+- When a request expires without a reply, staff get a notification.
+- Check runs with: `select * from cron.job_run_details order by start_time desc limit 5;`
+- Stop with: `select cron.unschedule('shipme-coord-reminders');`
+- `GOOGLE_ROUTES_SERVER_KEY` is set in Vercel. Verify with the "ตรวจ LINE OA + Google Routes" button in Settings.
+
 ## Not built yet
 
-- Scheduled reminders for drivers who haven't replied (needs Vercel Cron Pro or Supabase pg_cron).
 - Reports / CSV for this flow.
-- Real Google Routes (waiting for `GOOGLE_ROUTES_SERVER_KEY`).
 
 ## LINE OA setup (when the account is ready)
 
