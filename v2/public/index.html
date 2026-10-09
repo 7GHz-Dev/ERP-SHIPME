@@ -508,10 +508,13 @@
           <label style="margin-top:12px">วันที่โอนคืนบริษัท <span class="muted">(ตามสลิปใบแรก)</span> <span style="color:var(--err)">*</span></label>
           <input id="st-returned" type="date" class="date-fit">
 
-          <!-- โอนหลายครั้ง: ใส่ยอดของสลิปใบแรก แล้วแนบใบถัดไปด้านล่าง (แต่ละใบเลือกวันที่โอนเอง) ระบบรวมยอดเทียบให้ -->
-          <label>ยอดที่โอนในสลิปใบแรก (บาท) <span class="muted">— โอนครั้งเดียวไม่ต้องแก้</span></label>
-          <input id="st-slip-expect" type="number" inputmode="decimal" min="0" step="0.01" class="date-fit" style="margin-bottom:6px">
-          <div id="st-slip-split" class="muted" style="margin:0 0 12px">โอนหลายครั้ง: ใส่ยอดของสลิปใบแรก แล้วแนบสลิปใบถัดไปด้านล่าง ระบบรวมยอดโอนทุกใบเทียบกับยอดที่ต้องโอนคืน</div>
+          <!-- โอนหลายครั้ง: แนบสลิปได้หลายรอบ ระบบอ่านยอดของแต่ละใบเอง แล้วรวมยอดทุกใบเทียบกับยอดที่ต้องโอนคืน -->
+          <div id="st-slip-split" class="muted" style="margin:8px 0 12px">โอนหลายครั้งได้ — แนบสลิปใบแรกได้เลย ระบบอ่านยอดในสลิปให้ แล้วแนบใบถัดไปจนยอดรวมเท่ายอดที่ต้องโอนคืน
+            <a href="#" id="st-expect-toggle">แก้ยอดสลิปใบแรกเอง</a></div>
+          <div id="st-expect-wrap" class="hidden">
+            <label>ยอดในสลิปใบแรก (บาท) <span class="muted">— ระบบอ่านให้อัตโนมัติ แก้เฉพาะเมื่ออ่านผิด</span></label>
+            <input id="st-slip-expect" type="number" inputmode="decimal" min="0" step="0.01" class="date-fit" style="margin-bottom:10px">
+          </div>
 
           <label>สลิปโอนเงิน <span style="color:var(--err)">*</span> <span class="muted">(ทุกธนาคาร — ระบบอ่านยอดและวันที่ให้)</span></label>
           <div class="slip-box">
@@ -545,12 +548,13 @@
           <!-- สลิปโอนเพิ่ม: แก้ใบที่แนบสลิปแล้ว แต่ยอดเพิ่มขึ้น → โอนแค่ส่วนต่าง แนบได้หลายใบ -->
           <div id="st-extra-wrap" class="hidden">
             <label id="st-extra-title">สลิปโอนเพิ่ม <span class="muted">(ยอดเพิ่มขึ้นหลังแนบสลิปเดิม — โอนเฉพาะส่วนต่าง)</span></label>
+            <div id="st-slip-total" class="status ok hidden" style="margin:0 0 8px"></div>
             <div id="st-extra-list"></div>
             <div id="st-extra-add" class="slip-box">
               <div id="st-extra-need" class="status wait" style="margin:0 0 10px"></div>
-              <label>วันที่โอนเพิ่ม</label>
+              <label>วันที่โอน <span class="muted">(ระบบใช้วันที่ในสลิปให้ ถ้าอ่านได้)</span></label>
               <input id="st-extra-date" type="date" class="date-fit" style="margin-bottom:8px">
-              <label>ยอดที่โอนครั้งนี้ (บาท) <span class="muted">— โอนไม่ครบในครั้งเดียว แก้ยอดแล้วแนบใบถัดไปได้</span></label>
+              <label>ยอดที่โอนครั้งนี้ (บาท) <span class="muted">— ระบบอ่านจากสลิปให้ โอนไม่ครบก็แนบใบถัดไปต่อได้</span></label>
               <input id="st-extra-expect" type="number" inputmode="decimal" min="0" step="0.01" style="margin-bottom:8px">
               <input id="st-extra-file" type="file" accept="image/*" style="margin:0">
               <div id="st-extra-status" class="status wait hidden" style="margin:10px 0 0"></div>
@@ -3035,7 +3039,7 @@ function resetSlip(){
   $('st-slip-info').innerHTML='';
   $('st-slip-manual').classList.add('hidden');
   $('st-slip-amt').value=''; $('st-slip-date').value=''; $('st-slip-txn').value='';
-  settle.mainEdited=false; $('st-slip-expect').value='';
+  settle.mainEdited=false; $('st-slip-expect').value=''; $('st-expect-wrap').classList.add('hidden');
   setSlipStatus('wait','แนบสลิปโอนเงินของยอดที่ต้องโอนคืน');
   resetExtraSlips();
 }
@@ -3059,6 +3063,8 @@ $('st-slip-confirm').addEventListener('click', function(){
   var manual={ amount:Number($('st-slip-amt').value)||0, date:$('st-slip-date').value, txn:$('st-slip-txn').value.trim() };
   if(!manual.txn){ toast('กรอกเลขที่รายการในสลิปด้วย'); return; }
   if(!manual.date){ toast('เลือกวันที่โอนในสลิป'); return; }
+  // กรอกยอดน้อยกว่าที่ต้องโอน = สลิปใบแรกของการโอนหลายครั้ง
+  if(manual.amount>0 && manual.amount<settleDue()-extraTol()){ $('st-slip-expect').value=manual.amount; settle.mainEdited=true; bal=manual.amount; }
   setSlipStatus('wait','<span class="spinner"></span> กำลังตรวจค่าที่กรอก…');
   api({action:'verifySlip', token:state.token, fileId:sp.fileId, manual:manual, expectDate:date, expectAmount:bal})
     .then(function(res){ applySlipResult(res, bal, date); })
@@ -3138,6 +3144,9 @@ function mainExpect(){
   var due=settleDue(), v=r2(Number($('st-slip-expect').value)||0);
   return (v>0 && v<due) ? v : due;
 }
+$('st-expect-toggle').addEventListener('click', function(e){
+  e.preventDefault(); $('st-expect-wrap').classList.toggle('hidden'); if(!$('st-expect-wrap').classList.contains('hidden')) $('st-slip-expect').focus();
+});
 $('st-slip-expect').addEventListener('input', function(){
   settle.mainEdited = this.value!=='' && r2(Number(this.value)||0)!==settleDue();
   scheduleSlipRecheck();
@@ -3201,6 +3210,11 @@ function renderExtraSlips(bal, date){
       updateSettleSummary();
     });
   });
+  var paid=r2(Number(sp.amount)+extraTotal());
+  $('st-slip-total').classList.toggle('hidden', !(sp.fresh || list.length));
+  $('st-slip-total').className='status '+(short>extraTol()?'wait':'ok')+((sp.fresh || list.length)?'':' hidden');
+  $('st-slip-total').innerHTML='ยอดโอนรวม <b>'+fmtM(paid)+'</b> / ต้องโอนคืน <b>'+fmtM(bal)+'</b> บาท ('+(1+list.length)+' สลิป)'+
+    (short>extraTol()?' — ยังขาด <b>'+fmtM(short)+'</b> บาท แนบสลิปใบถัดไปด้านล่าง':(short<-extraTol()?' — เกิน '+fmtM(-short)+' บาท':' ✓ ครบแล้ว'));
   var canAdd = short>extraTol() && list.length<EXTRA_MAX;
   $('st-extra-add').classList.toggle('hidden', !canAdd);
   if(canAdd){
@@ -3226,10 +3240,9 @@ $('st-extra-file').addEventListener('change', function(){
   var f=settle.form; if(!f) return;
   var date=$('st-extra-date').value;
   var short=extraShort(settleDue());
-  var amount=r2(Number($('st-extra-expect').value)||0);
-  if(!date){ toast('เลือกวันที่โอนเพิ่มก่อน'); input.value=''; return; }
-  if(!(short>extraTol())){ toast('ไม่ต้องโอนเพิ่มแล้ว'); input.value=''; return; }
-  if(!(amount>0)){ toast('กรอกยอดที่โอนครั้งนี้'); input.value=''; return; }
+  var amount=r2(Number($('st-extra-expect').value)||0) || short;
+  if(!date){ toast('เลือกวันที่โอนก่อน'); input.value=''; return; }
+  if(!(short>extraTol())){ toast('ยอดโอนรวมครบแล้ว ไม่ต้องแนบเพิ่ม'); input.value=''; return; }
   if(amount-short>extraTol()){ toast('ยอดที่โอนครั้งนี้เกินยอดที่ต้องโอนเพิ่ม ('+fmtM(short)+' บาท)'); input.value=''; return; }
   if(file.size>10*1024*1024){ toast('ไฟล์ใหญ่เกิน 10MB — ถ่าย/แคปใหม่ให้เล็กลงก่อน'); input.value=''; return; }
   $('st-extra-manual').classList.add('hidden');
@@ -3239,7 +3252,7 @@ $('st-extra-file').addEventListener('change', function(){
     resizeImage(String(reader.result||''), SLIP_W_START, 0.92, false).then(function(out){
       return uploadLarge(dataUrlToBlob(out.dataUrl), { purpose:'slip', expectDate:date });
     }).then(function(up){
-      settle.extraPending={ date:date, amount:amount };
+      settle.extraPending={ date:date, amount:amount, retried:false };
       return api({ action:'verifySlip', token:state.token, key:up.key, expectDate:date, expectAmount:amount });
     }).then(function(res){ applyExtraResult(res); })
       .catch(function(err){
@@ -3261,6 +3274,21 @@ function applyExtraResult(res){
     return;
   }
   pend.fileId=res.fileId; pend.url=res.url;
+  // ระบบอ่านสลิปได้แต่ไม่ตรงที่กรอก: ยอดน้อยกว่า (โอนไม่ครบ) หรือวันที่ต่าง = ใช้ค่าในสลิปแล้วตรวจซ้ำ (ครั้งเดียว)
+  if(res.status==='mismatch' && res.payeeOk!==false && !pend.retried){
+    var short=extraShort(settleDue());
+    var a=r2(Number(res.amount)||0), amt=res.amountOk?pend.amount:((a>0 && a<=short+extraTol())?a:0);
+    var dt=res.dateOk?pend.date:(/^\d{4}-\d{2}-\d{2}$/.test(res.date||'') && res.date<=todayYmd() ? res.date : '');
+    if(amt && dt && (amt!==pend.amount || dt!==pend.date)){
+      pend.amount=amt; pend.date=dt; pend.retried=true;
+      setExtraStatus('wait','<span class="spinner"></span> ใช้ยอด '+fmtM(amt)+' บาท • '+esc(fmtD(dt))+' จากสลิป — กำลังตรวจ…');
+      api({ action:'verifySlip', token:state.token, fileId:res.fileId, expectDate:dt, expectAmount:amt })
+        .then(function(r2){ applyExtraResult(r2); })
+        .catch(function(){ setExtraStatus('err','ตรวจสลิปไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต'); });
+      return;
+    }
+    if(a>short+extraTol() && res.dateOk){ setExtraStatus('err','❌ ยอดในสลิป '+fmtM(a)+' บาท เกินยอดที่ยังต้องโอน '+fmtM(short)+' บาท'); $('st-extra-file').value=''; return; }
+  }
   if(res.status==='verified' || res.status==='manual'){
     settle.extras.push({ fileId:res.fileId, url:res.url, txn:res.txn||'', amount:pend.amount,
                          date:pend.date, label:res.label||'', saved:false });
@@ -3269,7 +3297,8 @@ function applyExtraResult(res){
     $('st-extra-expect').value='';
     $('st-extra-manual').classList.add('hidden');
     $('st-extra-status').classList.add('hidden');
-    toast('แนบสลิปโอนเพิ่มแล้ว ✓');
+    var left=extraShort(settleDue());
+    toast(left>extraTol() ? 'แนบสลิปแล้ว ✓ ยังต้องโอนอีก '+fmtM(left)+' บาท' : 'แนบสลิปแล้ว ✓ ยอดโอนรวมครบแล้ว', 3500);
     updateSettleSummary();
     return;
   }
@@ -3402,6 +3431,16 @@ function sendSlip(dataUrl, bal, date){
     });
 }
 
+/**
+ * ยอดที่ควรใช้แทน เมื่อสลิปถูกใบ (ผู้รับ + วันที่ตรง) แต่ยอดน้อยกว่าที่คาด = โอนไม่ครบในครั้งเดียว
+ * คืน 0 ถ้าไม่เข้าเงื่อนไข (ยอดเกิน / อ่านยอดไม่ได้ / ผิดใบ) ให้แสดงผลตรวจตามปกติ
+ */
+function partialAmount(res, expect, max){
+  if(!res || !res.ok || res.status!=='mismatch' || res.amountOk || !res.dateOk || res.payeeOk===false) return 0;
+  var a=r2(Number(res.amount)||0);
+  return (a>0 && a<expect-extraTol() && a<=max+extraTol()) ? a : 0;
+}
+
 function slipInfoRow(label, value, ok){
   return '<div class="slip-row"><span>'+esc(label)+'</span><b style="color:'+(ok?'#166534':'#b91c1c')+'">'+esc(value)+'</b></div>';
 }
@@ -3413,6 +3452,16 @@ function applySlipResult(res, bal, date){
     settle.slip=null;
     updateHiResButton(false);      // ล้มเหลวก็ยังให้ลองเพิ่มความละเอียดแล้วส่งใหม่ได้
     updateSettleSummary();
+    return;
+  }
+  // โอนหลายครั้ง: สลิปใบนี้ยอดน้อยกว่าที่ต้องโอน (ผู้รับ/วันที่ถูก) = ใช้ยอดในสลิปเป็นยอดของใบแรก แล้วตรวจซ้ำ
+  var part=partialAmount(res, bal, settleDue());
+  if(part){
+    $('st-slip-expect').value=part; settle.mainEdited=true;
+    setSlipStatus('wait','<span class="spinner"></span> สลิปนี้ '+fmtM(part)+' บาท — ตรวจเป็นสลิปใบแรกของการโอนหลายครั้ง…');
+    api({action:'verifySlip', token:state.token, fileId:res.fileId, expectDate:date, expectAmount:part})
+      .then(function(r2){ applySlipResult(r2, part, date); })
+      .catch(function(){ setSlipStatus('err','ตรวจสลิปไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต'); });
     return;
   }
   settle.slip={ fileId:res.fileId, url:res.url, txn:res.txn||'', amount:Number(res.amount)||0,
