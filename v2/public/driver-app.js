@@ -150,6 +150,7 @@ function nextTodo(d){
   var pm=(d.meetings||[]).filter(function(m){ return m.status==='PROPOSED'; })[0];
   if(pm) return { step:pm.phase==='CARD_PICKUP'?1:5, title:'รับทราบนัดหมาย', text:'ชิปปิ้งนัด'+(pm.phase==='CARD_PICKUP'?'แจกการ์ดรับตู้':'ส่งมอบ EIR')+' เวลา '+hm(pm.scheduledAt)+' ที่ '+pm.label+' — กด "รับทราบนัด"', target:'[data-meet="'+pm.id+'"]' };
   var open=d.jobs.filter(function(j){ return !j.completedAt; });
+  if(!d.jobs.length) return { wait:true, title:'รอชิปปิ้งส่งงานให้คุณ', text:'เมื่อมีงาน SHIPME จะส่งข้อความ LINE มาให้' };
   if(!open.length) return { done:true, title:'ส่งงานครบทุกตู้แล้ว', text:'ตอนนี้ไม่มีอะไรต้องทำ ขอบคุณครับ — งานใหม่จะแจ้งทาง LINE' };
   var date=open[0].inspectDate, list=open.filter(function(j){ return j.inspectDate===date; });
   var idx=Math.min.apply(null, list.map(stepIndex)), on=list.filter(function(j){ return stepIndex(j)===idx; }), cns=cnList(on);
@@ -189,7 +190,8 @@ function guideList(){
 // ---------------- งานของฉัน ----------------
 function render(){
   var d=D.data, html='';
-  if(!d.jobs.length){
+  // ไม่มีตู้ในหน้าจอ แต่มีคำขอตำแหน่ง/นัดหมาย = ยังต้องแสดงปุ่มให้กด (ห้ามซ่อนด้วยหน้า "ยังไม่มีงาน")
+  if(!d.jobs.length && !d.requests.length && !(d.meetings||[]).length){
     html='<div class="todo wait"><div class="todo-step">ตอนนี้</div><div class="todo-title">⏳ รอชิปปิ้งส่งงานให้คุณ</div>'+
       '<div class="todo-text">ยังไม่มีตู้ที่ต้องทำ — เมื่อมีงาน SHIPME จะส่งข้อความ LINE ขอตำแหน่งของคุณ ให้กด "ส่งตำแหน่งตอนนี้" ในข้อความนั้นครั้งเดียว</div></div>'+
       '<div class="card"><b>ขั้นตอนงานเมื่อได้รับงาน</b>'+guideList()+

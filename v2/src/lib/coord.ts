@@ -611,7 +611,15 @@ export async function driverAuth(body: ApiBody): Promise<ApiResult> {
     if (driver.lineName !== lineUser.name || driver.linePicture !== lineUser.picture) {
       await db.update(drivers).set({ lineName: lineUser.name, linePicture: lineUser.picture, updatedAt: nowIso() }).where(eq(drivers.id, driver.id));
     }
-    return { ok: true, session: makeSession(driver.id, 'line') };
+    // เปิดจากปุ่ม "ส่งตำแหน่งตอนนี้" (r=รหัสคำขอ) → บอกหน้าเว็บว่าคำขอไหน จะได้ส่งตำแหน่งทันที (เฉพาะคำขอของคนขับคนนี้)
+    const code = text(body.r, 20).toUpperCase();
+    let requestId = '';
+    if (code) {
+      const [req] = await db.select({ id: locationRequests.id, driverId: locationRequests.driverId }).from(locationRequests)
+        .where(eq(locationRequests.code, code)).limit(1);
+      if (req && req.driverId === driver.id) requestId = req.id;
+    }
+    return { ok: true, session: makeSession(driver.id, 'line'), requestId };
   }
 
   const code = text(body.r, 20).toUpperCase();
@@ -632,10 +640,10 @@ export async function driverHome(body: ApiBody): Promise<ApiResult> {
   const driver = await driverFromSession(body);
   if (!driver) return { ok: false, error: 'session_expired' };
   const today = ymd();
-  // ปกติแสดงงาน 2 วันก่อนถึง 14 วันข้างหน้า — ระบุวันที่ได้ (ยังเห็นเฉพาะงานของตัวเอง)
+  // ปกติแสดงงาน 2 วันก่อนถึง 60 วันข้างหน้า (แพลนล่วงหน้า) — ระบุวันที่ได้ (ยังเห็นเฉพาะงานของตัวเอง)
   const only = validYmd(body.date) ? String(body.date) : '';
   const stepRows = await db.select().from(jobSteps)
-    .where(and(eq(jobSteps.driverId, driver.id), gte(jobSteps.inspectDate, only || shiftDate(today, -2)), lte(jobSteps.inspectDate, only || shiftDate(today, 14))));
+    .where(and(eq(jobSteps.driverId, driver.id), gte(jobSteps.inspectDate, only || shiftDate(today, -2)), lte(jobSteps.inspectDate, only || shiftDate(today, 60))));
   const ids = stepRows.map((s) => s.itemId);
   const items = ids.length ? await db.select().from(jobPlanItems).where(inArray(jobPlanItems.id, ids)) : [];
   const plans = items.length ? await db.select().from(jobPlans).where(inArray(jobPlans.inspectDate, [...new Set(items.map((i) => i.inspectDate))])) : [];
