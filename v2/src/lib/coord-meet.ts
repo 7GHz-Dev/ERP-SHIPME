@@ -343,7 +343,7 @@ export async function coordRoutePlan(body: ApiBody, user: Staff): Promise<ApiRes
   const routable = pending.filter((x) => locs.has(x.d.id));
   const missing = pending.filter((x) => !locs.has(x.d.id)).map((x) => ({ driverId: x.d.id, name: x.d.name }));
   if (!routable.length) return { ok: false, error: 'no_locations', missing };
-  const points = (await db.select().from(meetingPoints).where(eq(meetingPoints.active, true)))
+  const points = (await db.select().from(meetingPoints).where(and(eq(meetingPoints.active, true), eq(meetingPoints.kind, 'MEETING'))))
     .map((p) => ({ id: p.id, lat: p.latitude, lng: p.longitude, label: p.name + (p.port ? ` (${p.port})` : '') }));
   if (policy === 'DRIVER_TO_STAFF' && !points.length) return { ok: false, error: 'no_meeting_points' };
 

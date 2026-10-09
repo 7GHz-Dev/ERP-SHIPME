@@ -102,6 +102,34 @@
   .center { text-align:center; padding:30px 10px; color:var(--muted); }
   a { color:#1d4ed8; }
   #qr img, #qr canvas { margin:8px auto; display:block; }
+  /* ภาพรวม: แถบขั้นงาน + การ์ดราย BL */
+  .sum-hd { display:flex; gap:14px; align-items:baseline; font-size:13px; color:var(--muted); margin-bottom:8px; }
+  .sum-hd b { font-size:20px; color:var(--navy); font-weight:800; }
+  .track { height:8px; background:#e8edf3; border-radius:999px; overflow:hidden; }
+  .track.big { height:10px; } .track .fill { height:100%; background:var(--green); border-radius:999px; transition:width .3s; }
+  .pipe { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-top:12px; }
+  .pt { border:1px solid var(--line); background:#f8fafc; border-radius:12px; padding:7px 2px 6px; font-family:inherit; text-align:center; color:#334155; cursor:pointer; }
+  .pt .i { display:block; font-size:16px; line-height:1.1; } .pt b { display:block; font-size:19px; color:var(--navy); line-height:1.25; }
+  .pt small { display:block; font-size:10.5px; font-weight:700; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pt.zero { opacity:.45; } .pt.on { background:var(--navy); border-color:var(--navy); } .pt.on b, .pt.on small { color:#fff; }
+  .pt.ok:not(.zero) b { color:var(--ok); }
+  .filters { display:flex; gap:6px; flex-wrap:wrap; margin:0 0 8px; }
+  .warnbox { background:#fff7ed; } .warnbox > b { color:#9a3412; }
+  .bl { background:#fff; border-radius:16px; padding:12px 14px 6px; margin-bottom:10px; box-shadow:0 1px 2px rgba(0,0,0,.06); border-left:5px solid var(--amber); }
+  .bl.problem { border-left-color:var(--red); } .bl.alldone { border-left-color:var(--green); }
+  .bl-hd { display:flex; gap:10px; align-items:flex-start; }
+  .bl-no { font-weight:800; font-size:16px; color:var(--navy); letter-spacing:.2px; word-break:break-all; }
+  .bl-hd .sub { font-size:12.5px; color:var(--muted); margin-top:2px; }
+  .bl-n { text-align:right; flex:0 0 auto; } .bl-n b { display:block; font-size:17px; color:var(--navy); } .bl-n small { font-size:11px; color:var(--muted); }
+  .bl-dots { display:flex; gap:3px; margin:8px 0 2px; } .bl-dots i { flex:1; height:6px; border-radius:999px; background:#e2e8f0; }
+  .bl-dots .b0 { background:#cbd5e1; } .bl-dots .b1, .bl-dots .b2 { background:#93c5fd; } .bl-dots .b3 { background:var(--amber); }
+  .bl-dots .b4, .bl-dots .b5 { background:#86efac; } .bl-dots .b6 { background:var(--green); }
+  .bl .job { padding:9px 2px; } .job.hit { background:#fffbeb; margin:0 -8px; padding-left:10px; padding-right:10px; border-radius:10px; }
+  .bl-act { display:flex; flex-wrap:wrap; gap:6px; padding:8px 0 8px; border-top:1px solid #f0f2f5; }
+  .bl-act .btn { flex:1 1 auto; }
+  .blsub { font-weight:800; color:var(--navy); font-size:13px; margin:10px 0 2px; }
+  .blpick { background:#f8fafc; border-radius:10px; padding:8px; margin-top:6px; border-bottom:0; }
+  .sheet h3 .stage { vertical-align:middle; margin-left:6px; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>

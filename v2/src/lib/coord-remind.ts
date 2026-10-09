@@ -20,7 +20,7 @@ export async function runCoordReminders(origin: string, opts: { date?: string; i
   if (!opts.ignoreHours && (hour < HOURS.from || hour >= HOURS.to)) return { ok: true, skipped: 'outside_hours', hour };
   const today = opts.date || ymd(), now = nowIso();
   const reqDate = opts.date ? eq(locationRequests.inspectDate, opts.date) : undefined;
-  const counts: Record<string, number> = { location: 0, locationExpired: 0, meeting: 0, xray: 0, eirReceipt: 0, photos: 0 };
+  const counts: Record<string, number> = { location: 0, locationExpired: 0, meeting: 0, pickup: 0, xray: 0, eirReceipt: 0, photos: 0 };
   const driverCache = new Map<string, typeof drivers.$inferSelect | null>();
   const driverOf = async (id: string) => {
     if (!driverCache.has(id)) { const [d] = await db.select().from(drivers).where(eq(drivers.id, id)).limit(1); driverCache.set(id, d || null); }
@@ -65,14 +65,19 @@ export async function runCoordReminders(origin: string, opts: { date?: string; i
       'ดูนัดหมาย', `m=${m.id}`)) counts.meeting++;
   }
 
-  // 4) รายตู้: รับตู้แล้วนานแต่ยังไม่รายงาน X-Ray (90 นาที) / ชิปปิ้งส่ง EIR แล้วคนขับยังไม่ยืนยัน (15 นาที) / รับ EIR แล้วยังไม่ส่งรูป (60 นาที)
+  // 4) รายตู้: ได้การ์ดแล้วยังไม่ส่งงานรับตู้ (90 นาที) / ส่งงานรับตู้แล้วยังไม่กด "X-Ray แล้ว" (90 นาที)
+  //    / ชิปปิ้งส่ง EIR แล้วคนขับยังไม่ยืนยัน (15 นาที) / รับ EIR แล้วยังไม่ส่งรูป (60 นาที)
   const steps = await db.select().from(jobSteps).where(and(eq(jobSteps.inspectDate, today), eq(jobSteps.completedAt, ''), sql`${jobSteps.driverId} <> ''`));
   const ids = steps.map((s) => s.itemId);
   const items = ids.length ? await db.select({ id: jobPlanItems.id, containerNo: jobPlanItems.containerNo, bl: jobPlanItems.bl }).from(jobPlanItems).where(inArray(jobPlanItems.id, ids)) : [];
   const cn = (id: string) => { const i = items.find((x) => x.id === id); return i ? (i.containerNo || i.bl) : ''; };
   for (const s of steps) {
-    if (s.pickedUpAt && s.xrayStatus !== 'passed' && s.xrayStatus !== 'hold' && s.pickedUpAt < agoIso(90)) {
-      if (await push(s.driverId, `remind-xray:${s.itemId}`, `⏰ ตู้ ${cn(s.itemId)} ผ่าน X-Ray แล้วหรือยัง?`, ['ผ่านแล้วกด "ผ่าน X-Ray แล้ว" / ยังรอกด "ยังรอคิว"'], 'อัปเดตสถานะ', 'home=1')) counts.xray++;
+    const card = s.cardHandedAt || s.cardAckAt;
+    if (card && !s.pickedUpAt && card < agoIso(90)) {
+      if (await push(s.driverId, `remind-pickup:${s.itemId}`, `⏰ ส่งงานรับตู้ ${cn(s.itemId)}`, ['รับตู้แล้ว ถ่ายรูปหน้ารถ หลังรถ และซีลตู้', 'แล้วกด "ส่งงานรับตู้"'], 'ส่งงานรับตู้', 'home=1')) counts.pickup++;
+    }
+    if (s.pickedUpAt && s.xrayStatus === 'pending' && s.pickedUpAt < agoIso(90)) {
+      if (await push(s.driverId, `remind-xray:${s.itemId}`, `⏰ ตู้ ${cn(s.itemId)} เข้าเครื่อง X-Ray แล้วหรือยัง?`, ['เข้าเครื่องแล้ว กด "X-Ray แล้ว" ให้ชิปปิ้งเช็กผล'], 'อัปเดตสถานะ X-Ray', 'home=1')) counts.xray++;
     }
     if (s.eirHandedAt && !s.eirReceivedAt && s.eirHandedAt < agoIso(15)) {
       if (await push(s.driverId, `remind-eir:${s.itemId}`, `⏰ ยืนยันรับ EIR ตู้ ${cn(s.itemId)}`, ['ชิปปิ้งบันทึกว่าส่งมอบ EIR ให้คุณแล้ว', 'ถ้าได้รับแล้ว กด "ได้รับ EIR แล้ว"'], 'ยืนยันรับ EIR', 'home=1')) counts.eirReceipt++;

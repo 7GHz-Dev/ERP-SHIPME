@@ -5,7 +5,7 @@ import {
 } from './inspection';
 import { serviceInvoiceData } from './service-invoices';
 import {
-  coordCardHanded, coordDashboard, coordDemo, coordDriverInvite, coordEirHanded, coordOutbox, coordRequestLocations,
+  coordCardHanded, coordDashboard, coordXrayResult, coordDemo, coordDriverInvite, coordEirHanded, coordOutbox, coordRequestLocations,
   coordTimeline, driverAuth, driverComplete, driverEvidenceCommit, driverEvidenceDelete, driverEvidenceSign,
   driverHome, driverMeeting, driverReportLocation, driverStep, meetingPointList, meetingPointSave
 } from './coord';
@@ -544,6 +544,10 @@ const handlers: Record<string, Handler> = {
   coordEirHanded: async (body) => {
     const session = await guard(body, COORD_STAFF);
     return session.error || coordEirHanded(body, session.user);
+  },
+  coordXrayResult: async (body) => {
+    const session = await guard(body, COORD_STAFF);
+    return session.error || coordXrayResult(body, session.user);
   },
   coordDriverInvite: async (body) => {
     const session = await guard(body, COORD_STAFF);

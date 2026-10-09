@@ -16,8 +16,9 @@ import { id, nowIso, validYmd, ymd } from './utils';
  * ประสานงานคนขับ — ชิปปิ้ง 1 คน + วันตรวจปล่อย 1 วัน = 1 ชุดงาน (แถวในแพลนที่ผู้จัดการ Confirm แล้ว)
  *
  * ลำดับงานจริง:
- *   ขอพิกัดรอบแรก (CARD_PICKUP) → แจกการ์ดรับตู้ → คนขับรับตู้ → ผ่าน X-Ray
- *   → [ทุกตู้ในชุดผ่าน X-Ray] → ขอพิกัดรอบสอง (EIR_HANDOVER) → ส่งมอบ EIR (ชิปปิ้ง → คนขับ)
+ *   ขอพิกัดรอบแรก (CARD_PICKUP) → แจกการ์ดรับตู้ → คนขับรับตู้ + ถ่ายรูปหน้ารถ/หลังรถ/ซีลตู้ (ส่งงานรับตู้)
+ *   → คนขับนำทางไปเครื่อง X-Ray แล้วกด "X-Ray แล้ว" → ชิปปิ้งบันทึกผล X-Ray (ผ่าน / ตรวจเพิ่ม)
+ *   → [ทุกตู้ในชุดผ่าน X-Ray] → ขอพิกัดรอบสอง (EIR_HANDOVER) / นัดส่งมอบ EIR (ชิปปิ้ง → คนขับ)
  *   → คนขับยืนยันรับ EIR → ส่งรูปการ์ด EIR + รูป Seal ของ "แต่ละตู้" → จบงาน (ไม่ต้องรอตรวจ)
  *
  * กติกา:
@@ -34,8 +35,16 @@ const RESEND_COOLDOWN_MIN = 10;
 const FRESH_MIN = 15;
 const INVITE_DAYS = 7;
 const SESSION_HOURS = 12;
-const EVIDENCE_KINDS = ['EIR_CARD_PHOTO', 'CONTAINER_SEAL_PHOTO'] as const;
+const PICKUP_KINDS = ['TRUCK_FRONT_PHOTO', 'TRUCK_REAR_PHOTO', 'PICKUP_SEAL_PHOTO'] as const;   // ส่งงานรับตู้
+const CLOSE_KINDS = ['EIR_CARD_PHOTO', 'CONTAINER_SEAL_PHOTO'] as const;                        // ปิดงาน
+const EVIDENCE_KINDS = [...PICKUP_KINDS, ...CLOSE_KINDS] as const;
 type EvidenceKind = typeof EVIDENCE_KINDS[number];
+const KIND_TAG: Record<EvidenceKind, string> = {
+  TRUCK_FRONT_PHOTO: 'front', TRUCK_REAR_PHOTO: 'rear', PICKUP_SEAL_PHOTO: 'pseal', EIR_CARD_PHOTO: 'eir', CONTAINER_SEAL_PHOTO: 'seal'
+};
+const isPickupKind = (k: string) => (PICKUP_KINDS as readonly string[]).includes(k);
+/** คนขับเข้าเครื่อง X-Ray แล้ว รอชิปปิ้งบันทึกผล ('waiting' = ค่าจากเวอร์ชันก่อน) */
+const isScanned = (st: string) => st === 'scanned' || st === 'waiting';
 
 const text = (v: unknown, max = 200) => String(v ?? '').trim().slice(0, max);
 const addMin = (iso: string, min: number) => new Date(Date.parse(iso) + min * 60000).toISOString();
@@ -174,7 +183,7 @@ export function stageOf(s: StepRow | undefined) {
   if (s.eirHandedAt) return 'EIR_HANDED';
   if (s.xrayStatus === 'passed') return 'XRAY_PASSED';
   if (s.xrayStatus === 'hold') return 'XRAY_HOLD';
-  if (s.xrayStatus === 'waiting') return 'XRAY_WAITING';
+  if (isScanned(s.xrayStatus)) return 'XRAY_SCANNED';
   if (s.pickedUpAt) return 'PICKED_UP';
   if (s.cardHandedAt || s.cardAckAt) return 'CARD_HANDED';
   return 'PLANNED';
@@ -259,12 +268,14 @@ export async function coordDashboard(body: ApiBody, user: Staff): Promise<ApiRes
     counts: {
       jobs: items.length, drivers: driverList.length, linked: driverList.filter((d) => d.linked).length,
       cardHanded: count((s) => Boolean(s?.cardHandedAt || s?.cardAckAt)), pickedUp: count((s) => Boolean(s?.pickedUpAt)),
+      xrayScanned: count((s) => Boolean(s && (isScanned(s.xrayStatus) || s.xrayStatus === 'passed' || s.xrayStatus === 'hold'))),
       xrayPassed: gate.passed, eirHanded: count((s) => Boolean(s?.eirHandedAt)), eirReceived: count((s) => Boolean(s?.eirReceivedAt)),
       completed: count((s) => Boolean(s?.completedAt)),
       gpsCard: driverList.filter((d) => d.phases.CARD_PICKUP.location).length,
       gpsEir: driverList.filter((d) => d.phases.EIR_HANDOVER.location).length
     },
-    meetingPoints: await db.select().from(meetingPoints).where(eq(meetingPoints.active, true)).orderBy(asc(meetingPoints.port), asc(meetingPoints.name)),
+    meetingPoints: await db.select().from(meetingPoints).where(and(eq(meetingPoints.active, true), eq(meetingPoints.kind, 'MEETING')))
+      .orderBy(asc(meetingPoints.port), asc(meetingPoints.name)),
     meetings: meetingRows.map((m) => ({ ...m, username: String(m.username), createdBy: String(m.createdBy), itemIds: JSON.parse(m.itemIdsJson || '[]') })),
     me: await meet.staffLineStatus(user.username),
     routesSource: env.googleRoutesServerKey ? 'GOOGLE_ROUTES_API' : 'ESTIMATE'
@@ -412,6 +423,60 @@ async function staffMark(body: ApiBody, user: Staff, field: 'card' | 'eir'): Pro
 export const coordCardHanded = (body: ApiBody, user: Staff) => staffMark(body, user, 'card');
 export const coordEirHanded = (body: ApiBody, user: Staff) => staffMark(body, user, 'eir');
 
+/**
+ * ชิปปิ้งบันทึกผล X-Ray (ทีละตู้ / ทั้ง BL): passed = ผ่าน | hold = ต้องตรวจเพิ่ม | reset = ถอยกลับเป็น "รอผล"
+ * ต้องส่งงานรับตู้แล้ว — ส่งมอบ EIR แล้วถอยผลไม่ได้ / คนขับได้ข้อความ LINE แจ้งผล (เฉพาะคนที่ผูกแล้ว)
+ */
+export async function coordXrayResult(body: ApiBody, user: Staff): Promise<ApiResult> {
+  const date = String(body.date || '');
+  if (!validYmd(date)) return { ok: false, error: 'bad_date' };
+  const result = ['passed', 'hold', 'reset'].includes(String(body.result)) ? String(body.result) : '';
+  if (!result) return { ok: false, error: 'bad_request' };
+  const username = staffScope(body, user);
+  const ids = Array.isArray(body.itemIds) ? body.itemIds.map(String).slice(0, 200) : [];
+  if (!ids.length) return { ok: false, error: 'no_items' };
+  const { items, steps, drivers: driverMap } = await loadBatch(date, username);
+  const mine = items.filter((i) => ids.includes(i.id));
+  if (mine.length !== ids.length) return { ok: false, error: 'forbidden' };
+  const note = text(body.note, 300);
+  const at = nowIso();
+  const changed: ItemRow[] = [], skipped: string[] = [];
+  for (const item of mine) {
+    const s = steps.get(item.id)!;
+    const cn = item.containerNo || item.bl;
+    if (!s.pickedUpAt || s.eirHandedAt) { skipped.push(cn); continue; }
+    const next = result === 'reset' ? 'scanned' : result;
+    if (s.xrayStatus === next) continue;
+    await db.update(jobSteps).set({ xrayStatus: next, xrayAt: at, xrayNote: result === 'hold' ? note : '', updatedAt: at, version: s.version + 1 })
+      .where(eq(jobSteps.itemId, item.id));
+    steps.set(item.id, { ...s, xrayStatus: next });
+    changed.push(item);
+  }
+  await logEvents(changed.map((i) => ({ itemId: i.id, inspectDate: date, username })), 'staff', user.username,
+    result === 'passed' ? 'XRAY_RESULT_PASSED' : (result === 'hold' ? 'XRAY_RESULT_HOLD' : 'XRAY_RESULT_RESET'), note ? { note } : {});
+
+  if (result !== 'reset' && changed.length) {
+    const origin = String(body._origin || '');
+    const byDriver = new Map<string, ItemRow[]>();
+    for (const i of changed) {
+      const d = steps.get(i.id)?.driverId || '';
+      if (d) byDriver.set(d, [...(byDriver.get(d) || []), i]);
+    }
+    for (const [driverId, list] of byDriver) {
+      const d = driverMap.get(driverId);
+      if (!d?.lineUserId) continue;
+      const cns = list.map((i) => i.containerNo || i.bl).join(', ');
+      const msg = result === 'passed'
+        ? flexMessage(`ผล X-Ray ผ่านแล้ว (${list.length} ตู้)`, '✅ ผล X-Ray ผ่านแล้ว', [`ตู้: ${cns}`, 'รอชิปปิ้งนัดส่งมอบ EIR ออกท่า — จะได้ข้อความนัดทาง LINE'],
+          [{ label: 'ดูงานของฉัน', uri: driverUrl(origin, 'home=1', true), primary: true }])
+        : flexMessage(`ผล X-Ray ต้องตรวจเพิ่ม (${list.length} ตู้)`, '⚠️ ผล X-Ray: ต้องตรวจเพิ่ม', [`ตู้: ${cns}`, note || 'กรุณารอคำแนะนำจากชิปปิ้ง'],
+          [{ label: 'ดูงานของฉัน', uri: driverUrl(origin, 'home=1', true), primary: true }]);
+      await pushToDriver({ lineUserId: d.lineUserId, driverId, kind: `XRAY_RESULT_${result.toUpperCase()}`, ref: `xray-${result}:${driverId}:${at}`, messages: [msg] });
+    }
+  }
+  return { ok: true, count: changed.length, skipped, gate: xrayGate(items, steps, driverMap) };
+}
+
 // ---------------- ชิปปิ้ง: ผูก LINE คนขับ ----------------
 
 export async function coordDriverInvite(body: ApiBody, user: Staff): Promise<ApiResult> {
@@ -471,7 +536,7 @@ export async function coordOutbox(body: ApiBody, user: Staff): Promise<ApiResult
 // ---------------- จุดนัดพบ (ตั้งค่า) ----------------
 
 export async function meetingPointList(): Promise<ApiResult> {
-  return { ok: true, rows: await db.select().from(meetingPoints).orderBy(asc(meetingPoints.port), asc(meetingPoints.name)),
+  return { ok: true, rows: await db.select().from(meetingPoints).orderBy(asc(meetingPoints.kind), asc(meetingPoints.port), asc(meetingPoints.name)),
     mapsKey: env.googleMapsBrowserKey };
 }
 export async function meetingPointSave(body: ApiBody, user: Staff): Promise<ApiResult> {
@@ -479,7 +544,7 @@ export async function meetingPointSave(body: ApiBody, user: Staff): Promise<ApiR
   if (!name) return { ok: false, error: 'missing_name' };
   if (!(Math.abs(lat) <= 90 && Math.abs(lng) <= 180) || (!lat && !lng)) return { ok: false, error: 'bad_location' };
   const at = nowIso();
-  const values = { name, port: text(body.port, 40), latitude: lat, longitude: lng, note: text(body.note, 300),
+  const values = { name, port: text(body.port, 40), kind: body.kind === 'XRAY' ? 'XRAY' : 'MEETING', latitude: lat, longitude: lng, note: text(body.note, 300),
     active: body.active !== false, updatedAt: at };
   if (body.id) {
     const done = await db.update(meetingPoints).set(values).where(eq(meetingPoints.id, text(body.id, 60))).returning({ id: meetingPoints.id });
@@ -496,6 +561,8 @@ async function batchProgress(date: string, username: string) {
   const rows = await db.select().from(jobSteps).where(and(eq(jobSteps.inspectDate, date), eq(jobSteps.username, username)));
   return {
     total: rows.length,
+    pickedUp: rows.filter((r) => r.pickedUpAt).length,
+    scanned: rows.filter((r) => r.xrayStatus !== 'pending' && r.pickedUpAt).length,
     xray: rows.filter((r) => r.xrayStatus === 'passed').length,
     eirReceived: rows.filter((r) => r.eirReceivedAt).length,
     completed: rows.filter((r) => r.completedAt).length
@@ -597,11 +664,14 @@ export async function driverHome(body: ApiBody): Promise<ApiResult> {
     gte(meetingsTable.inspectDate, only || shiftDate(today, -2)), inArray(meetingsTable.status, ['PROPOSED', 'ACCEPTED', 'RESCHEDULE_REQUESTED'])))
     .orderBy(asc(meetingsTable.scheduledAt));
   const { driverHelp } = await import('./coord-meet');
+  const xrayPoints = await db.select().from(meetingPoints).where(and(eq(meetingPoints.active, true), eq(meetingPoints.kind, 'XRAY')))
+    .orderBy(asc(meetingPoints.port), asc(meetingPoints.name));
   return {
     ok: true, today, driver: { id: driver.id, name: driver.name, plate: driver.plate, lineName: driver.lineName, linked: Boolean(driver.lineUserId) },
     meetings: myMeetings.map((m) => ({ id: m.id, phase: m.phase, mode: m.mode, label: m.label, lat: m.latitude, lng: m.longitude,
       scheduledAt: m.scheduledAt, status: m.status, note: m.note, inspectDate: m.inspectDate, itemIds: JSON.parse(m.itemIdsJson || '[]') })),
     help: await driverHelp(driver.id),
+    xrayPoints: xrayPoints.map((p) => ({ id: p.id, name: p.name, port: p.port, lat: p.latitude, lng: p.longitude, note: p.note })),
     lineMode: lineMode(), liffId: lineMode() === 'live' ? env.liffId : '',
     requests: active,
     jobs: visible.sort((a, b) => a.inspectDate.localeCompare(b.inspectDate) || a.seq - b.seq).map((i) => {
@@ -670,8 +740,9 @@ export async function driverReportLocation(body: ApiBody): Promise<ApiResult> {
 /**
  * ปุ่มสถานะของคนขับ (ทีละตู้) — ต้องเป็นตามลำดับ
  *   card-ack: รับการ์ดแล้ว (ชิปปิ้งลืมบันทึกก็ยังเดินงานต่อได้)
- *   picked-up: รับตู้แล้ว (ต้องได้การ์ดก่อน)
- *   xray: waiting | hold | passed (ต้องรับตู้ก่อน) — เป็น "คนขับรายงาน" ไม่ใช่ผลรับรองจากเครื่อง
+ *   picked-up: ส่งงานรับตู้ (ต้องได้การ์ดก่อน + มีรูปหน้ารถ หลังรถ ซีลตู้ครบ)
+ *   xray: scanned (เข้าเครื่อง X-Ray แล้ว รอผล) | hold (ติดปัญหา) — ต้องส่งงานรับตู้ก่อน
+ *         ผล "ผ่าน" ชิปปิ้งเป็นคนบันทึก (coordXrayResult) คนขับกดเองไม่ได้
  *   eir-received: ได้รับ EIR แล้ว (ทุกตู้ในชุดผ่าน X-Ray แล้วเท่านั้น)
  */
 export async function driverStep(body: ApiBody): Promise<ApiResult> {
@@ -688,14 +759,19 @@ export async function driverStep(body: ApiBody): Promise<ApiResult> {
   } else if (op === 'picked-up') {
     if (!s.cardHandedAt && !s.cardAckAt) return { ok: false, error: 'card_first' };
     if (s.pickedUpAt) return { ok: true };
+    const files = await db.select({ kind: evidenceFiles.kind }).from(evidenceFiles).where(eq(evidenceFiles.itemId, s.itemId));
+    const missing = PICKUP_KINDS.filter((k) => !files.some((f) => f.kind === k));
+    if (missing.length) return { ok: false, error: 'pickup_photos_required', missing };
     patch = { pickedUpAt: at }; event = 'CONTAINER_PICKED_UP_REPORTED';
   } else if (op === 'xray') {
     if (!s.pickedUpAt) return { ok: false, error: 'pickup_first' };
-    const status = ['waiting', 'hold', 'passed'].includes(String(body.status)) ? String(body.status) : '';
+    const raw = String(body.status);
+    if (raw === 'passed') return { ok: false, error: 'xray_result_by_staff' };
+    const status = raw === 'hold' ? 'hold' : (raw === 'scanned' || raw === 'waiting' ? 'scanned' : '');
     if (!status) return { ok: false, error: 'bad_request' };
-    if (s.xrayStatus === 'passed') return { ok: true };
+    if (s.xrayStatus === 'passed' || (status === 'scanned' && isScanned(s.xrayStatus))) return { ok: true };
     patch = { xrayStatus: status, xrayAt: at, xrayNote: text(body.note, 300) };
-    event = status === 'passed' ? 'XRAY_PASSED_REPORTED' : (status === 'hold' ? 'XRAY_HOLD_REPORTED' : 'XRAY_WAITING_REPORTED');
+    event = status === 'hold' ? 'XRAY_HOLD_REPORTED' : 'XRAY_SCANNED_REPORTED';
   } else if (op === 'eir-received') {
     if (s.xrayStatus !== 'passed') return { ok: false, error: 'xray_first' };
     const batch = await db.select({ status: jobSteps.xrayStatus }).from(jobSteps)
@@ -713,15 +789,23 @@ export async function driverStep(body: ApiBody): Promise<ApiResult> {
 
   const staff = String(s.username), origin = String(body._origin || '');
   const cn = await containerOf(s.itemId);
-  if (op === 'xray' && body.status === 'passed') {
+  if (op === 'picked-up') {
     const p = await batchProgress(s.inspectDate, staff);
-    if (p.xray === p.total) {
-      await notifyStaff({ username: staff, level: 'important', ref: `xray-all:${s.inspectDate}`, title: `✅ ผ่าน X-Ray ครบ ${p.total}/${p.total} ตู้`,
-        lines: [`งานวันที่ ${thShortDate(s.inspectDate)}`, 'ขอตำแหน่งรอบสองเพื่อนัดส่งมอบ EIR ได้แล้ว'],
-        url: staffUrl(origin, `date=${s.inspectDate}&tab=map&phase=EIR_HANDOVER`), button: 'ขอตำแหน่งรอบสอง' });
+    if (p.pickedUp === p.total) {
+      await notifyStaff({ username: staff, level: 'important', ref: `pick-all:${s.inspectDate}`, title: `🚚 รับตู้ครบ ${p.total}/${p.total} ตู้`,
+        lines: [`งานวันที่ ${thShortDate(s.inspectDate)}`, 'คนขับส่งรูปหน้ารถ หลังรถ ซีลตู้ครบ — กำลังไปเครื่อง X-Ray'], url: staffUrl(origin, `date=${s.inspectDate}`) });
     } else {
-      await notifyStaff({ username: staff, level: 'all', ref: `xray:${s.itemId}`, title: `🛃 ${cn} ผ่าน X-Ray`,
-        lines: [`คนขับ ${driver.name}`, `ผ่านแล้ว ${p.xray}/${p.total} ตู้`], url: staffUrl(origin, `date=${s.inspectDate}&tab=status`) });
+      await notifyStaff({ username: staff, level: 'all', ref: `pick:${s.itemId}`, title: `🚚 ${driver.name} รับตู้ ${cn} แล้ว`,
+        lines: [`รับตู้แล้ว ${p.pickedUp}/${p.total} ตู้`], url: staffUrl(origin, `date=${s.inspectDate}`) });
+    }
+  } else if (op === 'xray' && patch.xrayStatus === 'scanned') {
+    const p = await batchProgress(s.inspectDate, staff);
+    if (p.scanned === p.total) {
+      await notifyStaff({ username: staff, level: 'important', ref: `scan-all:${s.inspectDate}`, title: `🛃 เข้าเครื่อง X-Ray ครบ ${p.total}/${p.total} ตู้`,
+        lines: [`งานวันที่ ${thShortDate(s.inspectDate)}`, 'เช็กผล X-Ray แล้วบันทึก "ผ่าน" เพื่อนัดส่งมอบ EIR'], url: staffUrl(origin, `date=${s.inspectDate}`), button: 'บันทึกผล X-Ray' });
+    } else {
+      await notifyStaff({ username: staff, level: 'all', ref: `scan:${s.itemId}`, title: `🛃 ${cn} เข้าเครื่อง X-Ray แล้ว — รอผล`,
+        lines: [`คนขับ ${driver.name}`, `เข้าเครื่องแล้ว ${p.scanned}/${p.total} ตู้`], url: staffUrl(origin, `date=${s.inspectDate}`) });
     }
   } else if ((op === 'xray' && body.status === 'hold') || op === 'problem') {
     await notifyStaff({ username: staff, level: 'important', ref: `problem:${s.itemId}:${at}`, title: `⚠️ ${cn} แจ้งปัญหา`,
@@ -737,6 +821,15 @@ export async function driverStep(body: ApiBody): Promise<ApiResult> {
 // ---------------- คนขับ: รูปปิดงาน + ยืนยันจบงาน ----------------
 
 const isKind = (v: unknown): v is EvidenceKind => EVIDENCE_KINDS.includes(String(v) as EvidenceKind);
+/** รูปรับตู้: หลังได้การ์ดจนกว่าจะกดส่งงานรับตู้ / รูปปิดงาน: จนกว่าจะยืนยันจบงาน — หลังส่งแล้วแก้ไม่ได้ */
+function evidenceBlocked(s: StepRow, kind: string) {
+  if (s.completedAt) return 'already_completed';
+  if (isPickupKind(kind)) {
+    if (!s.cardHandedAt && !s.cardAckAt) return 'card_first';
+    if (s.pickedUpAt) return 'pickup_submitted';
+  }
+  return '';
+}
 
 export async function driverEvidenceSign(body: ApiBody): Promise<ApiResult> {
   const driver = await driverFromSession(body);
@@ -744,8 +837,9 @@ export async function driverEvidenceSign(body: ApiBody): Promise<ApiResult> {
   const s = await ownStep(driver.id, text(body.itemId, 60));
   if (!s) return { ok: false, error: 'forbidden' };
   if (!isKind(body.kind)) return { ok: false, error: 'bad_request' };
-  if (s.completedAt) return { ok: false, error: 'already_completed' };
-  const up = await createSignedUpload('evidence', `${s.itemId}-${body.kind === 'EIR_CARD_PHOTO' ? 'eir' : 'seal'}-${randomCode(8).toLowerCase()}`, 'jpg');
+  const blocked = evidenceBlocked(s, body.kind);
+  if (blocked) return { ok: false, error: blocked };
+  const up = await createSignedUpload('evidence', `${s.itemId}-${KIND_TAG[body.kind]}-${randomCode(8).toLowerCase()}`, 'jpg');
   return { ok: true, key: up.key, uploadUrl: up.uploadUrl };
 }
 
@@ -755,9 +849,10 @@ export async function driverEvidenceCommit(body: ApiBody): Promise<ApiResult> {
   const s = await ownStep(driver.id, text(body.itemId, 60));
   if (!s) return { ok: false, error: 'forbidden' };
   if (!isKind(body.kind)) return { ok: false, error: 'bad_request' };
-  if (s.completedAt) return { ok: false, error: 'already_completed' };
+  const blocked = evidenceBlocked(s, body.kind);
+  if (blocked) return { ok: false, error: blocked };
   const key = text(body.key, 200);
-  const tag = body.kind === 'EIR_CARD_PHOTO' ? 'eir' : 'seal';
+  const tag = KIND_TAG[body.kind];
   // key ต้องเป็นของตู้นี้และชนิดนี้ (ออกโดย driverEvidenceSign) — กันเอารูปตู้อื่นมาใช้
   if (!new RegExp(`^evidence/${s.itemId}-${tag}-[a-z0-9]{8}\\.jpg$`).test(key)) return { ok: false, error: 'bad_key' };
   if (!(await fileExists(key))) return { ok: false, error: 'upload_missing' };
@@ -776,7 +871,9 @@ export async function driverEvidenceDelete(body: ApiBody): Promise<ApiResult> {
   const [ev] = await db.select().from(evidenceFiles).where(eq(evidenceFiles.id, text(body.id, 60))).limit(1);
   if (!ev || ev.driverId !== driver.id) return { ok: false, error: 'forbidden' };
   const s = await ownStep(driver.id, ev.itemId);
-  if (!s || s.completedAt) return { ok: false, error: 'already_completed' };
+  if (!s) return { ok: false, error: 'forbidden' };
+  const blocked = evidenceBlocked(s, ev.kind);
+  if (blocked) return { ok: false, error: blocked };
   await db.delete(evidenceFiles).where(eq(evidenceFiles.id, ev.id));
   return { ok: true };
 }
@@ -790,7 +887,7 @@ export async function driverComplete(body: ApiBody): Promise<ApiResult> {
   if (s.completedAt) return { ok: true, at: s.completedAt };
   if (!s.eirReceivedAt) return { ok: false, error: 'eir_first' };
   const files = await db.select({ kind: evidenceFiles.kind }).from(evidenceFiles).where(eq(evidenceFiles.itemId, s.itemId));
-  const missing = EVIDENCE_KINDS.filter((k) => !files.some((f) => f.kind === k));
+  const missing = CLOSE_KINDS.filter((k) => !files.some((f) => f.kind === k));
   if (missing.length) return { ok: false, error: 'photos_required', missing };
   const at = nowIso();
   await db.update(jobSteps).set({ completedAt: at, updatedAt: at, version: s.version + 1 }).where(eq(jobSteps.itemId, s.itemId));

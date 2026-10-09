@@ -579,7 +579,7 @@ export const jobSteps = pgTable('job_steps', {
   cardHandedBy: citext('card_handed_by').notNull().default(''),
   cardAckAt: text('card_ack_at').notNull().default(''),          // คนขับกด "รับการ์ดแล้ว"
   pickedUpAt: text('picked_up_at').notNull().default(''),
-  xrayStatus: text('xray_status').notNull().default('pending'),  // pending | waiting | hold | passed
+  xrayStatus: text('xray_status').notNull().default('pending'),  // pending | scanned (คนขับเข้าเครื่องแล้ว รอผล) | waiting (เดิม) | hold | passed (ชิปปิ้งบันทึกผล)
   xrayAt: text('xray_at').notNull().default(''),
   xrayNote: text('xray_note').notNull().default(''),
   eirHandedAt: text('eir_handed_at').notNull().default(''),
@@ -646,6 +646,7 @@ export const meetingPoints = pgTable('meeting_points', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   port: text('port').notNull().default(''),
+  kind: text('kind').notNull().default('MEETING'),    // MEETING = จุดนัดพบ | XRAY = เครื่อง X-Ray (คนขับกดนำทางไป)
   latitude: doublePrecision('latitude').notNull(),
   longitude: doublePrecision('longitude').notNull(),
   note: text('note').notNull().default(''),
@@ -655,13 +656,13 @@ export const meetingPoints = pgTable('meeting_points', {
   updatedAt: text('updated_at').notNull()
 });
 
-/** รูปปิดงานของคนขับ — ต้องมีรูปการ์ด EIR และรูป Seal อย่างน้อยอย่างละ 1 ต่อตู้ */
+/** รูปของคนขับ — ส่งงานรับตู้: หน้ารถ + หลังรถ + ซีลตู้ / ปิดงาน: การ์ด EIR + Seal (อย่างน้อยชนิดละ 1 ต่อตู้) */
 export const evidenceFiles = pgTable('evidence_files', {
   id: text('id').primaryKey(),
   itemId: text('item_id').notNull(),
   driverId: text('driver_id').notNull(),
   inspectDate: text('inspect_date').notNull(),
-  kind: text('kind').notNull(),                       // EIR_CARD_PHOTO | CONTAINER_SEAL_PHOTO
+  kind: text('kind').notNull(),                       // TRUCK_FRONT_PHOTO | TRUCK_REAR_PHOTO | PICKUP_SEAL_PHOTO | EIR_CARD_PHOTO | CONTAINER_SEAL_PHOTO
   storageKey: text('storage_key').notNull(),
   url: text('url').notNull(),
   size: integer('size').notNull().default(0),

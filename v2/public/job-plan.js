@@ -815,11 +815,11 @@ function initMeetingPoints(){
     var b=e.target.closest('[data-mp]'); if(!b) return;
     var r=mp.rows.filter(function(x){ return x.id===b.getAttribute('data-mp'); })[0]; if(!r) return;
     if(b.getAttribute('data-act')==='edit'){
-      mp.editing=r.id; $('mp-name').value=r.name; $('mp-port').value=r.port; $('mp-note').value=r.note;
-      $('mp-form-title').textContent='แก้ไขจุดนัดพบ'; $('mp-cancel').classList.remove('hidden');
+      mp.editing=r.id; $('mp-name').value=r.name; $('mp-port').value=r.port; $('mp-note').value=r.note; $('mp-kind').value=r.kind||'MEETING';
+      $('mp-form-title').textContent='แก้ไขจุด'; $('mp-cancel').classList.remove('hidden');
       mpSetDraft(r.latitude, r.longitude, true); window.scrollTo(0,0);
     } else {
-      api({ action:'meetingPointSave', token:state.token, id:r.id, name:r.name, port:r.port, lat:r.latitude, lng:r.longitude, note:r.note, active:!r.active })
+      api({ action:'meetingPointSave', token:state.token, id:r.id, name:r.name, port:r.port, kind:r.kind, lat:r.latitude, lng:r.longitude, note:r.note, active:!r.active })
         .then(function(res){ if(!res.ok){ toast(plErr(res.error)); return; } mpLoad(); });
     }
   });
@@ -830,11 +830,11 @@ function mpLoad(){
     if(!guard(res) || !res.ok) return;
     mp.rows=res.rows||[]; mp.key=res.mapsKey||'';
     $('mp-body').innerHTML=mp.rows.length ? mp.rows.map(function(r){
-      return '<tr'+(r.active?'':' style="opacity:.5"')+'><td class="name">'+esc(r.name)+'</td><td>'+esc(r.port||'-')+'</td>'+
+      return '<tr'+(r.active?'':' style="opacity:.5"')+'><td>'+(r.kind==='XRAY'?'🛃 เครื่อง X-Ray':'📍 จุดนัดพบ')+'</td><td class="name">'+esc(r.name)+'</td><td>'+esc(r.port||'-')+'</td>'+
         '<td><a target="_blank" rel="noopener" href="https://www.google.com/maps?q='+r.latitude+','+r.longitude+'">'+r.latitude.toFixed(5)+', '+r.longitude.toFixed(5)+'</a></td>'+
         '<td>'+esc(r.note||'')+'</td><td>'+(r.active?'<span class="pill approved">ใช้งาน</span>':'<span class="pill">ปิด</span>')+'</td>'+
         '<td><button class="btn btn-ghost btn-sm" data-mp="'+esc(r.id)+'" data-act="edit">แก้ไข</button> <button class="btn btn-ghost btn-sm" data-mp="'+esc(r.id)+'" data-act="toggle">'+(r.active?'ปิด':'เปิด')+'</button></td></tr>';
-    }).join('') : '<tr><td colspan="6" class="muted" style="padding:16px">ยังไม่มีจุดนัดพบ — แตะบนแผนที่เพื่อปักหมุดจุดแรก</td></tr>';
+    }).join('') : '<tr><td colspan="7" class="muted" style="padding:16px">ยังไม่มีจุด — แตะบนแผนที่เพื่อปักหมุดจุดแรก</td></tr>';
     mpDrawMap();
   });
 }
@@ -857,7 +857,7 @@ function mpDrawMap(){
   var b=new google.maps.LatLngBounds();
   mp.rows.forEach(function(r){
     var m=new google.maps.Marker({ map:mp.gmap, position:{lat:r.latitude,lng:r.longitude}, title:r.name, opacity:r.active?1:.45,
-      label:{ text:(r.port||'•').slice(0,3), color:'#fff', fontSize:'10px', fontWeight:'700' } });
+      label:{ text:(r.kind==='XRAY'?'X':'')+(r.port||(r.kind==='XRAY'?'':'•')).slice(0,3), color:'#fff', fontSize:'10px', fontWeight:'700' } });
     mp.markers.push(m); b.extend(m.getPosition());
   });
   if(mp.rows.length>1) mp.gmap.fitBounds(b, 50); else if(mp.rows.length===1){ mp.gmap.setCenter(b.getCenter()); mp.gmap.setZoom(16); }
@@ -872,12 +872,12 @@ function mpSetDraft(lat, lng, pan){
   if(!$('mp-name').value) $('mp-name').focus();
 }
 function mpResetForm(){
-  mp.editing=''; ['mp-name','mp-port','mp-note','mp-lat','mp-lng'].forEach(function(id){ $(id).value=''; });
-  $('mp-form-title').textContent='เพิ่มจุดนัดพบ'; $('mp-cancel').classList.add('hidden');
+  mp.editing=''; ['mp-name','mp-port','mp-note','mp-lat','mp-lng'].forEach(function(id){ $(id).value=''; }); $('mp-kind').value='MEETING';
+  $('mp-form-title').textContent='เพิ่มจุดนัดพบ / เครื่อง X-Ray'; $('mp-cancel').classList.add('hidden');
   if(mp.draft){ mp.draft.setMap(null); mp.draft=null; }
 }
 function mpSave(){
-  var body={ action:'meetingPointSave', token:state.token, name:$('mp-name').value.trim(), port:$('mp-port').value.trim(),
+  var body={ action:'meetingPointSave', token:state.token, name:$('mp-name').value.trim(), port:$('mp-port').value.trim(), kind:$('mp-kind').value,
     lat:Number($('mp-lat').value), lng:Number($('mp-lng').value), note:$('mp-note').value.trim() };
   if(mp.editing) body.id=mp.editing;
   if(!body.name){ toast('ตั้งชื่อจุดก่อน'); return; }
@@ -885,6 +885,6 @@ function mpSave(){
   api(body).then(function(res){
     if(!guard(res)) return;
     if(!res.ok){ toast(res.error==='bad_location'?'พิกัดไม่ถูกต้อง':plErr(res.error)); return; }
-    toast('บันทึกจุดนัดพบแล้ว'); mpResetForm(); mpLoad();
+    toast('บันทึกจุดแล้ว'); mpResetForm(); mpLoad();
   });
 }

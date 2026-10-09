@@ -11,7 +11,7 @@ Based on `SHIPME_Driver_Coordination_MASTER_BUILD_PROMPT.md` v2.0, built inside 
 | Maps | Google Maps (`GOOGLE_MAPS_BROWSER_KEY`) |
 | Meeting points | Managers pin them in Settings → จุดนัดพบ (LINE) |
 | Job completion | **Closes immediately** once the driver has sent the EIR photo and the seal photo. No staff review step. |
-| X-Ray gate | **No bypass.** Staff wait until drivers report in LINE that every container has passed X-Ray. |
+| X-Ray gate | **No bypass.** Every container must pass before EIR. (Updated 2026-10-09: the driver presses "X-Ray แล้ว" and **shipping staff record the result** — passed / needs more inspection.) |
 | Photo / location retention | Kept indefinitely |
 | SMS | Fallback channel only, for drivers not yet linked to LINE. LINE is the main channel. |
 
@@ -113,6 +113,39 @@ Screenshots taken on the real domain (Google Maps rendered with the real key): r
 - Check runs with: `select * from cron.job_run_details order by start_time desc limit 5;`
 - Stop with: `select cron.unschedule('shipme-coord-reminders');`
 - `GOOGLE_ROUTES_SERVER_KEY` is set in Vercel. Verify with the "ตรวจ LINE OA + Google Routes" button in Settings.
+
+## Flow update (2026-10-09, round 3)
+
+Per-container steps on the driver page (6 steps):
+
+| # | Driver does | Who records |
+|---|---|---|
+| 1 | Send location (**one tap**, sent immediately) + get the pickup card | Staff records card handover / driver confirms |
+| 2 | Pick up the container + photograph **truck front, truck rear, container seal** → "ส่งงานรับตู้" (submit pickup) | Driver (all 3 photos required; locked after submit) |
+| 3 | "นำทางไปเครื่อง X-Ray" (navigate to X-Ray machine) → after the scan, "X-Ray แล้ว" | Driver (`xrayStatus = scanned`) |
+| 4 | Wait for the X-Ray result | **Staff** record passed / needs more inspection per container or per BL (`coordXrayResult`); the driver gets a LINE message |
+| 5 | Receive the outbound EIR per the meeting → "ได้รับ EIR แล้ว" (EIR received) | Staff record the handover, then the driver confirms |
+| 6 | EIR card + seal photos → "ยืนยันจบงาน" (confirm completion) | Driver |
+
+- **One-tap location:**
+  - Tapping "ส่งตำแหน่งตอนนี้" (send location now) in the LINE message, the Rich Menu, or on the page gets the coordinates and sends them immediately.
+  - It tries high accuracy for 12 s first, then falls back to the fast method.
+  - If location access is refused, it shows how to allow it and offers a button to notify staff.
+- **X-Ray machine:** pinned in Settings → จุดนัดพบ / X-Ray, type "เครื่อง X-Ray".
+  - The driver page picks the point whose "ท่า" (port) matches the container's port; otherwise it uses the first point.
+  - `meeting_points.kind` = MEETING | XRAY. Meetings and route planning use MEETING points only.
+- **Driver page:** a "ทำอะไรตอนนี้" (what to do now) card is always on top, showing the step number and what to tap. It is clickable and scrolls to the container.
+  - With no jobs, it explains what to wait for, plus all 6 steps.
+- **Staff dashboard:**
+  - Pipeline of 7 steps, each with a count. Tapping a step filters the list.
+  - Each BL card shows its containers with action buttons for that BL: แจกการ์ดแล้ว (card handed) / ผล X-Ray ผ่าน (X-Ray passed) / ตรวจเพิ่ม (needs more inspection) / ส่งมอบ EIR แล้ว (EIR handed over).
+  - Filters: ต้องทำ (to do) / ยังไม่จบ (not finished).
+  - The status tab records items per container or a whole BL at once (BL checkbox).
+  - Event history is shown in Thai.
+- **Reminders:**
+  - Card received but pickup not submitted (90 min).
+  - Pickup submitted but "X-Ray แล้ว" not pressed (90 min).
+- **Tested:** 31 checks against the real DB with temporary 2099 data (all deleted), plus screenshots of both pages.
 
 ## Not built yet
 

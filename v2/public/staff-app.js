@@ -25,11 +25,35 @@ var ERR = {
 function errText(res){ return ERR[res.error]||res.error||'ไม่สำเร็จ'; }
 
 var STAGE = {
-  PLANNED:['รอการ์ด',''], CARD_HANDED:['ได้การ์ดแล้ว','blue'], PICKED_UP:['รับตู้แล้ว','blue'], XRAY_WAITING:['รอ X-Ray','wait'],
-  XRAY_HOLD:['ติดปัญหา X-Ray','bad'], XRAY_PASSED:['ผ่าน X-Ray','ok'], EIR_HANDED:['ส่งมอบ EIR แล้ว','ok'],
-  EIR_RECEIVED:['รอรูปปิดงาน','wait'], DONE:['จบงาน ✓','ok']
+  PLANNED:['รอการ์ด',''], CARD_HANDED:['ไปรับตู้','blue'], PICKED_UP:['ไป X-Ray','blue'], XRAY_SCANNED:['รอผล X-Ray','wait'], XRAY_WAITING:['รอผล X-Ray','wait'],
+  XRAY_HOLD:['X-Ray ตรวจเพิ่ม','bad'], XRAY_PASSED:['ผ่าน X-Ray • รอ EIR','ok'], EIR_HANDED:['ส่ง EIR แล้ว • รอคนขับยืนยัน','ok'],
+  EIR_RECEIVED:['รอรูปจบงาน','wait'], DONE:['จบงาน ✓','ok']
 };
 function stageChip(st){ var s=STAGE[st]||[st,'']; return '<span class="stage '+s[1]+'">'+esc(s[0])+'</span>'; }
+
+/** ขั้นของตู้ในมุมชิปปิ้ง (ใช้ทำแถบสรุป + กรอง) */
+var BUCKETS=[['card','🎫','รอแจกการ์ด'],['pickup','🚚','ไปรับตู้'],['xray','🛃','ไป X-Ray'],['result','⏳','รอผล X-Ray'],['eir','📄','รอส่ง EIR'],['photo','📷','รอรูปจบงาน'],['done','✅','จบงาน']];
+function bucket(i){
+  var s=i.step||{};
+  if(s.completedAt) return 'done'; if(s.eirReceivedAt) return 'photo'; if(s.xrayStatus==='passed') return 'eir';
+  if(s.pickedUpAt && s.xrayStatus && s.xrayStatus!=='pending') return 'result'; if(s.pickedUpAt) return 'xray';
+  if(s.cardHandedAt||s.cardAckAt) return 'pickup'; return 'card';
+}
+/** จัดกลุ่มตามเลข BL (เรียงตามลำดับในแพลน) */
+function byBl(items){
+  var map={}, order=[];
+  items.forEach(function(i){ var k=i.bl||'(ไม่มี BL)'; if(!map[k]){ map[k]=[]; order.push(k); } map[k].push(i); });
+  return order.map(function(k){ return { bl:k, items:map[k] }; });
+}
+/** งานที่ชิปปิ้งต้องกดของกลุ่มตู้นี้ */
+function staffActions(list){
+  var gate=S.data.gate.ready;
+  return {
+    card: list.filter(function(i){ return bucket(i)==='card'; }),
+    xray: list.filter(function(i){ var s=i.step||{}; return s.pickedUpAt && s.xrayStatus!=='passed'; }),
+    eir: gate ? list.filter(function(i){ var s=i.step||{}; return s.xrayStatus==='passed' && !s.eirHandedAt; }) : []
+  };
+}
 
 // ---------------- เริ่มต้น ----------------
 (function init(){
@@ -90,58 +114,112 @@ function renderDates(){
 
 // ---------------- ขั้นถัดไป (ปุ่มเด่น) ----------------
 function hasRequests(phase){ return S.data.drivers.some(function(d){ return d.phases[phase].request; }); }
+function filterTo(f){ S.filter=f; renderPlan(); var el=$('bls'); if(el) el.scrollIntoView({ behavior:'smooth', block:'start' }); }
 function nextAction(){
   var d=S.data, c=d.counts;
   if(!c.jobs) return null;
-  if(!hasRequests('CARD_PICKUP')) return { label:'📍 ขอตำแหน่งรอบแรก', fn:function(){ S.phase='CARD_PICKUP'; go('map'); } };
-  if(c.cardHanded<c.jobs) return { label:'🎫 บันทึกแจกการ์ด ('+c.cardHanded+'/'+c.jobs+')', fn:function(){ go('status'); } };
-  if(!d.gate.ready) return { label:'⏳ ดูความคืบหน้า X-Ray ('+d.gate.passed+'/'+d.gate.total+')', fn:function(){ go('status'); }, ghost:true };
-  if(!hasRequests('EIR_HANDOVER')) return { label:'📍 ขอตำแหน่งรอบสอง (EIR)', fn:function(){ S.phase='EIR_HANDOVER'; go('map'); } };
-  if(c.eirHanded<c.jobs) return { label:'📄 ยืนยันแจก EIR ('+c.eirHanded+'/'+c.jobs+')', fn:function(){ go('status'); } };
-  if(c.completed<c.jobs) return { label:'📷 ติดตามรูป EIR + Seal ('+c.completed+'/'+c.jobs+')', fn:function(){ go('status'); }, ghost:true };
-  return { label:'✅ จบงานครบทุกตู้แล้ว', fn:function(){ go('status'); }, done:true };
+  if(!hasRequests('CARD_PICKUP') && c.cardHanded<c.jobs) return { label:'📍 ขอตำแหน่งคนขับ (นัดแจกการ์ด)', fn:function(){ S.phase='CARD_PICKUP'; go('map'); } };
+  if(c.cardHanded<c.jobs) return { label:'🎫 แจกการ์ดรับตู้ ('+c.cardHanded+'/'+c.jobs+')', fn:function(){ filterTo('card'); } };
+  if(c.pickedUp<c.jobs) return { label:'🚚 รอคนขับส่งงานรับตู้ ('+c.pickedUp+'/'+c.jobs+')', fn:function(){ filterTo('pickup'); }, ghost:true };
+  if(!d.gate.ready && c.xrayScanned<c.jobs) return { label:'🛃 รอคนขับเข้าเครื่อง X-Ray ('+c.xrayScanned+'/'+c.jobs+')', fn:function(){ filterTo('xray'); }, ghost:true };
+  if(!d.gate.ready) return { label:'✅ บันทึกผล X-Ray ('+d.gate.passed+'/'+d.gate.total+' ผ่าน)', fn:function(){ filterTo('result'); } };
+  if(!hasRequests('EIR_HANDOVER') && c.eirHanded<c.jobs) return { label:'📍 ขอตำแหน่งรอบสอง / นัดส่งมอบ EIR', fn:function(){ S.phase='EIR_HANDOVER'; go('map'); } };
+  if(c.eirHanded<c.jobs) return { label:'📄 ส่งมอบ EIR ออกท่า ('+c.eirHanded+'/'+c.jobs+')', fn:function(){ filterTo('eir'); } };
+  if(c.completed<c.jobs) return { label:'📷 รอคนขับส่งรูปจบงาน ('+c.completed+'/'+c.jobs+')', fn:function(){ filterTo('photo'); }, ghost:true };
+  return { label:'✅ จบงานครบทุกตู้แล้ว', fn:function(){ filterTo('all'); }, done:true };
 }
 
-// ---------------- แผนงาน ----------------
+// ---------------- แผนงาน (ภาพรวม รายงาน BL) ----------------
 function renderPlan(){
   var d=S.data, c=d.counts;
   if(!c.jobs){
     $('plan-body').innerHTML='<div class="card center">'+(d.planStatus && d.planStatus!=='confirmed' ? 'แพลนวันที่ '+thd(d.date)+' ยังไม่ได้ Confirm' : 'ไม่มีงานของคุณในวันที่ '+thd(d.date))+'</div>';
     return;
   }
-  var waitGps=d.drivers.filter(function(x){ var r=x.phases.CARD_PICKUP.request; return r && !x.phases.CARD_PICKUP.location; }).length;
+  var groups=byBl(d.items), cnt={};
+  BUCKETS.forEach(function(b){ cnt[b[0]]=0; }); d.items.forEach(function(i){ cnt[bucket(i)]++; });
   var unlinked=d.drivers.filter(function(x){ return !x.linked; });
-  var bar=function(label, n, total){ var p=total?Math.round(n*100/total):0;
-    return '<div class="bar'+(n>=total&&total?' done':'')+'"><div class="lbl"><span>'+label+'</span><b>'+n+'/'+total+'</b></div><div class="track"><div class="fill" style="width:'+p+'%"></div></div></div>'; };
-  var na=nextAction();
-  var html='<div class="card"><div class="kpis">'+
-      '<div class="kpi"><div class="n">'+c.jobs+'</div><div class="l">งาน / ตู้</div></div>'+
-      '<div class="kpi"><div class="n">'+c.drivers+'</div><div class="l">คนขับ</div></div>'+
-      '<div class="kpi"><div class="n">'+waitGps+'</div><div class="l">รอ GPS</div></div></div>'+
-    '<div class="bars">'+bar('แจกการ์ดรับตู้', c.cardHanded, c.jobs)+bar('รับตู้แล้ว', c.pickedUp, c.jobs)+bar('ผ่าน X-Ray', c.xrayPassed, c.jobs)+
-      bar('แจก EIR แล้ว', c.eirHanded, c.jobs)+bar('ส่งรูปจบงาน', c.completed, c.jobs)+'</div></div>';
+  var na=nextAction(), pct=Math.round(c.completed*100/c.jobs);
+  var html='<div class="card"><div class="sum-hd"><div><b>'+groups.length+'</b> BL</div><div><b>'+c.jobs+'</b> ตู้</div><div><b>'+c.drivers+'</b> คนขับ</div><div class="grow" style="text-align:right"><b>'+c.completed+'/'+c.jobs+'</b> จบงาน</div></div>'+
+    '<div class="track big"><div class="fill" style="width:'+pct+'%"></div></div>'+
+    '<div class="pipe">'+BUCKETS.map(function(b){
+      return '<button class="pt'+(cnt[b[0]]?'':' zero')+(S.filter===b[0]?' on':'')+(b[0]==='done'?' ok':'')+'" data-filter="'+b[0]+'"><span class="i">'+b[1]+'</span><b>'+cnt[b[0]]+'</b><small>'+b[2]+'</small></button>';
+    }).join('')+'</div></div>';
   if(na) html+='<button class="btn cta '+(na.done?'btn-green':(na.ghost?'btn-navy':'btn-amber'))+'" id="cta">'+esc(na.label)+'</button>';
   if(unlinked.length){
-    html+='<div class="card" style="background:#fff7ed"><b style="color:#9a3412">⚠️ ยังไม่ผูก LINE '+unlinked.length+' คน</b><div class="muted" style="margin-top:4px">'+
+    html+='<div class="card warnbox"><b>⚠️ ยังไม่ผูก LINE '+unlinked.length+' คน</b><div class="muted" style="margin-top:4px">'+
       esc(unlinked.map(function(x){ return x.name; }).join(', '))+' — ส่งข้อความทาง LINE ไม่ได้ '+(d.smsReady?'(จะส่งทาง SMS แทน)':'')+
       '</div><button class="btn btn-ghost btn-sm" style="margin-top:8px" id="go-link">ผูก LINE คนขับ</button></div>';
   }
   if(d.noDriverPhone.length) html+='<div class="card" style="background:var(--redbg);color:var(--red)">ไม่มีเบอร์มือถือคนขับ: '+esc(d.noDriverPhone.join(', '))+' — ให้ผู้จัดการเพิ่มในแพลน</div>';
-  html+='<div class="card"><input class="search" id="q" placeholder="ค้นหา เลขตู้ / BL / คนขับ / ท่า" value="'+esc(S.q||'')+'"><div id="jobs"></div></div>';
+  var f=S.filter||'all';
+  html+='<div id="bls"><div class="filters">'+[['all','ทั้งหมด'],['todo','ต้องทำ'],['open','ยังไม่จบ']].map(function(x){ return '<button class="chip'+(f===x[0]?' on':'')+'" data-filter="'+x[0]+'">'+x[1]+'</button>'; }).join('')+
+    (BUCKETS.some(function(b){ return b[0]===f; })?'<button class="chip on" data-filter="all">'+esc(BUCKETS.filter(function(b){ return b[0]===f; })[0][2])+' ✕</button>':'')+'</div>'+
+    '<input class="search" id="q" placeholder="ค้นหา BL / เลขตู้ / คนขับ / ท่า" value="'+esc(S.q||'')+'"><div id="jobs"></div></div>';
   $('plan-body').innerHTML=html;
   if(na) $('cta').addEventListener('click', na.fn);
   if($('go-link')) $('go-link').addEventListener('click', function(){ go('more'); });
+  Array.prototype.forEach.call($('plan-body').querySelectorAll('[data-filter]'), function(b){ b.addEventListener('click', function(){
+    var v=b.getAttribute('data-filter'); S.filter=(S.filter===v && v!=='all')?'all':v; renderPlan(); }); });
   $('q').addEventListener('input', function(){ S.q=this.value; renderJobs(); });
   renderJobs();
 }
 function renderJobs(){
-  var q=String(S.q||'').toLowerCase();
-  var list=S.data.items.filter(function(i){ return !q || (i.containerNo+' '+i.bl+' '+i.driverName+' '+i.port).toLowerCase().indexOf(q)>=0; });
-  $('jobs').innerHTML=list.map(function(i, k){
-    return '<div class="job" data-item="'+esc(i.id)+'"><div class="no">'+(k+1)+'</div><div class="grow"><div class="cn">'+esc(i.containerNo||i.bl)+'</div>'+
-      '<div class="sub">'+esc(i.port||'-')+(i.destination?' → '+esc(i.destination):'')+' • 👤 '+esc(i.driverName||'-')+'</div></div>'+stageChip(i.stage)+'</div>';
-  }).join('') || '<div class="center">ไม่พบงาน</div>';
+  var q=String(S.q||'').toLowerCase(), f=S.filter||'all';
+  var groups=byBl(S.data.items).filter(function(g){
+    if(q && !g.items.some(function(i){ return (i.bl+' '+i.containerNo+' '+i.driverName+' '+i.port+' '+(i.customer||'')).toLowerCase().indexOf(q)>=0; })) return false;
+    var a=staffActions(g.items);
+    if(f==='todo') return a.card.length || a.xray.length || a.eir.length || g.items.some(function(i){ return i.step && i.step.problem; });
+    if(f==='open') return g.items.some(function(i){ return bucket(i)!=='done'; });
+    if(f!=='all') return g.items.some(function(i){ return bucket(i)===f; });
+    return true;
+  });
+  $('jobs').innerHTML=groups.map(blCard).join('') || '<div class="center">ไม่พบงาน</div>';
   Array.prototype.forEach.call($('jobs').querySelectorAll('[data-item]'), function(el){ el.addEventListener('click', function(){ openJob(el.getAttribute('data-item')); }); });
+  Array.prototype.forEach.call($('jobs').querySelectorAll('[data-blact]'), function(b){ b.addEventListener('click', function(){
+    blAction(b.getAttribute('data-blact'), b.getAttribute('data-ids').split(','), b.getAttribute('data-bl'), b);
+  }); });
+}
+function blCard(g){
+  var list=g.items, f=S.filter||'all', first=list[0], a=staffActions(list);
+  var done=list.filter(function(i){ return bucket(i)==='done'; }).length;
+  var problem=list.some(function(i){ return (i.step&&(i.step.problem||i.step.xrayStatus==='hold')); });
+  var dests=[]; list.forEach(function(i){ var t=(i.port||'-')+(i.destination?' → '+i.destination:''); if(dests.indexOf(t)<0) dests.push(t); });
+  var btn=function(kind, ids, label, cls){ return ids.length ? '<button class="btn btn-sm '+cls+'" data-blact="'+kind+'" data-bl="'+esc(g.bl)+'" data-ids="'+esc(ids.map(function(i){ return i.id; }).join(','))+'">'+label+' ('+ids.length+')</button>' : ''; };
+  var acts=btn('card', a.card, '🎫 แจกการ์ดแล้ว', 'btn-amber')+btn('passed', a.xray, '✅ ผล X-Ray ผ่าน', 'btn-green')+btn('hold', a.xray, 'ตรวจเพิ่ม', 'btn-ghost')+btn('eir', a.eir, '📄 ส่งมอบ EIR แล้ว', 'btn-green');
+  return '<div class="bl'+(problem?' problem':'')+(done===list.length?' alldone':'')+'">'+
+    '<div class="bl-hd"><div class="grow"><div class="bl-no">BL '+esc(g.bl)+'</div><div class="sub">'+(first.customer?esc(first.customer)+' • ':'')+esc(dests.join(', '))+'</div></div>'+
+      '<div class="bl-n"><b>'+done+'/'+list.length+'</b><small>จบงาน</small></div></div>'+
+    '<div class="bl-dots">'+list.map(function(i){ var b=bucket(i), k=BUCKETS.map(function(x){ return x[0]; }).indexOf(b); return '<i class="b'+k+'" title="'+esc(i.containerNo)+'"></i>'; }).join('')+'</div>'+
+    list.map(function(i){
+      var hit=f!=='all'&&f!=='todo'&&f!=='open'&&bucket(i)===f;
+      return '<div class="job'+(hit?' hit':'')+'" data-item="'+esc(i.id)+'"><div class="grow"><div class="cn">'+esc(i.containerNo||i.bl)+'</div>'+
+        '<div class="sub">👤 '+esc(i.driverName||'-')+(i.plate?' • '+esc(i.plate):'')+(i.step&&i.step.problem?' • <span style="color:var(--red)">⚠️ '+esc(i.step.problem)+'</span>':'')+'</div></div>'+stageChip(i.stage)+'</div>';
+    }).join('')+
+    (acts?'<div class="bl-act">'+acts+'</div>':'')+'</div>';
+}
+var BL_ACT={
+  card:{ action:'coordCardHanded', ask:'บันทึกว่าแจกการ์ดรับตู้แล้ว', ok:'บันทึกแจกการ์ดแล้ว' },
+  passed:{ action:'coordXrayResult', result:'passed', ask:'บันทึกผล X-Ray "ผ่าน"', ok:'บันทึกผล X-Ray ผ่านแล้ว — แจ้งคนขับทาง LINE' },
+  hold:{ action:'coordXrayResult', result:'hold', ask:'บันทึกผล X-Ray "ต้องตรวจเพิ่ม"', ok:'บันทึกแล้ว — แจ้งคนขับทาง LINE' },
+  reset:{ action:'coordXrayResult', result:'reset', ask:'ยกเลิกผล X-Ray (กลับเป็นรอผล)', ok:'ยกเลิกผลแล้ว' },
+  eir:{ action:'coordEirHanded', ask:'บันทึกว่าส่งมอบ EIR ให้คนขับแล้ว (คนขับต้องกดยืนยันรับอีกครั้ง)', ok:'บันทึกส่งมอบ EIR แล้ว' }
+};
+function blAction(kind, ids, label, btn, done){
+  var a=BL_ACT[kind]; if(!a || !ids.length) return;
+  var note='';
+  if(kind==='hold'){ note=prompt('ต้องตรวจเพิ่มเพราะอะไร / ให้คนขับทำอะไร (ไม่บังคับ)'); if(note===null) return; }
+  else if(!confirm(a.ask+'\n'+(label?'BL '+label+' • ':'')+ids.length+' ตู้?')) return;
+  if(btn) btn.disabled=true;
+  var body={ action:a.action, date:S.data.date, staff:S.staff, itemIds:ids };
+  if(a.result){ body.result=a.result; body.note=note; }
+  api(body).then(function(res){
+    if(btn) btn.disabled=false;
+    if(!res.ok){ toast(res.error==='XRAY_BATCH_NOT_READY'?'ยังผ่าน X-Ray ไม่ครบทุกตู้':errText(res), 3500); return; }
+    toast(a.ok+' '+res.count+' ตู้'+(res.skipped&&res.skipped.length?' • ข้าม '+res.skipped.length+' ตู้ (ยังไม่รับตู้/ส่ง EIR แล้ว)':''), 3500);
+    if(done) done();
+    load(true);
+  }).catch(function(){ if(btn) btn.disabled=false; toast('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้'); });
 }
 
 // ---------------- แผนที่ + ขอพิกัด ----------------
@@ -313,95 +391,112 @@ function openDriver(id){
   bg.querySelector('#sh-req').addEventListener('click', function(){ bg.remove(); requestLocations([x.id]); });
   bg.querySelector('#sh-meet').addEventListener('click', function(){ bg.remove(); meetingForm(x.id); });
 }
+var EVENT_TH={
+  LOCATION_CARD_PICKUP_REQUESTED:'ขอตำแหน่ง (แจกการ์ด)', LOCATION_CARD_PICKUP_RECEIVED:'คนขับส่งตำแหน่ง (แจกการ์ด)',
+  LOCATION_EIR_HANDOVER_REQUESTED:'ขอตำแหน่ง (ส่ง EIR)', LOCATION_EIR_HANDOVER_RECEIVED:'คนขับส่งตำแหน่ง (ส่ง EIR)',
+  PICKUP_CARD_HANDED:'ชิปปิ้งแจกการ์ด', PICKUP_CARD_HANDED_UNDONE:'ยกเลิกแจกการ์ด', PICKUP_CARD_ACKNOWLEDGED:'คนขับยืนยันได้การ์ด',
+  CONTAINER_PICKED_UP_REPORTED:'คนขับส่งงานรับตู้ (รูปครบ)', XRAY_SCANNED_REPORTED:'คนขับเข้าเครื่อง X-Ray แล้ว', XRAY_WAITING_REPORTED:'คนขับรอคิว X-Ray',
+  XRAY_HOLD_REPORTED:'คนขับแจ้งติดปัญหา X-Ray', XRAY_PASSED_REPORTED:'คนขับแจ้งผ่าน X-Ray', XRAY_RESULT_PASSED:'ชิปปิ้งบันทึกผล X-Ray ผ่าน',
+  XRAY_RESULT_HOLD:'ชิปปิ้งบันทึก X-Ray ตรวจเพิ่ม', XRAY_RESULT_RESET:'ยกเลิกผล X-Ray', EIR_STAFF_HANDED_OVER:'ชิปปิ้งส่งมอบ EIR',
+  EIR_STAFF_HANDED_UNDONE:'ยกเลิกส่งมอบ EIR', EIR_DRIVER_RECEIVED:'คนขับยืนยันรับ EIR', DRIVER_RELEASE_COMPLETION_SUBMITTED:'คนขับส่งรูปจบงาน',
+  PROBLEM_REPORTED:'คนขับแจ้งปัญหา', DRIVER_REASSIGNED:'เปลี่ยนคนขับ'
+};
 function openJob(itemId){
   var i=S.data.items.filter(function(x){ return x.id===itemId; })[0]; if(!i) return;
   var s=i.step||{};
   var row=function(label, v){ return '<div class="kv"><span>'+label+'</span><b>'+(v||'—')+'</b></div>'; };
-  var html='<h3>📦 '+esc(i.containerNo||i.bl)+'</h3>'+row('BL', esc(i.bl))+row('ท่า / ปลายทาง', esc(i.port)+' → '+esc(i.destination||'-'))+
-    row('คนขับ', esc(i.driverName)+' • '+esc(i.plate||''))+
-    row('แจกการ์ด', s.cardHandedAt?hm(s.cardHandedAt)+' (ชิปปิ้ง)':(s.cardAckAt?hm(s.cardAckAt)+' (คนขับยืนยัน)':''))+
-    row('รับตู้', hm(s.pickedUpAt))+row('X-Ray', s.xrayStatus==='passed'?'ผ่าน '+hm(s.xrayAt)+' <small>(คนขับรายงาน)</small>':(s.xrayStatus==='hold'?'ติดปัญหา':(s.xrayStatus==='waiting'?'รอคิว':'')))+
-    row('ส่งมอบ EIR', hm(s.eirHandedAt))+row('คนขับรับ EIR', hm(s.eirReceivedAt))+row('จบงาน', s.completedAt?hm(s.completedAt)+' <small>(คนขับส่ง)</small>':'')+
-    (s.problem?row('ปัญหา', esc(s.problem)):'')+evidenceThumbs(i)+
+  var xr=s.xrayStatus==='passed'?'<span style="color:var(--ok)">ผ่าน</span> '+hm(s.xrayAt):(s.xrayStatus==='hold'?'<span style="color:var(--red)">ตรวจเพิ่ม / ติดปัญหา</span>'+(s.xrayNote?' — '+esc(s.xrayNote):''):
+    ((s.xrayStatus==='scanned'||s.xrayStatus==='waiting')?'เข้าเครื่องแล้ว '+hm(s.xrayAt)+' • รอผล':''));
+  var canX=s.pickedUpAt && !s.eirHandedAt;
+  var html='<h3>📦 '+esc(i.containerNo||i.bl)+' '+stageChip(i.stage)+'</h3>'+row('BL', esc(i.bl))+row('ท่า / ปลายทาง', esc(i.port)+' → '+esc(i.destination||'-'))+
+    row('คนขับ', esc(i.driverName)+(i.plate?' • '+esc(i.plate):'')+(i.phone?' • <a href="tel:'+esc(i.phone)+'">'+esc(i.phone)+'</a>':''))+
+    row('1. แจกการ์ด', s.cardHandedAt?hm(s.cardHandedAt)+' (ชิปปิ้ง)':(s.cardAckAt?hm(s.cardAckAt)+' (คนขับยืนยัน)':''))+
+    row('2. ส่งงานรับตู้', hm(s.pickedUpAt))+evidenceThumbs(i, [['TRUCK_FRONT_PHOTO','หน้ารถ'],['TRUCK_REAR_PHOTO','หลังรถ'],['PICKUP_SEAL_PHOTO','ซีลตู้']])+
+    row('3–4. X-Ray', xr)+
+    (canX?'<div class="row" style="gap:6px;margin:6px 0">'+(s.xrayStatus!=='passed'?'<button class="btn btn-green btn-sm" data-jx="passed">✅ ผล X-Ray ผ่าน</button><button class="btn btn-ghost btn-sm" data-jx="hold">ตรวจเพิ่ม</button>':'<button class="btn btn-ghost btn-sm" data-jx="reset">ยกเลิกผล X-Ray</button>')+'</div>':'')+
+    row('5. ส่งมอบ EIR', hm(s.eirHandedAt))+row('คนขับรับ EIR', hm(s.eirReceivedAt))+row('6. จบงาน', s.completedAt?hm(s.completedAt)+' <small>(คนขับส่ง)</small>':'')+
+    evidenceThumbs(i, [['EIR_CARD_PHOTO','การ์ด EIR'],['CONTAINER_SEAL_PHOTO','Seal']])+
+    (s.problem?row('ปัญหา', '<span style="color:var(--red)">'+esc(s.problem)+'</span>'):'')+
     '<div style="margin-top:12px"><b>ประวัติ</b><div id="tl" class="muted">กำลังโหลด…</div></div>';
-  sheet(html);
+  var bg=sheet(html);
+  Array.prototype.forEach.call(bg.querySelectorAll('[data-jx]'), function(b){ b.addEventListener('click', function(){
+    blAction(b.getAttribute('data-jx'), [i.id], '', b, function(){ bg.remove(); });
+  }); });
   api({ action:'coordTimeline', itemId:itemId }).then(function(res){
     var el=$('tl'); if(!el) return;
-    el.innerHTML=res.ok && res.rows.length ? res.rows.map(function(r){ return '<div class="kv"><span>'+hm(r.createdAt)+' • '+esc(r.actorType)+'</span><b style="font-weight:600">'+esc(r.event)+'</b></div>'; }).join('') : 'ยังไม่มีประวัติ';
+    el.innerHTML=res.ok && res.rows.length ? res.rows.map(function(r){ return '<div class="kv"><span>'+hm(r.createdAt)+'</span><b style="font-weight:600">'+esc(EVENT_TH[r.event]||r.event)+(r.meta&&r.meta.note?' — '+esc(r.meta.note):'')+'</b></div>'; }).join('') : 'ยังไม่มีประวัติ';
   });
 }
-function evidenceThumbs(i){
-  var one=function(kind, label){
-    var f=(i.evidence||[]).filter(function(e){ return e.kind===kind; });
-    return f.length ? f.map(function(e){ return '<a class="thumb" href="'+esc(e.url)+'" target="_blank" rel="noopener"><img src="'+esc(e.url)+'" alt="'+label+'" loading="lazy"></a>'; }).join('')
-      : '<div class="thumb">ยังไม่มี<br>'+label+'</div>';
-  };
-  return '<div class="thumbs">'+one('EIR_CARD_PHOTO','การ์ด EIR')+one('CONTAINER_SEAL_PHOTO','Seal')+'</div>';
+function evidenceThumbs(i, kinds){
+  kinds=kinds||[['EIR_CARD_PHOTO','การ์ด EIR'],['CONTAINER_SEAL_PHOTO','Seal']];
+  return '<div class="thumbs">'+kinds.map(function(k){
+    var f=(i.evidence||[]).filter(function(e){ return e.kind===k[0]; });
+    return f.length ? f.map(function(e){ return '<a class="thumb" href="'+esc(e.url)+'" target="_blank" rel="noopener" title="'+k[1]+'"><img src="'+esc(e.url)+'" alt="'+k[1]+'" loading="lazy"></a>'; }).join('')
+      : '<div class="thumb">ยังไม่มี<br>'+k[1]+'</div>';
+  }).join('')+'</div>';
 }
 
-// ---------------- สถานะงาน ----------------
+// ---------------- สถานะงาน (บันทึกทีละตู้ / ทั้ง BL) ----------------
 function renderStatus(){
   var d=S.data, items=d.items;
   if(!items.length){ $('status-body').innerHTML='<div class="card center">ไม่มีงาน</div>'; return; }
   var html=d.gate.ready
-    ? '<div class="gate open">✅ ผ่าน X-Ray ครบ <b>'+d.gate.total+'/'+d.gate.total+'</b> ตู้ — ขอพิกัดรอบสองและแจก EIR ได้</div>'
+    ? '<div class="gate open">✅ ผ่าน X-Ray ครบ <b>'+d.gate.total+'/'+d.gate.total+'</b> ตู้ — นัดส่งมอบ EIR ได้</div>'
     : '<div class="gate closed">⏳ ผ่าน X-Ray <b>'+d.gate.passed+'/'+d.gate.total+'</b> ตู้<br><span style="font-size:13px">ยังไม่ผ่าน: '+
       esc(d.gate.blockers.map(function(b){ return b.containerNo+' ('+b.driverName+(b.pickedUp?'':' • ยังไม่รับตู้')+')'; }).join(', '))+'</span></div>';
-
   html+=meetingList();
-  var needCard=items.filter(function(i){ return !(i.step&&(i.step.cardHandedAt||i.step.cardAckAt)); });
-  html+=pickCard('card', '🎫 แจกการ์ดรับตู้', 'ติ๊กตู้ที่แจกการ์ดแล้ว (บันทึกแยกทีละตู้ คนขับคนเดียวหลายใบติ๊กทุกตู้)', needCard, 'บันทึกแจกการ์ดแล้ว', false);
-
-  var groups=[['ยังไม่รับตู้', function(i){ return !(i.step&&i.step.pickedUpAt); }], ['รับตู้แล้ว / รอ X-Ray', function(i){ return i.step&&i.step.pickedUpAt&&i.step.xrayStatus!=='passed'&&i.step.xrayStatus!=='hold'; }],
-    ['มีปัญหา', function(i){ return i.step&&(i.step.xrayStatus==='hold'||i.step.problem); }], ['ผ่าน X-Ray แล้ว', function(i){ return i.step&&i.step.xrayStatus==='passed'; }]];
-  html+='<div class="card group"><h4>📦 สถานะจากคนขับ</h4>'+groups.map(function(g){
-    var list=items.filter(g[1]); if(!list.length) return '';
-    return '<div class="muted" style="margin:8px 0 2px;font-weight:700">'+g[0]+' ('+list.length+')</div>'+list.map(jobLine).join('');
-  }).join('')+'</div>';
-
-  var needEir=items.filter(function(i){ return !(i.step&&i.step.eirHandedAt); });
-  html+=pickCard('eir', '📄 ส่งมอบ EIR (ชิปปิ้ง → คนขับ)', d.gate.ready ? 'ติ๊กตู้ที่ส่งมอบ EIR ให้คนขับแล้ว — คนขับต้องกดยืนยันรับเองอีกครั้ง' : 'เปิดเมื่อทุกตู้ผ่าน X-Ray', needEir, 'บันทึกส่งมอบ EIR แล้ว', !d.gate.ready);
-
+  var a=staffActions(items);
+  html+=pickCard('card', '🎫 แจกการ์ดรับตู้', 'ติ๊กตู้ที่แจกการ์ดแล้ว — ติ๊กที่ BL เพื่อเลือกทั้ง BL', a.card, [['card','บันทึกแจกการ์ดแล้ว','btn-amber']]);
+  html+=pickCard('xray', '🛃 บันทึกผล X-Ray', 'ตู้ที่คนขับส่งงานรับตู้แล้ว — เช็กผลแล้วบันทึก คนขับจะได้ข้อความ LINE', a.xray, [['passed','✅ ผ่าน','btn-green'],['hold','ตรวจเพิ่ม','btn-ghost']]);
+  var needEir=items.filter(function(i){ var s=i.step||{}; return !s.eirHandedAt; });
+  html+=d.gate.ready ? pickCard('eir', '📄 ส่งมอบ EIR (ชิปปิ้ง → คนขับ)', 'ติ๊กตู้ที่ส่งมอบ EIR แล้ว — คนขับต้องกดยืนยันรับเองอีกครั้ง', a.eir, [['eir','บันทึกส่งมอบ EIR แล้ว','btn-green']])
+    : (needEir.length?'<div class="card"><h4 style="margin:0;color:var(--muted)">📄 ส่งมอบ EIR — เปิดเมื่อทุกตู้ผ่าน X-Ray</h4></div>':'');
   var done=items.filter(function(i){ return i.step&&i.step.completedAt; }).length;
-  html+='<div class="card group"><h4>📷 รูปปิดงาน (การ์ด EIR + Seal) — คนขับส่งครบ '+done+'/'+items.length+' ตู้</h4>'+items.map(function(i){
-    var s=i.step||{};
-    var st = s.completedAt ? '<span class="stage ok">จบงาน '+hm(s.completedAt)+'</span>' : (s.eirReceivedAt?'<span class="stage wait">รอรูป</span>':'<span class="stage">ยังไม่ถึงขั้นนี้</span>');
-    return '<div class="pick" style="display:block"><div class="row"><b class="grow">'+esc(i.containerNo||i.bl)+'</b>'+st+'</div><div class="muted">👤 '+esc(i.driverName)+'</div>'+evidenceThumbs(i)+'</div>';
+  html+='<div class="card group"><h4>📷 รูปจากคนขับ — จบงาน '+done+'/'+items.length+' ตู้</h4>'+byBl(items).map(function(g){
+    return '<div class="blsub">BL '+esc(g.bl)+'</div>'+g.items.map(function(i){
+      return '<div class="pick" style="display:block" data-item="'+esc(i.id)+'"><div class="row"><b class="grow">'+esc(i.containerNo||i.bl)+'</b>'+stageChip(i.stage)+'</div><div class="muted">👤 '+esc(i.driverName)+'</div>'+
+        '<div class="muted" style="margin-top:4px">รับตู้</div>'+evidenceThumbs(i, [['TRUCK_FRONT_PHOTO','หน้ารถ'],['TRUCK_REAR_PHOTO','หลังรถ'],['PICKUP_SEAL_PHOTO','ซีลตู้']])+
+        '<div class="muted" style="margin-top:4px">จบงาน</div>'+evidenceThumbs(i)+'</div>';
+    }).join('');
   }).join('')+'</div>';
   $('status-body').innerHTML=html;
-  bindPick('card'); bindPick('eir');
+  bindPick('card'); bindPick('xray'); bindPick('eir');
   Array.prototype.forEach.call($('status-body').querySelectorAll('[data-mcancel]'), function(b){ b.addEventListener('click', function(e){
     e.stopPropagation(); if(!confirm('ยกเลิกนัดนี้? คนขับจะได้รับแจ้งทาง LINE')) return;
     api({ action:'coordMeetingCancel', id:b.getAttribute('data-mcancel') }).then(function(r){ if(!r.ok){ toast(errText(r)); return; } toast('ยกเลิกนัดแล้ว'); load(true); });
   }); });
-  Array.prototype.forEach.call($('status-body').querySelectorAll('[data-item]'), function(el){ el.addEventListener('click', function(){ openJob(el.getAttribute('data-item')); }); });
+  Array.prototype.forEach.call($('status-body').querySelectorAll('div[data-item]'), function(el){ el.addEventListener('click', function(e){ if(e.target.closest('a')) return; openJob(el.getAttribute('data-item')); }); });
 }
-function jobLine(i){
-  return '<div class="job" data-item="'+esc(i.id)+'"><div class="grow"><div class="cn">'+esc(i.containerNo||i.bl)+'</div><div class="sub">👤 '+esc(i.driverName)+
-    (i.step&&i.step.problem?' • ⚠️ '+esc(i.step.problem):'')+'</div></div>'+stageChip(i.stage)+'</div>';
-}
-function pickCard(kind, title, hint, list, btn, locked){
-  if(!list.length) return '<div class="card"><h4 style="margin:0;color:var(--ok)">'+title+' — ครบทุกตู้แล้ว ✓</h4></div>';
-  return '<div class="card group"><h4>'+title+' ('+list.length+' ตู้ค้าง)</h4><div class="muted" style="margin-bottom:6px">'+hint+'</div>'+
-    list.map(function(i){
-      return '<label class="pick"><input type="checkbox" class="pk-'+kind+'" value="'+esc(i.id)+'"'+(locked?' disabled':'')+'><div class="grow"><b>'+esc(i.containerNo||i.bl)+'</b>'+
-        '<div class="muted">👤 '+esc(i.driverName)+' • '+esc(i.port)+'</div></div>'+stageChip(i.stage)+'</label>';
-    }).join('')+'<button class="btn '+(kind==='eir'?'btn-green':'btn-amber')+'" id="pk-'+kind+'-btn" style="margin-top:10px" disabled>'+btn+'</button></div>';
+function pickCard(kind, title, hint, list, buttons){
+  if(!list.length) return '<div class="card"><h4 style="margin:0;color:var(--ok)">'+title+' — ไม่มีตู้ค้าง ✓</h4></div>';
+  return '<div class="card group"><h4>'+title+' ('+list.length+' ตู้)</h4><div class="muted" style="margin-bottom:6px">'+hint+'</div>'+
+    byBl(list).map(function(g, gi){
+      return '<label class="pick blpick"><input type="checkbox" class="pkb-'+kind+'" data-g="'+gi+'"><div class="grow"><b>BL '+esc(g.bl)+'</b> <span class="muted">'+g.items.length+' ตู้</span></div></label>'+
+        g.items.map(function(i){
+          return '<label class="pick" style="padding-left:24px"><input type="checkbox" class="pk-'+kind+'" data-g="'+gi+'" value="'+esc(i.id)+'"><div class="grow"><b>'+esc(i.containerNo||i.bl)+'</b>'+
+            '<div class="muted">👤 '+esc(i.driverName)+' • '+esc(i.port)+'</div></div>'+stageChip(i.stage)+'</label>';
+        }).join('');
+    }).join('')+
+    '<div class="row" style="margin-top:10px">'+buttons.map(function(b){ return '<button class="btn '+b[2]+'" data-pkact="'+b[0]+'" data-kind="'+kind+'" data-label="'+esc(b[1])+'" disabled>'+b[1]+'</button>'; }).join('')+'</div></div>';
 }
 function bindPick(kind){
-  var btn=$('pk-'+kind+'-btn'); if(!btn) return;
-  var boxes=document.querySelectorAll('.pk-'+kind);
-  var upd=function(){ var n=document.querySelectorAll('.pk-'+kind+':checked').length; btn.disabled=!n; btn.textContent=(kind==='card'?'บันทึกแจกการ์ดแล้ว':'บันทึกส่งมอบ EIR แล้ว')+(n?' ('+n+' ตู้)':''); };
-  Array.prototype.forEach.call(boxes, function(b){ b.addEventListener('change', upd); });
-  btn.addEventListener('click', function(){
-    var ids=Array.prototype.map.call(document.querySelectorAll('.pk-'+kind+':checked'), function(b){ return b.value; });
-    if(!ids.length) return;
-    btn.disabled=true;
-    api({ action: kind==='card'?'coordCardHanded':'coordEirHanded', date:S.data.date, staff:S.staff, itemIds:ids }).then(function(res){
-      if(!res.ok){ btn.disabled=false; toast(res.error==='XRAY_BATCH_NOT_READY'?'ยังผ่าน X-Ray ไม่ครบทุกตู้':errText(res), 3500); return; }
-      toast('บันทึกแล้ว '+res.count+' ตู้'); load(true);
+  var btns=document.querySelectorAll('[data-kind="'+kind+'"][data-pkact]'); if(!btns.length) return;
+  var upd=function(){
+    var n=document.querySelectorAll('.pk-'+kind+':checked').length;
+    Array.prototype.forEach.call(btns, function(b){ b.disabled=!n; b.textContent=b.getAttribute('data-label')+(n?' ('+n+')':''); });
+    Array.prototype.forEach.call(document.querySelectorAll('.pkb-'+kind), function(g){
+      var kids=document.querySelectorAll('.pk-'+kind+'[data-g="'+g.getAttribute('data-g')+'"]'), on=Array.prototype.filter.call(kids, function(k){ return k.checked; }).length;
+      g.checked=on===kids.length; g.indeterminate=on>0 && on<kids.length;
     });
-  });
+  };
+  Array.prototype.forEach.call(document.querySelectorAll('.pk-'+kind), function(b){ b.addEventListener('change', upd); });
+  Array.prototype.forEach.call(document.querySelectorAll('.pkb-'+kind), function(g){ g.addEventListener('change', function(){
+    Array.prototype.forEach.call(document.querySelectorAll('.pk-'+kind+'[data-g="'+g.getAttribute('data-g')+'"]'), function(k){ k.checked=g.checked; }); upd();
+  }); });
+  Array.prototype.forEach.call(btns, function(b){ b.addEventListener('click', function(){
+    var ids=Array.prototype.map.call(document.querySelectorAll('.pk-'+kind+':checked'), function(x){ return x.value; });
+    blAction(b.getAttribute('data-pkact'), ids, '', b);
+  }); });
 }
 
 // ---------------- เพิ่มเติม ----------------

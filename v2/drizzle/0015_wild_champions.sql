@@ -1,0 +1,1 @@
+ALTER TABLE "meeting_points" ADD COLUMN "kind" text DEFAULT 'MEETING' NOT NULL;
