@@ -1,7 +1,7 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
-import { CLOUD_SETTINGS, emptyBlob } from './cloud';
+import { CLOUD_SETTINGS, refsOf } from './cloud';
 import { db } from './db';
-import type { DocRecord, Folder, PageRecord, SignatureRecord } from './types';
+import type { CloudRefs, DocRecord, Folder, PageRecord, SignatureRecord } from './types';
 
 /**
  * แบ็กอัปในเครื่อง — ไฟล์ .docscan (ZIP) ไฟล์เดียว: manifest.json + รูปทุกไฟล์
@@ -17,14 +17,17 @@ export async function createBackup(onProgress?: (p: number) => void): Promise<Bl
   ]);
   const files: Record<string, Uint8Array> = {};
   const pageMeta = [];
+  const refs = await refsOf(pages.map((p) => p.id));
   for (let i = 0; i < pages.length; i++) {
     const p = pages[i];
-    const meta: Record<string, unknown> = { ...p };
+    // cloud = ไฟล์บนระบบของหน้านี้ (โหมดให้ระบบเก็บ)
+    const meta: Record<string, unknown> = { ...p, cloud: refs.get(p.id) };
     for (const k of PAGE_BLOBS) {
-      // ภาพที่อยู่บนระบบ (โหมดให้ระบบเก็บ) ไม่ได้อยู่ในเครื่อง — แบ็กอัปเก็บแค่ที่อ้างถึง (page.cloud) ดึงจากระบบได้ภายหลัง
-      if (!p[k].size) { meta[k] = null; continue; }
+      // ภาพที่อยู่บนระบบไม่ได้อยู่ในเครื่อง — แบ็กอัปเก็บแค่ที่อ้างถึง ดึงจากระบบได้ภายหลัง
+      const b = p[k];
+      if (!b?.size) { meta[k] = null; continue; }
       const path = `pages/${p.id}/${k}.jpg`;
-      files[path] = new Uint8Array(await p[k].arrayBuffer());
+      files[path] = new Uint8Array(await b.arrayBuffer());
       meta[k] = path;
     }
     pageMeta.push(meta);
@@ -59,14 +62,18 @@ export async function restoreBackup(file: File) {
     if (!b) throw new Error(`ไฟล์ในแบ็กอัปไม่ครบ (${path})`);
     return new Blob([b as BlobPart], { type });
   };
+  const refRows: { pageId: string; docId: string; refs: CloudRefs }[] = [];
   const pages: PageRecord[] = m.pages.map((p: Record<string, unknown>) => {
-    const out = { ...p } as unknown as PageRecord;
-    for (const k of PAGE_BLOBS) (out as unknown as Record<string, Blob>)[k] = p[k] == null ? emptyBlob() : blob(String(p[k]));
+    const { cloud, ...rest } = p;
+    const out = { ...rest } as unknown as PageRecord;
+    for (const k of PAGE_BLOBS) (out as unknown as Record<string, Blob | null>)[k] = p[k] == null ? null : blob(String(p[k]));
+    if (cloud && Object.keys(cloud).length) refRows.push({ pageId: out.id, docId: out.documentId, refs: cloud as CloudRefs });
     return out;
   });
   const signatures: SignatureRecord[] = (m.signatures || []).map((s: Record<string, unknown>) =>
     ({ ...s, image: blob(String(s.image), 'image/png') }) as SignatureRecord);
-  await db.transaction('rw', [db.documents, db.pages, db.folders, db.signatures, db.settings], async () => {
+  await db.transaction('rw', [db.documents, db.pages, db.folders, db.signatures, db.settings, db.cloudRefs], async () => {
+    if (refRows.length) await db.cloudRefs.bulkPut(refRows);
     await db.folders.bulkPut(m.folders as Folder[]);
     await db.documents.bulkPut((m.documents as DocRecord[]).map((d) => ({ ...d, thumbnail: null })));
     await db.pages.bulkPut(pages);

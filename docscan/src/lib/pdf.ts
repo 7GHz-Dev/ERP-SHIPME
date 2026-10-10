@@ -1,5 +1,6 @@
 import { PDFDocument } from 'pdf-lib';
 import { zipSync } from 'fflate';
+import { pageBlob } from './cloud';
 import { blobToCanvas, canvasToBlob, safeName, toCanvas } from './image';
 import type { PageRecord } from './types';
 
@@ -27,7 +28,7 @@ export async function exportPdf(pages: PageRecord[], o: PdfOptions, title = 'เ
   pdf.setTitle(title);
   pdf.setCreator('DocScan');
   for (const p of pages) {
-    const src = await blobToCanvas(p.processedImage);
+    const src = await blobToCanvas(await pageBlob(p, 'p'));
     const landscapeImg = src.width > src.height;
     let pw: number, ph: number;
     if (o.pageSize === 'auto') {

@@ -1,6 +1,7 @@
 'use client';
 import { FileDown, Share2 } from 'lucide-react';
 import { useState } from 'react';
+import { pageBlob } from '@/lib/cloud';
 import { downloadBlob, safeName, shareOrDownload } from '@/lib/image';
 import { DEFAULT_PDF, exportPdf, jpgName, zipFiles, type PdfOptions } from '@/lib/pdf';
 import type { DocRecord, PageRecord } from '@/lib/types';
@@ -37,7 +38,7 @@ export default function ExportSheet({ doc, pages, current, open, onClose }: {
       } else {
         const idx = which === 'current' ? [current] : which === 'all' ? pages.map((_, i) => i) : [...picked].sort((a, b) => a - b);
         if (!idx.length) { ui.toast('ยังไม่ได้เลือกหน้า'); return; }
-        const jpgs = idx.map((i) => ({ name: jpgName(doc.name, i), blob: pages[i].processedImage }));
+        const jpgs = await Promise.all(idx.map(async (i) => ({ name: jpgName(doc.name, i), blob: await pageBlob(pages[i], 'p') })));
         // แชร์ได้หลายไฟล์บนมือถือ — ดาวน์โหลดหลายหน้ารวมเป็น ZIP เดียว
         files = share || jpgs.length === 1
           ? jpgs.map((j) => new File([j.blob], j.name, { type: 'image/jpeg' }))

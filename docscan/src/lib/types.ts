@@ -51,13 +51,14 @@ export interface PageRecord {
   id: string;
   documentId: string;
   order: number;
+  // ภาพทั้ง 4 เป็น null ได้ = อยู่บนระบบ ไม่ได้อยู่ในเครื่อง (โหมดให้ระบบเก็บ — ดึงด้วย cloud.pageBlob / hydrate)
   /** ภาพต้นฉบับ (ย่อด้านยาวสุดไม่เกิน 4000px) */
-  originalImage: Blob;
+  originalImage: Blob | null;
   /** หลังครอบ/ปรับมุมมองแล้ว ก่อนใส่ฟิลเตอร์ — แก้ฟิลเตอร์ใหม่ได้โดยไม่ต้องครอบซ้ำ */
-  croppedImage: Blob;
+  croppedImage: Blob | null;
   /** ภาพสุดท้ายที่ใช้แสดงผล/ส่งออก (ฟิลเตอร์ + ปรับแสง + หมุน + markup) */
-  processedImage: Blob;
-  thumbnail: Blob;
+  processedImage: Blob | null;
+  thumbnail: Blob | null;
   cropCoordinates: Quad | null;
   rotation: number;
   flip: boolean;
@@ -67,11 +68,17 @@ export interface PageRecord {
   ocrText: string;
   width: number;
   height: number;
-  /** ไฟล์บนระบบของแต่ละภาพ (เอกสารที่ให้ระบบเก็บ) — ภาพที่ลบออกจากเครื่องแล้วเหลือเป็น Blob ว่าง (size 0) */
+  /** เลิกใช้ — เวอร์ชันแรกเก็บไฟล์บนระบบไว้ในหน้า ตอนนี้อยู่ตาราง cloudRefs (ย้ายให้ตอนอัปเกรดฐานข้อมูล) */
   cloud?: CloudRefs;
   /** เพิ่มทุกครั้งที่ภาพเปลี่ยน — กันอัปโหลดภาพเก่าแล้วจดว่าเป็นภาพปัจจุบัน */
   rev?: number;
 }
+
+/**
+ * ไฟล์บนระบบของหน้า (ตาราง cloudRefs) — แยกจากหน้าเพราะ Safari ต้องคัดลอกทุกรูปในแถวเป็นไฟล์ชั่วคราวทุกครั้งที่เขียน
+ * ถ้าจดลงหน้าเอง เครื่องที่พื้นที่เต็มจะจด/ลบรูปออกไม่ได้ ("Error preparing Blob/File data")
+ */
+export interface CloudRefRecord { pageId: string; docId: string; refs: CloudRefs }
 
 export interface SignatureRecord { id: string; image: Blob; createdAt: number }
 

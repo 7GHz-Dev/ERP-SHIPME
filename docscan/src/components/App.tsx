@@ -128,7 +128,7 @@ function Shell() {
 
   const inputs = (
     <>
-      <input ref={imgInput} type="file" accept="image/*,.heic,.heif" multiple hidden onChange={(e) => { onImages(e.target.files); e.target.value = ''; }} />
+      <input ref={imgInput} type="file" accept="image/*" multiple hidden onChange={(e) => { onImages(e.target.files); e.target.value = ''; }} />
       <input ref={pdfInput} type="file" accept="application/pdf,.pdf" hidden onChange={(e) => { onPdf(e.target.files?.[0]); e.target.value = ''; }} />
     </>
   );

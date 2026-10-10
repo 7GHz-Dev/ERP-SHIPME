@@ -70,7 +70,13 @@ How "ให้ระบบเก็บ" works (`src/lib/cloud.ts`, server side i
 - Scanning works offline. Pages wait in the phone and upload once the internet is back.
 - New phone, or browser data cleared: sign in again and the app pulls the document list back from `doc.json` (Settings → ดึงรายการจากระบบ).
 - Deleting a document permanently, or moving it back to the phone, deletes its files from the server.
-- No database table is needed. Everything lives in Storage:
+- On the phone, each page's server file references live in the `cloudRefs` table, kept apart from the images.
+  - Reason: Safari copies every Blob in a row to temporary files on each write. On a full phone, writing a page row that holds full-size images fails with "Error preparing Blob/File data to be stored in object store".
+  - Removing images from the phone sets those fields to `null`, so the row written back holds only the thumbnail.
+- When the phone is full:
+  - An image downloaded from the system that can't be saved is kept in memory while the document is open.
+  - A new page that can't be saved uploads to the system right away (`storeRemotely`).
+- No database table is needed on the server. Everything lives in Storage:
   - `docscan/<user>/<docId>/<random>.jpg`
   - `docscan/<user>/<docId>/doc.json`
   - `docscan/<user>/_meta/folders.json`
@@ -80,7 +86,7 @@ Test the whole path: `cd v2 && npx tsx scripts/smoke-docscan-cloud.mts <url> <us
 ## Known limitations
 
 - iOS Safari has no flashlight (torch) control, so the torch button only appears on supported devices.
-- HEIC files open only in browsers that can decode them (Safari). Elsewhere the app asks for JPG/PNG.
+- HEIC (iPhone photos): picking from the photo library makes iOS convert to JPG automatically (`accept="image/*"`). If the browser still can't open a HEIC file (Chrome, Android), the app loads the `heic-to` decoder (libheif, ~3 MB). It loads only when a HEIC file shows up, and the service worker caches it after the first time.
 - OCR downloads its language files (Thai/English) the first time it is used, so the first run needs internet.
 - In "เก็บในเครื่องนี้" mode, data lives in this browser only. Clearing site data deletes it, so use Settings → backup (.docscan) to keep a copy. In "ให้ระบบเก็บ" mode, documents can be pulled back from the server.
 - Documents stored on the server need internet to open (except the one currently open). Designed for one phone per account: using the same documents on two phones at once can make the last sync overwrite the other's changes.

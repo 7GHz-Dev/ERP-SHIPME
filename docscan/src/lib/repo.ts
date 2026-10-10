@@ -1,8 +1,8 @@
-import { FIELD, KINDS, filesOf, forgetFiles, getMode, hasBlob, pageBlob, requestSync } from './cloud';
+import { FIELD, KINDS, filesOf, forgetFiles, getMode, hasBlob, isStorageFull, pageBlob, refsOf, requestSync, storeRemotely } from './cloud';
 import { db, getPages, uid } from './db';
 import { safeName } from './image';
 import { rebuildProcessed } from './process';
-import type { BlobKind, DocRecord, Folder, PageRecord, StorageMode } from './types';
+import type { BlobKind, CloudRefs, DocRecord, Folder, PageRecord, StorageMode } from './types';
 import { DEFAULT_ADJUST } from './types';
 
 /** งานข้อมูลทั้งหมด (เอกสาร / หน้า / โฟลเดอร์ / ถังขยะ) — UI เรียกผ่านที่นี่ ไม่แตะ db ตรง */
@@ -23,15 +23,16 @@ export async function createDocument(name: string, folderId: string | null = nul
 }
 
 /** ขนาดภาพของหน้า — ภาพที่ลบออกจากเครื่องแล้ว (อยู่บนระบบ) ใช้ขนาดที่จดไว้ */
-const pageBytes = (p: PageRecord) =>
-  (['o', 'c', 'p'] as const).reduce((s, k) => s + (hasBlob(p[FIELD[k]]) ? p[FIELD[k]].size : p.cloud?.[k]?.n ?? 0), 0);
+const pageBytes = (p: PageRecord, r: CloudRefs | undefined) =>
+  (['o', 'c', 'p'] as const).reduce((s, k) => { const b = p[FIELD[k]]; return s + (hasBlob(b) ? b.size : r?.[k]?.n ?? 0); }, 0);
 
 /** คำนวณจำนวนหน้า ขนาด รูปปก และข้อความ OCR รวมของเอกสารใหม่ */
 export async function refreshDocument(documentId: string) {
   const pages = await getPages(documentId);
+  const refs = await refsOf(pages.map((p) => p.id));
   const cover = pages[0]?.thumbnail;
   await db.documents.update(documentId, {
-    pageCount: pages.length, size: pages.reduce((s, p) => s + pageBytes(p), 0),
+    pageCount: pages.length, size: pages.reduce((s, p) => s + pageBytes(p, refs.get(p.id)), 0),
     // ภาพย่อหน้าแรกยังไม่ได้ดึงจากระบบ (เพิ่งดึงรายการมา) = ใช้ปกเดิมไปก่อน
     ...(hasBlob(cover) || !pages.length ? { thumbnail: cover || null } : {}),
     ocrText: pages.map((p) => p.ocrText).filter(Boolean).join('\n\n'),
@@ -50,7 +51,13 @@ export async function addPage(documentId: string, img: NewPage, atOrder?: number
     id: uid(), documentId, order, ...img, rotation: 0, flip: false,
     adjustments: { ...DEFAULT_ADJUST }, markup: [], ocrText: ''
   };
-  await db.pages.add(page);
+  try {
+    await db.pages.add(page);
+  } catch (e) {
+    // เครื่องเต็ม + เอกสารให้ระบบเก็บ = อัปขึ้นระบบเลย ไม่ต้องเก็บรูปในเครื่อง
+    if (!isStorageFull(e) || (await db.documents.get(documentId))?.storage !== 'cloud') throw e;
+    await storeRemotely(page);
+  }
   await refreshDocument(documentId);
   return page;
 }
@@ -68,15 +75,19 @@ export async function updatePage(id: string, patch: Partial<PageRecord>, rebuild
   let next: PageRecord | undefined;
   const dropped: (string | undefined)[] = [];
   // อ่านหน้าล่าสุดอีกรอบแล้วค่อยเขียน — ไม่ทับสิ่งที่ตัวซิงก์เพิ่งจดระหว่างสร้างภาพ
-  await db.transaction('rw', db.pages, async () => {
+  await db.transaction('rw', db.pages, db.cloudRefs, async () => {
     const cur = await db.pages.get(id);
     if (!cur) return;
     next = { ...cur, ...patch, ...rebuilt };
+    delete next.cloud;   // ที่เก็บแบบเก่า (ย้ายไป cloudRefs แล้ว)
     if (changed.length) {
-      const cloud = { ...cur.cloud };
-      for (const k of changed) { dropped.push(cloud[k]?.f); delete cloud[k]; }
-      next.cloud = cloud;
       next.rev = (cur.rev ?? 0) + 1;
+      const row = await db.cloudRefs.get(id);
+      if (row) {
+        const refs = { ...row.refs };
+        for (const k of changed) { dropped.push(refs[k]?.f); delete refs[k]; }
+        await db.cloudRefs.put({ ...row, refs });
+      }
     }
     await db.pages.put(next);
   });
@@ -88,20 +99,34 @@ export async function updatePage(id: string, patch: Partial<PageRecord>, rebuild
 export async function deletePage(id: string) {
   const page = await db.pages.get(id);
   if (!page) return;
-  await db.pages.delete(id);
-  await forgetFiles(filesOf([page]));
+  const files = await filesOf([id]);
+  await db.transaction('rw', db.pages, db.cloudRefs, async () => {
+    await db.pages.delete(id);
+    await db.cloudRefs.delete(id);
+  });
+  await forgetFiles(files);
   await refreshDocument(page.documentId);
+}
+
+/** หน้าใหม่ใช้ไฟล์บนระบบชุดเดียวกับหน้าเดิม (ไม่ต้องอัปซ้ำ) */
+async function copyRefs(pairs: { from: string; to: string; docId: string }[]) {
+  const refs = await refsOf(pairs.map((x) => x.from));
+  const rows = pairs.filter((x) => Object.keys(refs.get(x.from) || {}).length)
+    .map((x) => ({ pageId: x.to, docId: x.docId, refs: refs.get(x.from)! }));
+  if (rows.length) await db.cloudRefs.bulkPut(rows);
 }
 
 export async function duplicatePage(id: string) {
   const page = await db.pages.get(id);
   if (!page) return;
   const pages = await getPages(page.documentId);
+  const newId = uid();
   // แทรกต่อจากหน้าเดิม — ขยับลำดับหน้าหลัง ๆ ลงไปหนึ่ง
   await db.transaction('rw', db.pages, async () => {
     for (const p of pages) if (p.order > page.order) await db.pages.update(p.id, { order: p.order + 1 });
-    await db.pages.add({ ...page, id: uid(), order: page.order + 1 });
+    await db.pages.add({ ...page, id: newId, order: page.order + 1 });
   });
+  await copyRefs([{ from: id, to: newId, docId: page.documentId }]);
   await refreshDocument(page.documentId);
 }
 
@@ -128,7 +153,9 @@ export async function duplicateDocument(id: string) {
   if (!doc) return;
   const copy = await createDocument(`${doc.name} (สำเนา)`, doc.folderId, doc.storage ?? 'local');
   const pages = await getPages(id);
-  await db.pages.bulkAdd(pages.map((p) => ({ ...p, id: uid(), documentId: copy.id })));
+  const copies = pages.map((p) => ({ ...p, id: uid(), documentId: copy.id }));
+  await db.pages.bulkAdd(copies);
+  await copyRefs(pages.map((p, i) => ({ from: p.id, to: copies[i].id, docId: copy.id })));
   await refreshDocument(copy.id);
   return copy;
 }
@@ -138,13 +165,14 @@ export async function trashDocument(id: string) { await db.documents.update(id, 
 export async function restoreDocument(id: string) { await db.documents.update(id, { deletedAt: 0 }); requestSync(); }
 export async function deleteForever(id: string) {
   const doc = await db.documents.get(id);
-  const pages = await getPages(id);
-  await db.transaction('rw', db.documents, db.pages, async () => {
+  const files = await filesOf((await getPages(id)).map((p) => p.id));
+  await db.transaction('rw', db.documents, db.pages, db.cloudRefs, async () => {
     await db.pages.where('documentId').equals(id).delete();
+    await db.cloudRefs.where('docId').equals(id).delete();
     await db.documents.delete(id);
   });
   // เคยขึ้นระบบ = ลบบนระบบด้วย (ทำตอนออนไลน์)
-  await forgetFiles(filesOf(pages), doc?.storage === 'cloud' || doc?.cloudSig ? [id] : []);
+  await forgetFiles(files, doc?.storage === 'cloud' || doc?.cloudSig ? [id] : []);
 }
 export async function emptyTrash() {
   const ids = (await db.documents.where('deletedAt').above(0).toArray()).map((d) => d.id);

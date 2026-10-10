@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { db, getPages, getSetting, setSetting, uid } from './db';
 import { post } from './erp';
-import type { BlobKind, DocRecord, Folder, PageRecord, StorageMode } from './types';
+import type { BlobKind, CloudRefs, DocRecord, Folder, PageRecord, StorageMode } from './types';
 
 /**
  * โหมด "ให้ระบบเก็บ" — สำหรับมือถือที่พื้นที่เต็ม
@@ -10,8 +10,13 @@ import type { BlobKind, DocRecord, Folder, PageRecord, StorageMode } from './typ
  * อัปครบแล้วค่อยอัป doc.json (ข้อมูลเอกสาร) แล้วลบรูปใหญ่ (ต้นฉบับ / ครอบ / ภาพสุดท้าย) ออกจากเครื่อง เหลือภาพย่อ + ข้อมูล
  * เปิดเอกสาร = ดึงภาพสุดท้ายกลับมาชั่วคราว (ภาพต้นฉบับ/ครอบดึงตอนกดครอบ/ฟิลเตอร์) ปิดแล้วลบออกอีกรอบหลังซิงก์
  *
- * กติกา: ภาพในเครื่องเป็น Blob ว่าง (size 0) ได้เฉพาะเมื่อมีไฟล์บนระบบ (page.cloud[kind]) อยู่แล้ว
- *        ภาพเปลี่ยน = ลบ page.cloud[kind] ทิ้ง + เพิ่ม rev (repo.updatePage) → รอบซิงก์ถัดไปอัปเป็นไฟล์ชื่อใหม่
+ * กติกา: ภาพในเครื่องเป็น null (หรือ Blob ว่างจากเวอร์ชันแรก) ได้เฉพาะเมื่อมีไฟล์บนระบบในตาราง cloudRefs แล้ว
+ *        ภาพเปลี่ยน = ลบไฟล์นั้นออกจาก cloudRefs + เพิ่ม page.rev (repo.updatePage) → รอบซิงก์ถัดไปอัปเป็นไฟล์ชื่อใหม่
+ *
+ * เครื่องเต็ม: Safari คัดลอกทุกรูปในแถวทุกครั้งที่เขียนแถว จึงห้ามเขียนแถวหน้าที่มีรูปใหญ่โดยไม่จำเป็น
+ *   - จดไฟล์บนระบบลงตาราง cloudRefs (ไม่มีรูป) • ลบรูปออก = ตั้งเป็น null (แถวเหลือแค่ภาพย่อ)
+ *   - ดึงภาพลงเครื่องไม่ได้ (เต็ม) = เก็บไว้ในหน่วยความจำระหว่างเปิดเอกสารแทน (mem)
+ *   - เพิ่มหน้าใหม่ไม่ได้ (เต็ม) = อัปขึ้นระบบเลย เก็บในเครื่องแค่ข้อมูล (storeRemotely)
  * กุญแจที่เก็บเอกสารได้จากการใส่รหัส ERP ครั้งเดียว (อายุ 180 วัน) ใช้ได้เฉพาะเอกสารของตัวเอง ไม่ใช่ล็อกอิน ERP
  */
 
@@ -20,10 +25,14 @@ export const KINDS: BlobKind[] = ['o', 'c', 'p', 't'];
 /** ภาพที่ลบออกจากเครื่องได้ — ภาพย่อเก็บไว้เสมอ (เล็ก และใช้แสดงรายการ) */
 const HEAVY: BlobKind[] = ['o', 'c', 'p'];
 
-export const emptyBlob = () => new Blob([], { type: 'image/jpeg' });
 export const hasBlob = (b: Blob | null | undefined): b is Blob => !!b && b.size > 0;
-const blobOf = (p: PageRecord, k: BlobKind): Blob => p[FIELD[k]];
-const complete = (p: PageRecord) => KINDS.every((k) => p.cloud?.[k]);
+const stored = (p: PageRecord, k: BlobKind) => p[FIELD[k]];
+const full = (r: CloudRefs | undefined) => KINDS.every((k) => r?.[k]);
+
+/** พื้นที่ในเครื่องเต็ม (Chrome: QuotaExceeded • Safari: เขียน Blob ไม่ได้) */
+export const isStorageFull = (e: unknown) =>
+  /QuotaExceeded|quota|preparing Blob/i.test(`${(e as Error)?.name} ${(e as Error)?.message ?? e}`);
+const FULL_MSG = 'พื้นที่ในเครื่องเต็ม — เอกสารที่ให้ระบบเก็บจะลบรูปออกจากเครื่องเมื่ออัปเสร็จ';
 
 // ---------- สถานะ (ให้หน้าจอแสดง) ----------
 export interface CloudSession { token: string; name: string; username: string; expiresAt: string }
@@ -37,8 +46,10 @@ export interface CloudStatus {
   /** กุญแจหมดอายุ/ยังไม่เข้าสู่ระบบ แต่มีเอกสารที่ต้องใช้ระบบ */
   needLogin: boolean;
   lastSync: number;
+  /** เพิ่มเมื่อภาพในหน่วยความจำเปลี่ยน (ให้หน้าเอกสารวาดใหม่) */
+  memVersion: number;
 }
-let status: CloudStatus = { session: null, mode: 'local', syncing: false, pending: 0, error: '', needLogin: false, lastSync: 0 };
+let status: CloudStatus = { session: null, mode: 'local', syncing: false, pending: 0, error: '', needLogin: false, lastSync: 0, memVersion: 0 };
 const subs = new Set<() => void>();
 function setStatus(patch: Partial<CloudStatus>) {
   status = { ...status, ...patch };
@@ -46,6 +57,39 @@ function setStatus(patch: Partial<CloudStatus>) {
 }
 const subscribe = (f: () => void) => { subs.add(f); return () => { subs.delete(f); }; };
 export const useCloudStatus = () => useSyncExternalStore(subscribe, () => status, () => status);
+
+// ---------- ภาพในหน่วยความจำ (เครื่องเต็ม เก็บลง IndexedDB ไม่ได้) ----------
+const mem = new Map<string, Blob>();
+const memKey = (pageId: string, k: BlobKind) => `${pageId}:${k}`;
+function memSet(pageId: string, k: BlobKind, b: Blob) { mem.set(memKey(pageId, k), b); setStatus({ memVersion: status.memVersion + 1 }); }
+function memDropPages(ids: string[]) {
+  let n = 0;
+  for (const id of ids) for (const k of KINDS) if (mem.delete(memKey(id, k))) n++;
+  if (n) setStatus({ memVersion: status.memVersion + 1 });
+}
+/** ภาพที่ใช้ได้ทันที — ในเครื่องก่อน ไม่มีค่อยดูในหน่วยความจำ */
+export function localBlob(p: PageRecord, k: BlobKind): Blob | null {
+  const b = stored(p, k);
+  return hasBlob(b) ? b : mem.get(memKey(p.id, k)) ?? null;
+}
+/** หน้าเอกสารพร้อมภาพจากหน่วยความจำ (ใช้กับหน้าที่เปิดอยู่) — useCloudStatus().memVersion บอกว่าต้องเรียกใหม่ */
+export const withMemory = (pages: PageRecord[]) => pages.map((p) =>
+  KINDS.some((k) => !hasBlob(stored(p, k)) && mem.has(memKey(p.id, k)))
+    ? { ...p, originalImage: localBlob(p, 'o'), croppedImage: localBlob(p, 'c'), processedImage: localBlob(p, 'p'), thumbnail: localBlob(p, 't') }
+    : p);
+
+// ---------- ไฟล์บนระบบของแต่ละหน้า (ตาราง cloudRefs) ----------
+export async function refsOf(pageIds: string[]) {
+  const rows = await db.cloudRefs.bulkGet(pageIds);
+  return new Map(pageIds.map((id, i) => [id, rows[i]?.refs ?? {}] as const));
+}
+async function docRefs(docId: string) {
+  return new Map((await db.cloudRefs.where('docId').equals(docId).toArray()).map((r) => [r.pageId, r.refs] as const));
+}
+/** ไฟล์บนระบบที่หน้าเหล่านี้อ้างถึง */
+export async function filesOf(pageIds: string[]) {
+  return [...(await refsOf(pageIds)).values()].flatMap((r) => KINDS.map((k) => r[k]?.f));
+}
 
 // ---------- กุญแจที่เก็บเอกสาร ----------
 const SESSION_KEY = 'docscan.cloud';
@@ -123,7 +167,8 @@ async function download(url: string) {
   let res: Response;
   try { res = await fetch(url); } catch { throw new Error(offline()); }
   if (!res.ok) throw new Error('ดึงไฟล์จากระบบไม่สำเร็จ ลองใหม่อีกครั้ง');
-  return new Blob([await res.blob()], { type: 'image/jpeg' });
+  // อ่านเป็นข้อมูลในหน่วยความจำ — Blob จาก fetch บางเบราว์เซอร์อ้างไฟล์ชั่วคราว เก็บลง IndexedDB แล้วพังได้
+  return new Blob([await res.arrayBuffer()], { type: 'image/jpeg' });
 }
 async function signUploads(files: string[]) {
   const r = await call<{ uploads: { file: string; url: string }[] }>('scanCloudSign', { files });
@@ -178,16 +223,19 @@ function withLock<T>(id: string, fn: () => Promise<T>): Promise<T> {
 }
 
 /**
- * ดึงภาพที่อยู่บนระบบกลับมาเก็บในเครื่อง — pageIds = เฉพาะบางหน้า
+ * ดึงภาพที่อยู่บนระบบกลับมา — pageIds = เฉพาะบางหน้า
+ * เก็บลงเครื่องก่อน เครื่องเต็มเก็บไม่ได้ = ถือไว้ในหน่วยความจำ (ใช้ได้จนปิดเอกสาร)
  * เอกสารที่ไม่ได้เปิดอยู่จะถูกลบภาพใหญ่ออกอีกรอบเมื่อซิงก์
  */
 export function hydrate(docId: string, kinds: BlobKind[], opts: { pageIds?: string[]; onProgress?: (done: number, total: number) => void } = {}) {
   return withLock(docId, async () => {
-    const need = (await getPages(docId))
-      .filter((p) => !opts.pageIds || opts.pageIds.includes(p.id))
-      .flatMap((p) => kinds.filter((k) => !hasBlob(blobOf(p, k)) && p.cloud?.[k]).map((k) => ({ id: p.id, k, f: p.cloud![k]!.f })));
+    const pages = (await getPages(docId)).filter((p) => !opts.pageIds || opts.pageIds.includes(p.id));
+    const refs = await refsOf(pages.map((p) => p.id));
+    const need = pages.flatMap((p) => kinds.filter((k) => !localBlob(p, k) && refs.get(p.id)?.[k])
+      .map((k) => ({ id: p.id, k, f: refs.get(p.id)![k]!.f })));
     if (!need.length) return 0;
     let done = 0;
+    let full = false;   // เขียนลงเครื่องไม่ได้แล้วรอบนี้ = ไม่ต้องลองซ้ำทุกภาพ
     opts.onProgress?.(0, need.length);
     for (const part of chunks(need, 40)) {
       const urls = await signDownloads(part.map((x) => x.f));
@@ -195,14 +243,21 @@ export function hydrate(docId: string, kinds: BlobKind[], opts: { pageIds?: stri
         const url = urls.get(x.f);
         if (!url) throw new Error('ไม่พบไฟล์ของเอกสารนี้บนระบบ');
         const blob = await download(url);
-        await db.transaction('rw', db.pages, async () => {
-          const cur = await db.pages.get(x.id);
-          if (cur && cur.cloud?.[x.k]?.f === x.f && !hasBlob(blobOf(cur, x.k))) {
-            const patch: Partial<PageRecord> = {};
-            patch[FIELD[x.k]] = blob;
-            await db.pages.update(x.id, patch);
+        if (!full) {
+          try {
+            await db.transaction('rw', db.pages, db.cloudRefs, async () => {
+              const [cur, ref] = await Promise.all([db.pages.get(x.id), db.cloudRefs.get(x.id)]);
+              if (!cur || ref?.refs[x.k]?.f !== x.f || hasBlob(stored(cur, x.k))) return;
+              const patch: Partial<PageRecord> = {};
+              patch[FIELD[x.k]] = blob;
+              await db.pages.update(x.id, patch);
+            });
+          } catch (e) {
+            if (!isStorageFull(e)) throw e;
+            full = true;
           }
-        });
+        }
+        if (full) memSet(x.id, x.k, blob);
         done++;
         opts.onProgress?.(done, need.length);
       });
@@ -213,28 +268,39 @@ export function hydrate(docId: string, kinds: BlobKind[], opts: { pageIds?: stri
 
 /** ภาพของหน้าที่พร้อมใช้ — อยู่บนระบบก็ดึงมาให้ก่อน */
 export async function pageBlob(page: PageRecord, k: BlobKind): Promise<Blob> {
-  if (hasBlob(blobOf(page, k))) return blobOf(page, k);
+  const now = localBlob(page, k);
+  if (now) return now;
   let cur = await db.pages.get(page.id);
-  if (cur && !hasBlob(blobOf(cur, k))) {
+  if (cur && !localBlob(cur, k)) {
     await hydrate(cur.documentId, [k], { pageIds: [cur.id] });
     cur = await db.pages.get(page.id);
   }
-  if (!cur || !hasBlob(blobOf(cur, k))) throw new Error('ภาพของหน้านี้ไม่อยู่ในเครื่องและไม่พบบนระบบ');
-  return blobOf(cur, k);
+  const b = cur && localBlob(cur, k);
+  if (!b) throw new Error('ภาพของหน้านี้ไม่อยู่ในเครื่องและไม่พบบนระบบ');
+  return b;
 }
 
-/** ลบรูปใหญ่ที่อยู่บนระบบแล้วออกจากเครื่อง (ข้ามเอกสารที่เปิดอยู่) */
+/** ลบรูปใหญ่ที่อยู่บนระบบแล้วออกจากเครื่อง (ข้ามเอกสารที่เปิดอยู่) — แถวที่เขียนกลับเหลือแค่ภาพย่อ */
 function evict(docId: string) {
   return withLock(docId, async () => {
-    for (const p of await getPages(docId)) {
+    if (pinned.has(docId)) return;
+    const pages = await getPages(docId);
+    memDropPages(pages.map((p) => p.id));
+    const refs = await docRefs(docId);
+    for (const p of pages) {
       if (pinned.has(docId)) return;
-      if (!HEAVY.some((k) => p.cloud?.[k] && hasBlob(blobOf(p, k)))) continue;
-      await db.transaction('rw', db.pages, async () => {
+      const r = refs.get(p.id);
+      // null = ไม่มีรูป (Blob ว่างจากเวอร์ชันแรกก็เปลี่ยนเป็น null — Safari เก็บ Blob ว่างไม่ได้บางรุ่น)
+      const drop = HEAVY.filter((k) => r?.[k] && stored(p, k) !== null);
+      if (!drop.length) continue;
+      const patch: Partial<PageRecord> = {};
+      for (const k of drop) patch[FIELD[k]] = null;
+      await db.transaction('rw', db.pages, db.cloudRefs, async () => {
         const cur = await db.pages.get(p.id);
-        if (!cur || pinned.has(docId)) return;
-        const patch: Partial<PageRecord> = {};
-        for (const k of HEAVY) if (cur.cloud?.[k] && hasBlob(blobOf(cur, k))) patch[FIELD[k]] = emptyBlob();
-        await db.pages.update(cur.id, patch);
+        const ref = await db.cloudRefs.get(p.id);
+        // ถูกแก้ระหว่างนี้ (ไฟล์บนระบบไม่ตรงภาพแล้ว) = ไม่ลบ
+        if (!cur || pinned.has(docId) || drop.some((k) => !ref?.refs[k])) return;
+        await db.pages.update(p.id, patch);
       });
     }
   });
@@ -242,7 +308,7 @@ function evict(docId: string) {
 
 // ---------- ซิงก์ ----------
 /** doc.json — ข้อมูลที่ต้องใช้สร้างเอกสารกลับคืนบนเครื่องใหม่ (ไม่มีรูป) */
-function manifest(d: DocRecord, pages: PageRecord[]) {
+function manifest(d: DocRecord, pages: PageRecord[], refs: Map<string, CloudRefs>) {
   return {
     v: 1,
     doc: {
@@ -250,7 +316,7 @@ function manifest(d: DocRecord, pages: PageRecord[]) {
       pageCount: d.pageCount, size: d.size, tags: d.tags, deletedAt: d.deletedAt
     },
     pages: pages.map((p) => ({
-      id: p.id, order: p.order, cloud: p.cloud, cropCoordinates: p.cropCoordinates, rotation: p.rotation, flip: p.flip,
+      id: p.id, order: p.order, cloud: refs.get(p.id), cropCoordinates: p.cropCoordinates, rotation: p.rotation, flip: p.flip,
       filter: p.filter, adjustments: p.adjustments, markup: p.markup, ocrText: p.ocrText, width: p.width, height: p.height
     }))
   };
@@ -260,36 +326,45 @@ type Manifest = ReturnType<typeof manifest>;
 /** ชื่อไฟล์ในโฟลเดอร์เอกสารนี้ที่ยังมีหน้าอ้างถึง (รวมเอกสารที่ทำสำเนามา ซึ่งอ้างไฟล์ชุดเดียวกัน) */
 async function refsIn(docId: string) {
   const out = new Set<string>();
-  await db.pages.each((p) => {
+  await db.cloudRefs.each((r) => {
     for (const k of KINDS) {
-      const f = p.cloud?.[k]?.f;
+      const f = r.refs[k]?.f;
       if (f?.startsWith(`${docId}/`)) out.add(f.slice(docId.length + 1));
     }
   });
   return [...out];
 }
 
-async function syncDoc(docId: string) {
-  if ((await db.documents.get(docId))?.storage !== 'cloud') return;
-  // 1) อัปภาพที่ยังไม่มีบนระบบ (ชื่อไฟล์ใหม่ทุกครั้ง ไม่ทับของเดิม)
-  const jobs = (await getPages(docId)).flatMap((p) => KINDS.filter((k) => !p.cloud?.[k] && hasBlob(blobOf(p, k)))
-    .map((k) => ({ id: p.id, rev: p.rev ?? 0, k, blob: blobOf(p, k), f: fileName(docId) })));
+/** อัปภาพที่ยังไม่มีบนระบบ แล้วจดลง cloudRefs (ไม่เขียนแถวหน้า) */
+async function uploadPages(docId: string, pages: PageRecord[]) {
+  const refs = await refsOf(pages.map((p) => p.id));
+  const jobs = pages.flatMap((p) => KINDS.filter((k) => !refs.get(p.id)?.[k] && localBlob(p, k))
+    .map((k) => ({ id: p.id, rev: p.rev ?? 0, k, blob: localBlob(p, k)!, f: fileName(docId) })));
   for (const part of chunks(jobs, 30)) {
     const urls = await signUploads(part.map((j) => j.f));
     await pool(part, 3, async (j) => {
       await put(urls.get(j.f)!, j.blob, 'image/jpeg');
-      await db.transaction('rw', db.pages, async () => {
+      await db.transaction('rw', db.pages, db.cloudRefs, async () => {
         const cur = await db.pages.get(j.id);
+        const row = await db.cloudRefs.get(j.id);
         // ถูกแก้ระหว่างอัป = ไฟล์นี้เป็นภาพเก่าแล้ว ไม่จด (ถูกลบทิ้งตอน prune)
-        if (cur && (cur.rev ?? 0) === j.rev && !cur.cloud?.[j.k]) await db.pages.update(j.id, { cloud: { ...cur.cloud, [j.k]: { f: j.f, n: j.blob.size } } });
+        if (!cur || (cur.rev ?? 0) !== j.rev || row?.refs[j.k]) return;
+        await db.cloudRefs.put({ pageId: j.id, docId, refs: { ...row?.refs, [j.k]: { f: j.f, n: j.blob.size } } });
       });
     });
   }
+}
+
+async function syncDoc(docId: string) {
+  if ((await db.documents.get(docId))?.storage !== 'cloud') return;
+  // 1) อัปภาพที่ยังไม่มีบนระบบ (ชื่อไฟล์ใหม่ทุกครั้ง ไม่ทับของเดิม)
+  await uploadPages(docId, await getPages(docId));
   // 2) ครบทุกหน้าแล้วค่อยอัป doc.json แล้วลบไฟล์เก่าที่ไม่ใช้แล้วบนระบบ
   const doc = await db.documents.get(docId);
   const pages = await getPages(docId);
-  if (!doc || doc.storage !== 'cloud' || !pages.every(complete)) return;
-  const json = JSON.stringify(manifest(doc, pages));
+  const refs = await refsOf(pages.map((p) => p.id));
+  if (!doc || doc.storage !== 'cloud' || !pages.every((p) => full(refs.get(p.id)))) return;
+  const json = JSON.stringify(manifest(doc, pages, refs));
   const sig = await digest(json);
   if (sig !== doc.cloudSig) {
     const f = `${docId}/doc.json`;
@@ -299,6 +374,28 @@ async function syncDoc(docId: string) {
   }
   // 3) ไม่ได้เปิดอยู่ = ลบรูปใหญ่ออกจากเครื่อง
   await evict(docId);
+}
+
+/**
+ * เครื่องเต็ม บันทึกหน้าใหม่ลงเครื่องไม่ได้ (เอกสารที่ให้ระบบเก็บ) — อัปขึ้นระบบเลย แล้วเก็บในเครื่องแค่ข้อมูล
+ * ภาพที่ต้องใช้ระหว่างเปิดเอกสารอยู่ถือไว้ในหน่วยความจำ
+ */
+export async function storeRemotely(page: PageRecord) {
+  if (!getSession()) throw new Error(FULL_MSG + ' (ต้องเข้าสู่ระบบที่เก็บเอกสารก่อน)');
+  for (const k of KINDS) { const b = stored(page, k); if (hasBlob(b)) memSet(page.id, k, b); }
+  const meta: PageRecord = { ...page, originalImage: null, croppedImage: null, processedImage: null, thumbnail: null };
+  await db.pages.add(meta);
+  try {
+    await uploadPages(page.documentId, [meta]);
+  } catch (e) {
+    // อัปไม่ได้ (ไม่มีเน็ต) ภาพจะหายเมื่อปิดแอป — ถอยหน้านี้ออก ให้ผู้ใช้รู้
+    await db.pages.delete(page.id);
+    memDropPages([page.id]);
+    throw new Error(`${FULL_MSG} และอัปขึ้นระบบไม่ได้ (${(e as Error).message})`);
+  }
+  // ภาพย่อเล็กมาก ลองเก็บลงเครื่อง (ใช้แสดงรายการ) — ไม่ได้ก็ไม่เป็นไร ดึงจากระบบตอนเปิด
+  const t = mem.get(memKey(page.id, 't'));
+  if (t) await db.pages.update(page.id, { thumbnail: t }).catch(() => undefined);
 }
 
 async function syncFolders() {
@@ -311,7 +408,7 @@ async function syncFolders() {
   await setSetting(FOLDERS_SIG, sig);
 }
 
-/** ลบเอกสารที่ลบถาวร/ย้ายกลับเครื่องแล้ว ออกจากระบบ (ทำตอนออนไลน์) */
+/** ตรวจลบไฟล์ในโฟลเดอร์เอกสารเหล่านี้บนระบบ (ทำตอนออนไลน์) */
 export async function queueRemoval(docIds: string[]) {
   const list = await getSetting<string[]>(REMOVALS, []);
   const add = docIds.filter((id) => !list.includes(id));
@@ -328,7 +425,6 @@ export async function forgetFiles(files: (string | undefined)[], docIds: string[
   for (const f of files) if (f) ids.add(f.split('/')[0]);
   if (ids.size) await queueRemoval([...ids]);
 }
-export const filesOf = (pages: PageRecord[]) => pages.flatMap((p) => KINDS.map((k) => p.cloud?.[k]?.f));
 
 /** ลบไฟล์ในโฟลเดอร์ที่ไม่มีหน้าไหนในเครื่องอ้างถึงแล้ว (เอกสารยังให้ระบบเก็บอยู่ = เก็บ doc.json ไว้) */
 async function processRemovals() {
@@ -343,7 +439,9 @@ async function processRemovals() {
 async function countPending() {
   const ids = (await db.documents.filter((d) => d.storage === 'cloud').primaryKeys()) as string[];
   if (!ids.length) return 0;
-  return db.pages.where('documentId').anyOf(ids).filter((p) => !complete(p)).count();
+  const pageIds = (await db.pages.where('documentId').anyOf(ids).primaryKeys()) as string[];
+  const refs = await refsOf(pageIds);
+  return pageIds.filter((id) => !full(refs.get(id))).length;
 }
 
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -366,6 +464,8 @@ export function syncNow(): Promise<void> {
   return running;
 }
 
+const message = (e: unknown) => (isStorageFull(e) ? FULL_MSG : e instanceof Error ? e.message : String(e));
+
 async function syncOnce() {
   const ids = (await db.documents.filter((d) => d.storage === 'cloud').primaryKeys()) as string[];
   const removals = await getSetting<string[]>(REMOVALS, []);
@@ -374,23 +474,27 @@ async function syncOnce() {
   if (!getSession()) { setStatus({ needLogin: true }); return; }
   if (navigator.onLine === false) { setStatus({ error: offline() }); return; }
   setStatus({ syncing: true, error: '' });
-  try {
-    await processRemovals();
-    for (const id of ids) {
-      await syncDoc(id);
-      setStatus({ pending: await countPending() });
-    }
-    if (ids.length) await syncFolders();
+  // เอกสารหนึ่งพัง (เช่นเครื่องเต็มตอนเปิดอยู่) ไม่ให้ขวางเอกสารอื่น — ทำต่อให้ครบแล้วค่อยรายงาน
+  let firstError: unknown = null;
+  const attempt = async (fn: () => Promise<unknown>) => {
+    try { await fn(); } catch (e) { firstError ??= e; }
+  };
+  await attempt(processRemovals);
+  for (const id of ids) {
+    await attempt(() => syncDoc(id));
+    setStatus({ pending: await countPending() });
+  }
+  if (ids.length) await attempt(syncFolders);
+  if (firstError) {
+    failures++;
+    setStatus({ error: message(firstError) });
+    // ลองใหม่เอง: 30 วิ → 1 นาที → … สูงสุด 5 นาที (เน็ตกลับมามี event online อีกทาง)
+    requestSync(Math.min(300_000, 15_000 * 2 ** failures));
+  } else {
     failures = 0;
     setStatus({ lastSync: Date.now(), error: '' });
-  } catch (e) {
-    failures++;
-    setStatus({ error: e instanceof Error ? e.message : String(e) });
-    // ลองใหม่เอง: 30 วิ → 1 นาที → … สูงสุด 5 นาที (ยังไม่หยุดถ้าเน็ตกลับมา — มี event online อีกทาง)
-    requestSync(Math.min(300_000, 15_000 * 2 ** failures));
-  } finally {
-    setStatus({ syncing: false, pending: await countPending() });
   }
+  setStatus({ syncing: false, pending: await countPending() });
 }
 
 let started = false;
@@ -422,12 +526,17 @@ export async function moveToLocal(docId: string, onProgress?: (done: number, tot
   try {
     await hydrate(docId, KINDS, { onProgress });
     const pages = await getPages(docId);
-    if (!pages.every((p) => KINDS.every((k) => hasBlob(blobOf(p, k))))) throw new Error('ดึงภาพจากระบบไม่ครบ ลองใหม่อีกครั้ง');
-    await db.transaction('rw', db.documents, db.pages, async () => {
+    // ต้องอยู่ในเครื่องจริง ไม่ใช่แค่ในหน่วยความจำ
+    if (!pages.every((p) => KINDS.every((k) => hasBlob(stored(p, k))))) {
+      throw new Error('พื้นที่ในเครื่องไม่พอสำหรับดึงเอกสารนี้กลับมา — ลบเอกสารอื่นหรือล้างถังขยะก่อน');
+    }
+    const files = await filesOf(pages.map((p) => p.id));
+    await db.transaction('rw', db.documents, db.cloudRefs, async () => {
       await db.documents.update(docId, { storage: 'local', cloudSig: undefined });
-      for (const p of pages) await db.pages.update(p.id, { cloud: {} });
+      await db.cloudRefs.where('docId').equals(docId).delete();
     });
-    await forgetFiles(filesOf(pages), [docId]);
+    memDropPages(pages.map((p) => p.id));
+    await forgetFiles(files, [docId]);
   } finally { unpin(); }
 }
 
@@ -451,18 +560,20 @@ export async function pullFromCloud(onProgress?: (done: number, total: number) =
     const { manifests } = await call<{ manifests: Manifest[] }>('scanCloudManifests', { ids: part });
     for (const m of manifests) {
       if (!m?.doc?.id || !Array.isArray(m.pages) || have.has(m.doc.id)) continue;
-      const pages = m.pages.map((p) => ({
+      if (!m.pages.every((p) => full(p.cloud))) continue;
+      const refs = new Map(m.pages.map((p) => [p.id, p.cloud!] as const));
+      const pages = m.pages.map(({ cloud: _c, ...p }) => ({
         ...p, documentId: m.doc.id, rev: 0,
-        originalImage: emptyBlob(), croppedImage: emptyBlob(), processedImage: emptyBlob(), thumbnail: emptyBlob()
+        originalImage: null, croppedImage: null, processedImage: null, thumbnail: null
       }) as PageRecord).sort((a, b) => a.order - b.order);
-      if (!pages.every(complete)) continue;
       const doc: DocRecord = { ...m.doc, thumbnail: null, storage: 'cloud' };
-      doc.cloudSig = await digest(JSON.stringify(manifest(doc, pages)));
-      await db.transaction('rw', db.documents, db.pages, async () => {
+      doc.cloudSig = await digest(JSON.stringify(manifest(doc, pages, refs)));
+      await db.transaction('rw', db.documents, db.pages, db.cloudRefs, async () => {
         await db.documents.add(doc);
         await db.pages.bulkPut(pages);
+        await db.cloudRefs.bulkPut(pages.map((p) => ({ pageId: p.id, docId: doc.id, refs: refs.get(p.id)! })));
       });
-      if (pages[0]) covers.push({ docId: doc.id, pageId: pages[0].id, f: pages[0].cloud!.t!.f });
+      if (pages[0]) covers.push({ docId: doc.id, pageId: pages[0].id, f: refs.get(pages[0].id)!.t!.f });
       done++;
       onProgress?.(done, missing.length);
     }

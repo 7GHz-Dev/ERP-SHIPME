@@ -10,22 +10,39 @@ export const MAX_FILE_BYTES = 40 * 1024 * 1024;
 
 export class ImageError extends Error {}
 
-/** decode รูปจาก Blob — createImageBitmap ก่อน ถ้าไม่ได้ (เช่น HEIC บนบางเบราว์เซอร์) ลอง <img> */
+/** ไฟล์ HEIC/HEIF (รูปจาก iPhone) — ดูจากหัวไฟล์ ไม่เชื่อนามสกุล/ชนิดที่เบราว์เซอร์บอก */
+async function isHeicData(blob: Blob) {
+  const b = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
+  const ascii = (from: number, to: number) => String.fromCharCode(...b.slice(from, to));
+  return ascii(4, 8) === 'ftyp' && /^(heic|heix|hevc|hevx|heim|heis|hevm|hevs|mif1|msf1)$/.test(ascii(8, 12));
+}
+
+/**
+ * decode รูปจาก Blob — createImageBitmap ก่อน ไม่ได้ลอง <img>
+ * HEIC (iPhone) ที่เบราว์เซอร์เปิดเองไม่ได้ (Chrome / Android / บาง Safari) ใช้ตัวแปลง heic-to
+ * ซึ่งโหลดเฉพาะตอนเจอไฟล์ HEIC (~3MB ครั้งแรก แล้ว service worker แคชไว้ ใช้ออฟไลน์ได้)
+ */
 export async function decodeImage(blob: Blob): Promise<ImageBitmap | HTMLImageElement> {
   try {
     return await createImageBitmap(blob, { imageOrientation: 'from-image' });
+  } catch { /* ลองวิธีถัดไป */ }
+  const url = URL.createObjectURL(blob);
+  try {
+    return await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('img'));
+      img.src = url;
+    });
+  } catch { /* ลองวิธีถัดไป */ } finally {
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  if (!(await isHeicData(blob))) throw new ImageError('เปิดไฟล์รูปนี้ไม่ได้ — ไฟล์อาจเสียหรือเบราว์เซอร์ไม่รองรับรูปแบบนี้');
+  try {
+    const { heicTo } = await import('heic-to');
+    return await heicTo({ blob, type: 'bitmap' });
   } catch {
-    const url = URL.createObjectURL(blob);
-    try {
-      return await new Promise<HTMLImageElement>((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => resolve(img);
-        img.onerror = () => reject(new ImageError('เปิดไฟล์รูปนี้ไม่ได้ — เบราว์เซอร์อาจไม่รองรับรูปแบบไฟล์ (เช่น HEIC)'));
-        img.src = url;
-      });
-    } finally {
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    }
+    throw new ImageError('แปลงไฟล์ HEIC นี้ไม่ได้ — ลองส่งออกจากแอปรูปภาพเป็น JPG แล้วนำเข้าใหม่');
   }
 }
 

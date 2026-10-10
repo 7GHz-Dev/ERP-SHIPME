@@ -4,8 +4,8 @@ import {
   ArrowLeft, Camera, ChevronLeft, ChevronRight, Copy, Crop, FileUp, ImagePlus, MoreHorizontal, PenTool, RotateCw,
   ScanText, Send, Share2, SlidersHorizontal, Trash2, Pencil, CheckCircle2
 } from 'lucide-react';
-import { useEffect, useRef, useState, type PointerEvent as RPE } from 'react';
-import { hasBlob, hydrate, pageBlob, pinDoc } from '@/lib/cloud';
+import { useEffect, useMemo, useRef, useState, type PointerEvent as RPE } from 'react';
+import { hasBlob, hydrate, pageBlob, pinDoc, useCloudStatus, withMemory } from '@/lib/cloud';
 import { db } from '@/lib/db';
 import { clearTicket, sendToErp, thaiDate, type ErpTicket } from '@/lib/erp';
 import { MAX_ORIGINAL, blobToCanvas, canvasToBlob } from '@/lib/image';
@@ -31,7 +31,10 @@ export default function DocumentView({ docId, ticket, onBack, onScanMore, onImpo
 }) {
   const ui = useUi();
   const doc = useLiveQuery(() => db.documents.get(docId), [docId]);
-  const pages = useLiveQuery(() => getPages(docId), [docId]) as PageRecord[] | undefined;
+  const stored = useLiveQuery(() => getPages(docId), [docId]) as PageRecord[] | undefined;
+  // เครื่องเต็ม: ภาพที่ดึงจากระบบอยู่ในหน่วยความจำ (memVersion เปลี่ยน = มีภาพใหม่)
+  const { memVersion } = useCloudStatus();
+  const pages = useMemo(() => (stored ? withMemory(stored) : undefined), [stored, memVersion]); // eslint-disable-line react-hooks/exhaustive-deps
   const [cur, setCur] = useState(0);
   const [panel, setPanel] = useState<'' | 'edit' | 'markup' | 'ocr' | 'export' | 'more' | 'add' | 'send'>('');
   const [crop, setCrop] = useState<{ canvas: HTMLCanvasElement; quad: Quad | null } | null>(null);

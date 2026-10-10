@@ -1,6 +1,7 @@
 'use client';
 import { Copy, Download, ScanText, Search as SearchIcon, Share2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { pageBlob } from '@/lib/cloud';
 import { getSetting, setSetting } from '@/lib/db';
 import { downloadBlob, safeName, shareOrDownload } from '@/lib/image';
 import { OCR_LANGS, getOcrEngine, type OcrLang } from '@/lib/ocr';
@@ -33,7 +34,7 @@ export default function OcrPanel({ doc, pages, current, open, onClose }: {
       for (let i = 0; i < targets.length; i++) {
         const p = targets[i];
         const label = targets.length > 1 ? `หน้า ${i + 1}/${targets.length}` : '';
-        const t = await engine.recognize(p.processedImage, lang, (pr) => setProgress({ status: pr.status, pct: Math.round(pr.progress * 100), page: label }));
+        const t = await engine.recognize(await pageBlob(p, 'p'), lang, (pr) => setProgress({ status: pr.status, pct: Math.round(pr.progress * 100), page: label }));
         await updatePage(p.id, { ocrText: t });
         out.push(targets.length > 1 ? `— หน้า ${pages.indexOf(p) + 1} —\n${t}` : t);
       }
