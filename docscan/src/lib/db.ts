@@ -34,6 +34,11 @@ export async function setSetting(key: string, value: unknown) {
   await db.settings.put({ key, value });
 }
 
+/** หน้าทั้งหมดของเอกสาร เรียงตามลำดับ */
+export function getPages(documentId: string) {
+  return db.pages.where('[documentId+order]').between([documentId, -Infinity], [documentId, Infinity]).toArray();
+}
+
 export const uid = () =>
   (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
     ? crypto.randomUUID()

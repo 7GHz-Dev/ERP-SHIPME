@@ -1,4 +1,5 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
+import { CLOUD_SETTINGS, emptyBlob } from './cloud';
 import { db } from './db';
 import type { DocRecord, Folder, PageRecord, SignatureRecord } from './types';
 
@@ -20,6 +21,8 @@ export async function createBackup(onProgress?: (p: number) => void): Promise<Bl
     const p = pages[i];
     const meta: Record<string, unknown> = { ...p };
     for (const k of PAGE_BLOBS) {
+      // ภาพที่อยู่บนระบบ (โหมดให้ระบบเก็บ) ไม่ได้อยู่ในเครื่อง — แบ็กอัปเก็บแค่ที่อ้างถึง (page.cloud) ดึงจากระบบได้ภายหลัง
+      if (!p[k].size) { meta[k] = null; continue; }
       const path = `pages/${p.id}/${k}.jpg`;
       files[path] = new Uint8Array(await p[k].arrayBuffer());
       meta[k] = path;
@@ -36,7 +39,8 @@ export async function createBackup(onProgress?: (p: number) => void): Promise<Bl
   const docMeta = documents.map((d) => ({ ...d, thumbnail: null }));
   files['manifest.json'] = strToU8(JSON.stringify({
     app: 'DocScan', version: VERSION, createdAt: new Date().toISOString(),
-    documents: docMeta, pages: pageMeta, folders, signatures: sigMeta, settings
+    documents: docMeta, pages: pageMeta, folders, signatures: sigMeta,
+    settings: settings.filter((s) => !CLOUD_SETTINGS.includes(s.key))
   }));
   return new Blob([zipSync(files, { level: 0 }) as BlobPart], { type: 'application/zip' });
 }
@@ -57,7 +61,7 @@ export async function restoreBackup(file: File) {
   };
   const pages: PageRecord[] = m.pages.map((p: Record<string, unknown>) => {
     const out = { ...p } as unknown as PageRecord;
-    for (const k of PAGE_BLOBS) (out as unknown as Record<string, Blob>)[k] = blob(String(p[k]));
+    for (const k of PAGE_BLOBS) (out as unknown as Record<string, Blob>)[k] = p[k] == null ? emptyBlob() : blob(String(p[k]));
     return out;
   });
   const signatures: SignatureRecord[] = (m.signatures || []).map((s: Record<string, unknown>) =>

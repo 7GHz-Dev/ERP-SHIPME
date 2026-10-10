@@ -5,6 +5,7 @@ import {
   ScanText, Send, Share2, SlidersHorizontal, Trash2, Pencil, CheckCircle2
 } from 'lucide-react';
 import { useEffect, useRef, useState, type PointerEvent as RPE } from 'react';
+import { hasBlob, hydrate, pageBlob, pinDoc } from '@/lib/cloud';
 import { db } from '@/lib/db';
 import { clearTicket, sendToErp, thaiDate, type ErpTicket } from '@/lib/erp';
 import { MAX_ORIGINAL, blobToCanvas, canvasToBlob } from '@/lib/image';
@@ -36,18 +37,41 @@ export default function DocumentView({ docId, ticket, onBack, onScanMore, onImpo
   const [crop, setCrop] = useState<{ canvas: HTMLCanvasElement; quad: Quad | null } | null>(null);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+  const [busy, setBusy] = useState('');
+  const [load, setLoad] = useState({ state: 'loading' as 'loading' | 'done' | 'error', done: 0, total: 0, error: '' });
+  const [retry, setRetry] = useState(0);
+
+  // เอกสารที่ให้ระบบเก็บ: เปิดอยู่ = ไม่ถูกลบรูปออกจากเครื่อง • ดึงภาพสุดท้าย + ภาพย่อกลับมาก่อน
+  // (ภาพต้นฉบับ/ภาพครอบดึงตอนกดครอบ/ฟิลเตอร์/เขียน) — เอกสารในเครื่องไม่มีอะไรต้องดึง จบทันที
+  useEffect(() => pinDoc(docId), [docId]);
+  useEffect(() => {
+    let alive = true;
+    setLoad({ state: 'loading', done: 0, total: 0, error: '' });
+    hydrate(docId, ['p', 't'], { onProgress: (done, total) => { if (alive) setLoad({ state: 'loading', done, total, error: '' }); } })
+      .then(() => { if (alive) setLoad((l) => ({ ...l, state: 'done' })); })
+      .catch((e) => { if (alive) setLoad((l) => ({ ...l, state: 'error', error: friendlyError(e) })); });
+    return () => { alive = false; };
+  }, [docId, retry]);
 
   useEffect(() => { if (pages && cur >= pages.length) setCur(Math.max(0, pages.length - 1)); }, [pages, cur]);
   if (doc === undefined || !pages) return <div className="flex min-h-dvh items-center justify-center"><Spinner className="h-6 w-6 text-primary" /></div>;
   if (!doc) return <div className="p-6 text-center">ไม่พบเอกสาร <Button onClick={onBack}>กลับ</Button></div>;
   const page = pages[cur];
+  /** ภาพสุดท้ายครบทุกหน้า — ส่งออก / OCR / ส่งเข้าใบปิดบัญชีได้ */
+  const ready = pages.every((p) => hasBlob(p.processedImage));
 
   const rename = async () => { const n = await ui.prompt('เปลี่ยนชื่อเอกสาร', doc.name); if (n?.trim()) await renameDocument(doc.id, n); };
 
+  /** งานที่ต้องใช้ภาพต้นฉบับ/ภาพครอบ — ถ้าอยู่บนระบบ ขึ้นหน้ารอระหว่างดึง */
+  const withImage = async (local: boolean, fn: () => Promise<unknown>) => {
+    if (!local) setBusy('กำลังโหลดภาพจากระบบ…');
+    try { await fn(); } catch (e) { ui.toast(friendlyError(e), 'error'); } finally { setBusy(''); }
+  };
   const openCrop = async () => {
     if (!page) return;
-    try { setCrop({ canvas: await blobToCanvas(page.originalImage, MAX_ORIGINAL), quad: page.cropCoordinates }); }
-    catch (e) { ui.toast(friendlyError(e), 'error'); }
+    await withImage(hasBlob(page.originalImage), async () => {
+      setCrop({ canvas: await blobToCanvas(await pageBlob(page, 'o'), MAX_ORIGINAL), quad: page.cropCoordinates });
+    });
   };
   const confirmCrop = async (quad: Quad | null) => {
     if (!crop || !page) return;
@@ -80,7 +104,7 @@ export default function DocumentView({ docId, ticket, onBack, onScanMore, onImpo
       <header className="flex items-center gap-1 border-b border-line bg-surface px-1 pt-[env(safe-area-inset-top)]">
         <IconButton label="กลับ" onClick={onBack}><ArrowLeft className="h-5 w-5" /></IconButton>
         <button onClick={rename} className="min-w-0 flex-1 truncate px-1 text-left font-semibold">{doc.name}</button>
-        <IconButton label="แชร์" onClick={() => setPanel('export')} disabled={!pages.length}><Share2 className="h-5 w-5" /></IconButton>
+        <IconButton label="แชร์" onClick={() => setPanel('export')} disabled={!pages.length || !ready}><Share2 className="h-5 w-5" /></IconButton>
         <IconButton label="เพิ่มเติม" onClick={() => setPanel('more')}><MoreHorizontal className="h-5 w-5" /></IconButton>
       </header>
 
@@ -99,7 +123,7 @@ export default function DocumentView({ docId, ticket, onBack, onScanMore, onImpo
               <CheckCircle2 className="h-4 w-4" />กลับไปหน้าปิดบัญชี
             </Button>
           ) : (
-            <Button variant="primary" loading={sending} disabled={!pages.length} onClick={send}><Send className="h-4 w-4" />ส่งเข้าใบปิดบัญชี</Button>
+            <Button variant="primary" loading={sending} disabled={!pages.length || !ready} onClick={send}><Send className="h-4 w-4" />ส่งเข้าใบปิดบัญชี</Button>
           )}
         </div>
       )}
@@ -107,7 +131,24 @@ export default function DocumentView({ docId, ticket, onBack, onScanMore, onImpo
         // ไม่ได้เปิดมาจากหน้าปิดบัญชี: ส่งเองได้ด้วยรหัส ERP แล้วเลือกใบเบิก
         <div className="flex items-center gap-2 border-b border-line bg-surface px-3 py-2 text-sm">
           <span className="flex-1 text-muted">แนบไฟล์นี้เป็นหลักฐานการตรวจปล่อยในใบปิดบัญชี</span>
-          <Button variant="primary" onClick={() => setPanel('send')}><Send className="h-4 w-4" />ส่งไปปิดบัญชี</Button>
+          <Button variant="primary" disabled={!ready} onClick={() => setPanel('send')}><Send className="h-4 w-4" />ส่งไปปิดบัญชี</Button>
+        </div>
+      )}
+      {!ready && (
+        <div className="flex items-center gap-2 border-b border-line bg-surface-2 px-3 py-2 text-sm">
+          {load.state === 'loading' ? (
+            <><Spinner className="h-4 w-4 text-primary" /><span className="flex-1 text-muted">กำลังโหลดเอกสารจากระบบ{load.total ? ` ${load.done}/${load.total}` : '…'}</span></>
+          ) : (
+            <>
+              <span className="flex-1 text-red-600">{load.error || 'บางหน้ายังไม่มีภาพในเครื่อง'}</span>
+              <Button onClick={() => setRetry((n) => n + 1)}>ลองใหม่</Button>
+            </>
+          )}
+        </div>
+      )}
+      {busy && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-black/60 text-white">
+          <Spinner className="h-8 w-8" /><p>{busy}</p>
         </div>
       )}
 
@@ -138,7 +179,7 @@ export default function DocumentView({ docId, ticket, onBack, onScanMore, onImpo
           { icon: <Crop className="h-5 w-5" />, label: 'ครอบ', on: openCrop, dis: !page },
           { icon: <SlidersHorizontal className="h-5 w-5" />, label: 'ฟิลเตอร์', on: () => setPanel('edit'), dis: !page },
           { icon: <PenTool className="h-5 w-5" />, label: 'เขียน', on: () => setPanel('markup'), dis: !page },
-          { icon: <ScanText className="h-5 w-5" />, label: 'OCR', on: () => setPanel('ocr'), dis: !page },
+          { icon: <ScanText className="h-5 w-5" />, label: 'OCR', on: () => setPanel('ocr'), dis: !page || !ready },
           { icon: <MoreHorizontal className="h-5 w-5" />, label: 'เพิ่มเติม', on: () => setPanel('more') }
         ].map((b) => (
           <button key={b.label} onClick={b.on} disabled={b.dis} className="flex min-h-14 flex-col items-center justify-center gap-0.5 text-[11px] text-muted disabled:opacity-40">
@@ -159,7 +200,7 @@ export default function DocumentView({ docId, ticket, onBack, onScanMore, onImpo
         <div className="grid gap-2">
           {page && (
             <>
-              <Button onClick={async () => { setPanel(''); await updatePage(page.id, { rotation: (page.rotation + 90) % 360 }, true); }}><RotateCw className="h-4 w-4" />หมุนหน้านี้ 90°</Button>
+              <Button onClick={async () => { setPanel(''); await withImage(hasBlob(page.croppedImage), () => updatePage(page.id, { rotation: (page.rotation + 90) % 360 }, true)); }}><RotateCw className="h-4 w-4" />หมุนหน้านี้ 90°</Button>
               <Button onClick={async () => { setPanel(''); await duplicatePage(page.id); setCur(cur + 1); }}><Copy className="h-4 w-4" />ทำสำเนาหน้านี้</Button>
               <div className="grid grid-cols-2 gap-2">
                 <Button disabled={cur === 0} onClick={async () => { const ids = pages.map((p) => p.id); [ids[cur - 1], ids[cur]] = [ids[cur], ids[cur - 1]]; await reorderPages(doc.id, ids); setCur(cur - 1); }}><ChevronLeft className="h-4 w-4" />ย้ายไปก่อน</Button>
@@ -170,7 +211,7 @@ export default function DocumentView({ docId, ticket, onBack, onScanMore, onImpo
           )}
           <hr className="my-1 border-line" />
           <Button onClick={() => { setPanel(''); rename(); }}><Pencil className="h-4 w-4" />เปลี่ยนชื่อเอกสาร</Button>
-          <Button onClick={() => setPanel('export')} disabled={!pages.length}><Share2 className="h-4 w-4" />ส่งออก PDF / JPG</Button>
+          <Button onClick={() => setPanel('export')} disabled={!pages.length || !ready}><Share2 className="h-4 w-4" />ส่งออก PDF / JPG</Button>
           <Button variant="danger" onClick={async () => { if (await ui.confirm('ย้ายเอกสารลงถังขยะ?', 'กู้คืนได้ภายใน 30 วัน', { ok: 'ย้ายลงถังขยะ', danger: true })) { await trashDocument(doc.id); onBack(); } }}><Trash2 className="h-4 w-4" />ลบเอกสาร</Button>
         </div>
       </Sheet>
@@ -222,12 +263,12 @@ function Viewer({ page }: { page: PageRecord }) {
     <div className="flex h-full touch-none items-center justify-center overflow-hidden p-3"
       onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
       onWheel={(e) => setT((v) => ({ ...v, s: Math.min(5, Math.max(1, v.s * (e.deltaY < 0 ? 1.1 : 0.9))) }))}>
-      {url && (
+      {url ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={url} alt="หน้าเอกสาร" draggable={false}
           className="max-h-full max-w-full select-none rounded bg-white shadow-md"
           style={{ transform: `translate(${t.x}px, ${t.y}px) scale(${t.s})`, transition: start.current ? 'none' : 'transform .15s' }} />
-      )}
+      ) : <Spinner className="h-6 w-6 text-primary" />}
     </div>
   );
 }

@@ -3,6 +3,7 @@ import {
   Check, Eraser, Highlighter, ImagePlus, MousePointer2, Pen, PenLine, Redo2, RotateCw, Square, Trash2, Type, Undo2, X, Minus, Plus
 } from 'lucide-react';
 import { useEffect, useRef, useState, type PointerEvent as RPE } from 'react';
+import { pageBlob } from '@/lib/cloud';
 import { db, uid } from '@/lib/db';
 import { blobToCanvas, canvasToBlob, ctx2d, makeCanvas } from '@/lib/image';
 import { drawMarkup, sampleBackground } from '@/lib/markup';
@@ -73,7 +74,7 @@ export default function Markup({ page, onClose }: { page: PageRecord; onClose: (
   useEffect(() => {
     (async () => {
       try {
-        const cropped = await blobToCanvas(page.croppedImage, PREVIEW_MAX);
+        const cropped = await blobToCanvas(await pageBlob(page, 'c'), PREVIEW_MAX);
         baseRef.current = await renderPage(cropped, { filter: page.filter, adjustments: page.adjustments, rotation: page.rotation, flip: page.flip, markup: [] }, PREVIEW_MAX);
         setReady(true);
       } catch (e) { ui.toast(friendlyError(e), 'error'); }

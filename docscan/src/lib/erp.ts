@@ -3,14 +3,14 @@
  *
  * หน้าปิดบัญชีใน ERP เปิด DocScan ด้วย ?erp=<ticket> — ticket ผูกกับพนักงาน + วันที่ตรวจปล่อย
  * มีอายุจำกัด และใช้ได้อย่างเดียวคือแนบไฟล์หลักฐานการตรวจปล่อย (ไม่ใช่ token ล็อกอิน)
- * ไฟล์ออกจากเครื่องเฉพาะตอนผู้ใช้กด "ส่งเข้าใบปิดบัญชี" เท่านั้น — นอกนั้นอยู่ในเครื่องทั้งหมด
+ * โหมดเก็บในเครื่อง: ไฟล์ออกจากเครื่องเฉพาะตอนกด "ส่งเข้าใบปิดบัญชี" • โหมดให้ระบบเก็บ: ดู cloud.ts
  */
 export const ERP_API = process.env.NEXT_PUBLIC_ERP_API || 'https://erp-shipme-ovmf-theta.vercel.app/api';
 const KEY = 'docscan.erpTicket';
 
 export interface ErpTicket { ticket: string; name: string; inspectDate: string; returnUrl: string; expiresAt: string }
 
-async function post<T>(body: Record<string, unknown>): Promise<T & { ok: boolean; error?: string }> {
+export async function post<T>(body: Record<string, unknown>): Promise<T & { ok: boolean; error?: string }> {
   // text/plain = simple request ไม่ต้อง preflight (เหมือนที่หน้า ERP เรียกเอง)
   const res = await fetch(ERP_API, { method: 'POST', headers: { 'content-type': 'text/plain' }, body: JSON.stringify(body) });
   return res.json();

@@ -1,10 +1,11 @@
 'use client';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
-  ArrowDownAZ, ArrowUpAZ, Camera, ChevronRight, Copy, FileUp, Folder as FolderIcon, FolderPlus, FolderInput, Grid2x2,
-  ImagePlus, List, MoreVertical, Pencil, Search, Share2, Trash2, Send
+  ArrowDownAZ, ArrowUpAZ, Camera, ChevronRight, Cloud, CloudAlert, CloudUpload, Copy, FileUp, Folder as FolderIcon, FolderPlus, FolderInput, Grid2x2,
+  ImagePlus, List, MoreVertical, Pencil, Search, Share2, Smartphone, Trash2, Send
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { getSession, hydrate, moveToCloud, moveToLocal, useCloudStatus } from '@/lib/cloud';
 import { db, getSetting, setSetting } from '@/lib/db';
 import { thaiDate, type ErpTicket } from '@/lib/erp';
 import { formatBytes, safeName, shareOrDownload } from '@/lib/image';
@@ -14,7 +15,7 @@ import {
   renameFolder, trashDocument
 } from '@/lib/repo';
 import type { DocRecord, Folder, SortKey } from '@/lib/types';
-import { Button, IconButton, Sheet, friendlyError, selectCls, useBlobUrl, useUi } from './ui';
+import { Button, IconButton, Sheet, Spinner, friendlyError, selectCls, useBlobUrl, useUi } from './ui';
 
 const SORTS: { k: SortKey; label: string }[] = [
   { k: 'updatedAt', label: 'แก้ไขล่าสุด' }, { k: 'createdAt', label: 'วันที่สร้าง' }, { k: 'name', label: 'ชื่อ' }, { k: 'size', label: 'ขนาดไฟล์' }
@@ -36,6 +37,7 @@ export default function Library({ folderId, ticket, onOpenFolder, onOpenDoc, onS
   const [asc, setAsc] = useState(false);
   const [menu, setMenu] = useState<{ type: 'doc'; item: DocRecord } | { type: 'folder'; item: Folder } | null>(null);
   const [moving, setMoving] = useState<{ type: 'doc' | 'folder'; id: string } | null>(null);
+  const [busy, setBusy] = useState('');
 
   useEffect(() => {
     getSetting<{ view: 'grid' | 'list'; sort: SortKey; asc: boolean }>('library', { view: 'grid', sort: 'updatedAt', asc: false })
@@ -63,10 +65,31 @@ export default function Library({ folderId, ticket, onOpenFolder, onOpenDoc, onS
   };
 
   const shareDoc = async (d: DocRecord) => {
-    const pages = await getPages(d.id);
-    if (!pages.length) { ui.toast('เอกสารนี้ยังไม่มีหน้า'); return; }
-    const pdf = await exportPdf(pages, DEFAULT_PDF, d.name);
+    if (!d.pageCount) { ui.toast('เอกสารนี้ยังไม่มีหน้า'); return; }
+    // ให้ระบบเก็บ: ดึงภาพสุดท้ายลงมาก่อน (ลบออกเองหลังซิงก์รอบถัดไป)
+    if (d.storage === 'cloud') {
+      setBusy('กำลังโหลดเอกสารจากระบบ…');
+      try { await hydrate(d.id, ['p'], { onProgress: (n, t) => setBusy(`กำลังโหลดเอกสารจากระบบ ${n}/${t}…`) }); }
+      finally { setBusy(''); }
+    }
+    const pdf = await exportPdf(await getPages(d.id), DEFAULT_PDF, d.name);
     await shareOrDownload([new File([pdf], `${safeName(d.name)}.pdf`, { type: 'application/pdf' })]);
+  };
+
+  const toCloud = async (d: DocRecord) => {
+    setMenu(null);
+    if (!getSession()) { ui.toast('เข้าสู่ระบบที่เก็บเอกสารก่อน: ตั้งค่า → ที่เก็บเอกสาร', 'error'); return; }
+    await act(() => moveToCloud([d.id]), 'กำลังย้ายขึ้นระบบ — อัปเสร็จแล้วรูปในเครื่องจะถูกลบให้เอง');
+  };
+  const toLocal = async (d: DocRecord) => {
+    setMenu(null);
+    if (!await ui.confirm('ดึงกลับมาเก็บในเครื่อง?', `ใช้พื้นที่ในเครื่องประมาณ ${formatBytes(d.size)} แล้วลบออกจากระบบ`, { ok: 'ดึงกลับมา' })) return;
+    setBusy('กำลังดึงเอกสารจากระบบ…');
+    try {
+      await moveToLocal(d.id, (n, t) => setBusy(`กำลังดึงเอกสารจากระบบ ${n}/${t}…`));
+      ui.toast('เก็บในเครื่องแล้ว');
+    } catch (e) { ui.toast(friendlyError(e), 'error'); }
+    finally { setBusy(''); }
   };
 
   return (
@@ -90,6 +113,13 @@ export default function Library({ folderId, ticket, onOpenFolder, onOpenDoc, onS
       <button onClick={onSearch} className="mb-4 flex min-h-11 w-full items-center gap-2 rounded-xl border border-line bg-surface px-3 text-left text-muted">
         <Search className="h-4 w-4" />ค้นหาเอกสาร
       </button>
+
+      <CloudBar />
+      {busy && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-black/60 text-white">
+          <Spinner className="h-8 w-8" /><p>{busy}</p>
+        </div>
+      )}
 
       {ticket && (
         <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-blue-900 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-100">
@@ -159,6 +189,9 @@ export default function Library({ folderId, ticket, onOpenFolder, onOpenDoc, onS
             <Button onClick={() => { setMoving({ type: 'doc', id: menu.item.id }); setMenu(null); }}><FolderInput className="h-4 w-4" />ย้ายไปโฟลเดอร์</Button>
             <Button onClick={() => act(() => duplicateDocument(menu.item.id), 'ทำสำเนาแล้ว')}><Copy className="h-4 w-4" />ทำสำเนา</Button>
             <Button onClick={() => act(() => shareDoc(menu.item))}><Share2 className="h-4 w-4" />แชร์ / ส่งออก PDF</Button>
+            {menu.item.storage === 'cloud'
+              ? <Button onClick={() => toLocal(menu.item)}><Smartphone className="h-4 w-4" />ดึงกลับมาเก็บในเครื่อง</Button>
+              : <Button onClick={() => toCloud(menu.item)}><CloudUpload className="h-4 w-4" />ย้ายไปให้ระบบเก็บ (คืนพื้นที่เครื่อง)</Button>}
             <Button variant="danger" onClick={() => act(() => trashDocument(menu.item.id), 'ย้ายลงถังขยะแล้ว (กู้คืนได้ 30 วัน)')}><Trash2 className="h-4 w-4" />ลบ</Button>
           </div>
         )}
@@ -183,9 +216,37 @@ export default function Library({ folderId, ticket, onOpenFolder, onOpenDoc, onS
   );
 }
 
+/** แถบสถานะที่เก็บบนระบบ — ขึ้นเฉพาะตอนมีเรื่องให้รู้ (กำลังอัป / ต้องเข้าสู่ระบบ / มีปัญหา) */
+function CloudBar() {
+  const s = useCloudStatus();
+  const toSettings = () => { location.hash = '/settings'; };
+  if (s.needLogin && (s.pending || s.mode === 'cloud')) {
+    return (
+      <button onClick={toSettings} className="mb-4 flex w-full items-center gap-2 rounded-xl bg-amber-50 p-3 text-left text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+        <CloudAlert className="h-5 w-5 shrink-0" />เข้าสู่ระบบที่เก็บเอกสารอีกครั้ง เพื่ออัปเอกสารที่ค้างอยู่ — แตะเพื่อไปตั้งค่า
+      </button>
+    );
+  }
+  if (!s.pending && !s.error) return null;
+  return (
+    <button onClick={toSettings} className="mb-4 flex w-full items-center gap-2 rounded-xl border border-line bg-surface p-3 text-left text-sm">
+      {s.error ? <CloudAlert className="h-5 w-5 shrink-0 text-amber-600" /> : <CloudUpload className="h-5 w-5 shrink-0 text-primary" />}
+      <span className="flex-1">
+        {s.pending ? `รออัปขึ้นระบบ ${s.pending} หน้า` : 'ซิงก์กับระบบไม่สำเร็จ'}
+        {s.error && <span className="block text-xs text-muted">{s.error}</span>}
+      </span>
+      {s.syncing && <Spinner className="h-4 w-4 text-primary" />}
+    </button>
+  );
+}
+
 function DocCard({ doc, view, onOpen, onMenu }: { doc: DocRecord; view: 'grid' | 'list'; onOpen: () => void; onMenu: () => void }) {
   const url = useBlobUrl(doc.thumbnail);
   const meta = `${doc.pageCount} หน้า • ${formatBytes(doc.size)}`;
+  // ให้ระบบเก็บ: อัปครบแล้ว = เมฆ • ยังไม่เคยอัปครบ = เมฆมีลูกศร
+  const where = doc.storage === 'cloud'
+    ? (doc.cloudSig ? <Cloud className="mr-1 inline h-3.5 w-3.5 text-primary" aria-label="ให้ระบบเก็บ" /> : <CloudUpload className="mr-1 inline h-3.5 w-3.5 text-muted" aria-label="รออัปขึ้นระบบ" />)
+    : null;
   if (view === 'list') {
     return (
       <div className="flex items-center gap-3 p-2">
@@ -194,7 +255,7 @@ function DocCard({ doc, view, onOpen, onMenu }: { doc: DocRecord; view: 'grid' |
           {url ? <img src={url} alt="" className="h-14 w-11 shrink-0 rounded border border-line object-cover" /> : <div className="h-14 w-11 shrink-0 rounded bg-surface-2" />}
           <div className="min-w-0">
             <p className="truncate font-medium">{doc.name}</p>
-            <p className="text-xs text-muted">{meta}</p>
+            <p className="text-xs text-muted">{where}{meta}</p>
             <p className="text-xs text-muted">สร้าง {fmtDate(doc.createdAt)} • แก้ไข {fmtDate(doc.updatedAt)}</p>
           </div>
         </button>
@@ -211,7 +272,7 @@ function DocCard({ doc, view, onOpen, onMenu }: { doc: DocRecord; view: 'grid' |
       <div className="flex items-start gap-1 p-2">
         <button onClick={onOpen} className="min-w-0 flex-1 text-left">
           <p className="truncate text-sm font-medium">{doc.name}</p>
-          <p className="text-[11px] text-muted">{meta}</p>
+          <p className="text-[11px] text-muted">{where}{meta}</p>
           <p className="text-[11px] text-muted">แก้ไข {fmtDate(doc.updatedAt)}</p>
         </button>
         <IconButton label="ตัวเลือก" className="-mr-1 h-9 min-w-9" onClick={onMenu}><MoreVertical className="h-4 w-4" /></IconButton>

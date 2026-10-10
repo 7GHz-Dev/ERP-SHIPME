@@ -1,4 +1,4 @@
-/** ชนิดข้อมูลหลักของ DocScan — เก็บใน IndexedDB ทั้งหมด (ไม่ส่งขึ้นเซิร์ฟเวอร์) */
+/** ชนิดข้อมูลหลักของ DocScan — เก็บใน IndexedDB (โหมด "ให้ระบบเก็บ" รูปขนาดใหญ่ย้ายไปอยู่บนระบบ ดู cloud.ts) */
 
 export type FilterName = 'original' | 'photo' | 'document' | 'clear' | 'bw' | 'gray';
 
@@ -20,6 +20,13 @@ export type MarkupObject =
 
 export interface Folder { id: string; name: string; parentFolderId: string | null; createdAt: number; deletedAt: number }
 
+/** ที่เก็บเอกสาร: ในเครื่องนี้ / ให้ระบบเก็บ (มือถือเก็บแค่ภาพย่อ รูปเต็มอยู่บนระบบ ERP) */
+export type StorageMode = 'local' | 'cloud';
+/** ภาพของหน้า: o = ต้นฉบับ, c = ครอบแล้ว, p = ภาพสุดท้าย, t = ภาพย่อ */
+export type BlobKind = 'o' | 'c' | 'p' | 't';
+/** ไฟล์บนระบบที่ตรงกับภาพปัจจุบัน (f = <รหัสเอกสาร>/<ชื่อ>.jpg, n = ขนาดไบต์) — ไม่มี = ยังไม่ได้อัปโหลด */
+export type CloudRefs = Partial<Record<BlobKind, { f: string; n: number }>>;
+
 export interface DocRecord {
   id: string;
   name: string;
@@ -34,6 +41,10 @@ export interface DocRecord {
   tags: string[];
   /** 0 = ยังไม่ลบ, อื่น ๆ = เวลาที่ย้ายลงถังขยะ */
   deletedAt: number;
+  /** ไม่มี = เก็บในเครื่อง (เอกสารก่อนมีโหมดให้ระบบเก็บ) */
+  storage?: StorageMode;
+  /** ลายนิ้วมือของ doc.json ที่อัปขึ้นระบบล่าสุด — ไม่ตรงกับปัจจุบัน = ต้องอัปใหม่ */
+  cloudSig?: string;
 }
 
 export interface PageRecord {
@@ -56,6 +67,10 @@ export interface PageRecord {
   ocrText: string;
   width: number;
   height: number;
+  /** ไฟล์บนระบบของแต่ละภาพ (เอกสารที่ให้ระบบเก็บ) — ภาพที่ลบออกจากเครื่องแล้วเหลือเป็น Blob ว่าง (size 0) */
+  cloud?: CloudRefs;
+  /** เพิ่มทุกครั้งที่ภาพเปลี่ยน — กันอัปโหลดภาพเก่าแล้วจดว่าเป็นภาพปัจจุบัน */
+  rev?: number;
 }
 
 export interface SignatureRecord { id: string; image: Blob; createdAt: number }

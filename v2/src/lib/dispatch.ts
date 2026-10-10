@@ -3,6 +3,9 @@ import {
   createScanTicket, deleteInspectionFile, listInspectionFiles, registerInspectionFile,
   scanLogin, scanTicketInfo, scanUploadDone, scanUploadSign, signInspectionUpload
 } from './inspection';
+import {
+  scanCloudGet, scanCloudInfo, scanCloudList, scanCloudLogin, scanCloudManifests, scanCloudPrune, scanCloudSign
+} from './docscan-cloud';
 import { serviceInvoiceData } from './service-invoices';
 import {
   coordCardHanded, coordDashboard, coordXrayResult, coordDemo, coordDriverInvite, coordEirHanded, coordOutbox, coordRequestLocations,
@@ -395,6 +398,14 @@ const handlers: Record<string, Handler> = {
   scanTicketInfo: (body) => scanTicketInfo(body),
   scanUploadSign: (body) => scanUploadSign(body),
   scanUploadDone: (body) => scanUploadDone(body),
+  // DocScan โหมด "ให้ระบบเก็บ" — ใช้กุญแจที่เก็บเอกสาร (cloudToken) เข้าถึงได้เฉพาะ docscan/<ผู้ใช้>/
+  scanCloudLogin: (body) => scanCloudLogin(body),
+  scanCloudInfo: (body) => scanCloudInfo(body),
+  scanCloudSign: (body) => scanCloudSign(body),
+  scanCloudGet: (body) => scanCloudGet(body),
+  scanCloudList: (body) => scanCloudList(body),
+  scanCloudManifests: (body) => scanCloudManifests(body),
+  scanCloudPrune: (body) => scanCloudPrune(body),
   signInspectionUpload: async (body) => {
     const session = await guard(body);
     return session.error || signInspectionUpload(body, session.user);

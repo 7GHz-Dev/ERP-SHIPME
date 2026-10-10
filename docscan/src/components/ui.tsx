@@ -134,18 +134,18 @@ export function UiProvider({ children }: { children: ReactNode }) {
 /** ข้อความ error ที่ผู้ใช้อ่านเข้าใจ — ไม่โชว์ stack trace */
 export function friendlyError(e: unknown) {
   const m = e instanceof Error ? e.message : String(e);
-  if (/QuotaExceeded|quota/i.test(m)) return 'พื้นที่เก็บในเครื่องเต็ม — ลบเอกสารที่ไม่ใช้หรือล้างถังขยะก่อน';
+  if (/QuotaExceeded|quota/i.test(m)) return 'พื้นที่เก็บในเครื่องเต็ม — ล้างถังขยะ หรือเปลี่ยนเป็น "ให้ระบบเก็บ" ที่ ตั้งค่า → ที่เก็บเอกสาร';
   if (/NotAllowedError|Permission/i.test(m)) return 'ไม่ได้รับอนุญาตให้ใช้กล้อง — เปิดสิทธิ์กล้องในการตั้งค่าเบราว์เซอร์';
   if (/NotFoundError|DevicesNotFound/i.test(m)) return 'ไม่พบกล้องในอุปกรณ์นี้ — ใช้ "นำเข้ารูป" แทน';
   if (/^[A-Za-z]+Error:|at .*\(/.test(m) || m.length > 200) return 'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง';
   return m || 'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง';
 }
 
-/** แปลง Blob เป็น object URL แล้วคืนให้อัตโนมัติเมื่อเลิกใช้ */
+/** แปลง Blob เป็น object URL แล้วคืนให้อัตโนมัติเมื่อเลิกใช้ — Blob ว่าง (ภาพอยู่บนระบบ ยังไม่ได้ดึงมา) = ไม่มีรูป */
 export function useBlobUrl(blob: Blob | null | undefined) {
   const [url, setUrl] = useState<string>('');
   useEffect(() => {
-    if (!blob) { setUrl(''); return; }
+    if (!blob?.size) { setUrl(''); return; }
     const u = URL.createObjectURL(blob);
     setUrl(u);
     return () => URL.revokeObjectURL(u);

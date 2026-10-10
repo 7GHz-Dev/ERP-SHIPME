@@ -1,6 +1,7 @@
 'use client';
 import { FlipHorizontal, RotateCcw, RotateCw, Undo2, Check, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { pageBlob } from '@/lib/cloud';
 import { blobToCanvas } from '@/lib/image';
 import { renderPage } from '@/lib/process';
 import { updatePage } from '@/lib/repo';
@@ -31,7 +32,8 @@ export default function ImageEditor({ page, onClose }: { page: PageRecord; onClo
   const view = useRef<HTMLCanvasElement>(null);
   const job = useRef(0);
 
-  useEffect(() => { blobToCanvas(page.croppedImage, PREVIEW_MAX).then(setBase).catch((e) => ui.toast(friendlyError(e), 'error')); }, [page.croppedImage, ui]);
+  // ภาพครอบอาจอยู่บนระบบ (โหมดให้ระบบเก็บ) — pageBlob ดึงมาให้ก่อน
+  useEffect(() => { pageBlob(page, 'c').then((b) => blobToCanvas(b, PREVIEW_MAX)).then(setBase).catch((e) => ui.toast(friendlyError(e), 'error')); }, [page.croppedImage, ui]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // สร้าง preview ใหม่เมื่อค่าเปลี่ยน (หน่วงนิดหน่อยตอนลาก slider)
   useEffect(() => {

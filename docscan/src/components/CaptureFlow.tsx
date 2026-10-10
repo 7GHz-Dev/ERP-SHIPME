@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { pinDoc } from '@/lib/cloud';
 import { MAX_ORIGINAL, blobToCanvas } from '@/lib/image';
 import { buildPageFromCanvas, buildPageImages, suggestQuad } from '@/lib/process';
 import { addPage } from '@/lib/repo';
@@ -25,6 +26,9 @@ export default function CaptureFlow({ documentId, items, confirm = true, onDone,
   const [cur, setCur] = useState<{ canvas: HTMLCanvasElement; quad: Quad | null } | null>(null);
   const [saving, setSaving] = useState(false);
   const [added, setAdded] = useState(0);
+
+  // ระหว่างนำเข้า ห้ามลบรูปของเอกสารนี้ออกจากเครื่อง (โหมดให้ระบบเก็บ)
+  useEffect(() => pinDoc(documentId), [documentId]);
 
   useEffect(() => {
     let alive = true;

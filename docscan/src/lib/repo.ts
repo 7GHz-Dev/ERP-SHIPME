@@ -1,36 +1,43 @@
-import { db, uid } from './db';
+import { FIELD, KINDS, filesOf, forgetFiles, getMode, hasBlob, pageBlob, requestSync } from './cloud';
+import { db, getPages, uid } from './db';
 import { safeName } from './image';
 import { rebuildProcessed } from './process';
-import type { DocRecord, Folder, PageRecord } from './types';
+import type { BlobKind, DocRecord, Folder, PageRecord, StorageMode } from './types';
 import { DEFAULT_ADJUST } from './types';
 
 /** งานข้อมูลทั้งหมด (เอกสาร / หน้า / โฟลเดอร์ / ถังขยะ) — UI เรียกผ่านที่นี่ ไม่แตะ db ตรง */
 
 export const TRASH_DAYS = 30;
+export { getPages };
 
-export async function createDocument(name: string, folderId: string | null = null): Promise<DocRecord> {
+/** storage ไม่ระบุ = ตามที่ตั้งไว้ (ตั้งค่า → ที่เก็บเอกสาร) */
+export async function createDocument(name: string, folderId: string | null = null, storage?: StorageMode): Promise<DocRecord> {
   const now = Date.now();
   const doc: DocRecord = {
     id: uid(), name: safeName(name), folderId, createdAt: now, updatedAt: now,
-    thumbnail: null, ocrText: '', pageCount: 0, size: 0, tags: [], deletedAt: 0
+    thumbnail: null, ocrText: '', pageCount: 0, size: 0, tags: [], deletedAt: 0,
+    storage: storage ?? await getMode()
   };
   await db.documents.add(doc);
   return doc;
 }
 
-export async function getPages(documentId: string) {
-  return db.pages.where('[documentId+order]').between([documentId, -Infinity], [documentId, Infinity]).toArray();
-}
+/** ขนาดภาพของหน้า — ภาพที่ลบออกจากเครื่องแล้ว (อยู่บนระบบ) ใช้ขนาดที่จดไว้ */
+const pageBytes = (p: PageRecord) =>
+  (['o', 'c', 'p'] as const).reduce((s, k) => s + (hasBlob(p[FIELD[k]]) ? p[FIELD[k]].size : p.cloud?.[k]?.n ?? 0), 0);
 
 /** คำนวณจำนวนหน้า ขนาด รูปปก และข้อความ OCR รวมของเอกสารใหม่ */
 export async function refreshDocument(documentId: string) {
   const pages = await getPages(documentId);
-  const size = pages.reduce((s, p) => s + p.originalImage.size + p.croppedImage.size + p.processedImage.size, 0);
+  const cover = pages[0]?.thumbnail;
   await db.documents.update(documentId, {
-    pageCount: pages.length, size, thumbnail: pages[0]?.thumbnail || null,
+    pageCount: pages.length, size: pages.reduce((s, p) => s + pageBytes(p), 0),
+    // ภาพย่อหน้าแรกยังไม่ได้ดึงจากระบบ (เพิ่งดึงรายการมา) = ใช้ปกเดิมไปก่อน
+    ...(hasBlob(cover) || !pages.length ? { thumbnail: cover || null } : {}),
     ocrText: pages.map((p) => p.ocrText).filter(Boolean).join('\n\n'),
     updatedAt: Date.now()
   });
+  requestSync();
 }
 
 export type NewPage = Pick<PageRecord,
@@ -51,13 +58,29 @@ export async function addPage(documentId: string, img: NewPage, atOrder?: number
 export async function updatePage(id: string, patch: Partial<PageRecord>, rebuild = false) {
   const page = await db.pages.get(id);
   if (!page) return;
-  const next = { ...page, ...patch };
-  if (rebuild) {
-    Object.assign(next, await rebuildProcessed(next.croppedImage, {
-      filter: next.filter, adjustments: next.adjustments, rotation: next.rotation, flip: next.flip, markup: next.markup
-    }));
-  }
-  await db.pages.put(next);
+  const opts = { ...page, ...patch };
+  // ภาพครอบอาจอยู่บนระบบ (โหมดให้ระบบเก็บ) — ดึงมาก่อนสร้างภาพสุดท้ายใหม่
+  const rebuilt = rebuild ? await rebuildProcessed(await pageBlob(opts, 'c'), {
+    filter: opts.filter, adjustments: opts.adjustments, rotation: opts.rotation, flip: opts.flip, markup: opts.markup
+  }) : {};
+  // ภาพที่เปลี่ยน → ไฟล์บนระบบของภาพนั้นใช้ไม่ได้แล้ว ต้องอัปใหม่
+  const changed: BlobKind[] = KINDS.filter((k) => FIELD[k] in patch || (rebuild && (k === 'p' || k === 't')));
+  let next: PageRecord | undefined;
+  const dropped: (string | undefined)[] = [];
+  // อ่านหน้าล่าสุดอีกรอบแล้วค่อยเขียน — ไม่ทับสิ่งที่ตัวซิงก์เพิ่งจดระหว่างสร้างภาพ
+  await db.transaction('rw', db.pages, async () => {
+    const cur = await db.pages.get(id);
+    if (!cur) return;
+    next = { ...cur, ...patch, ...rebuilt };
+    if (changed.length) {
+      const cloud = { ...cur.cloud };
+      for (const k of changed) { dropped.push(cloud[k]?.f); delete cloud[k]; }
+      next.cloud = cloud;
+      next.rev = (cur.rev ?? 0) + 1;
+    }
+    await db.pages.put(next);
+  });
+  await forgetFiles(dropped);
   await refreshDocument(page.documentId);
   return next;
 }
@@ -66,6 +89,7 @@ export async function deletePage(id: string) {
   const page = await db.pages.get(id);
   if (!page) return;
   await db.pages.delete(id);
+  await forgetFiles(filesOf([page]));
   await refreshDocument(page.documentId);
 }
 
@@ -91,15 +115,18 @@ export async function reorderPages(documentId: string, ids: string[]) {
 
 export async function renameDocument(id: string, name: string) {
   await db.documents.update(id, { name: safeName(name), updatedAt: Date.now() });
+  requestSync();
 }
 export async function moveDocument(id: string, folderId: string | null) {
   await db.documents.update(id, { folderId, updatedAt: Date.now() });
+  requestSync();
 }
 
+/** สำเนาเก็บที่เดียวกับต้นฉบับ — หน้าที่อยู่บนระบบอ้างไฟล์ชุดเดิม ไม่ต้องดึงลงมาก่อน */
 export async function duplicateDocument(id: string) {
   const doc = await db.documents.get(id);
   if (!doc) return;
-  const copy = await createDocument(`${doc.name} (สำเนา)`, doc.folderId);
+  const copy = await createDocument(`${doc.name} (สำเนา)`, doc.folderId, doc.storage ?? 'local');
   const pages = await getPages(id);
   await db.pages.bulkAdd(pages.map((p) => ({ ...p, id: uid(), documentId: copy.id })));
   await refreshDocument(copy.id);
@@ -107,13 +134,17 @@ export async function duplicateDocument(id: string) {
 }
 
 /** ลบ = ย้ายลงถังขยะก่อนเสมอ (กู้คืนได้ภายใน 30 วัน) */
-export async function trashDocument(id: string) { await db.documents.update(id, { deletedAt: Date.now() }); }
-export async function restoreDocument(id: string) { await db.documents.update(id, { deletedAt: 0 }); }
+export async function trashDocument(id: string) { await db.documents.update(id, { deletedAt: Date.now() }); requestSync(); }
+export async function restoreDocument(id: string) { await db.documents.update(id, { deletedAt: 0 }); requestSync(); }
 export async function deleteForever(id: string) {
+  const doc = await db.documents.get(id);
+  const pages = await getPages(id);
   await db.transaction('rw', db.documents, db.pages, async () => {
     await db.pages.where('documentId').equals(id).delete();
     await db.documents.delete(id);
   });
+  // เคยขึ้นระบบ = ลบบนระบบด้วย (ทำตอนออนไลน์)
+  await forgetFiles(filesOf(pages), doc?.storage === 'cloud' || doc?.cloudSig ? [id] : []);
 }
 export async function emptyTrash() {
   const ids = (await db.documents.where('deletedAt').above(0).toArray()).map((d) => d.id);
@@ -132,9 +163,10 @@ export async function purgeExpiredTrash() {
 export async function createFolder(name: string, parentFolderId: string | null) {
   const f: Folder = { id: uid(), name: safeName(name, 'โฟลเดอร์ใหม่'), parentFolderId, createdAt: Date.now(), deletedAt: 0 };
   await db.folders.add(f);
+  requestSync();
   return f;
 }
-export async function renameFolder(id: string, name: string) { await db.folders.update(id, { name: safeName(name, 'โฟลเดอร์') }); }
+export async function renameFolder(id: string, name: string) { await db.folders.update(id, { name: safeName(name, 'โฟลเดอร์') }); requestSync(); }
 
 /** ย้ายโฟลเดอร์ — ห้ามย้ายเข้าไปในโฟลเดอร์ลูกของตัวเอง (จะวนไม่จบ) */
 export async function moveFolder(id: string, parentFolderId: string | null) {
@@ -144,6 +176,7 @@ export async function moveFolder(id: string, parentFolderId: string | null) {
     cur = (await db.folders.get(cur))?.parentFolderId ?? null;
   }
   await db.folders.update(id, { parentFolderId });
+  requestSync();
 }
 
 /** ลบโฟลเดอร์: เอกสารข้างในลงถังขยะ โฟลเดอร์ย่อยลบตามไปด้วย */
@@ -153,6 +186,7 @@ export async function deleteFolder(id: string) {
   const docs = await db.documents.where('folderId').equals(id).toArray();
   for (const d of docs) await db.documents.update(d.id, { deletedAt: Date.now(), folderId: null });
   await db.folders.delete(id);
+  requestSync();
 }
 
 export async function folderPath(id: string | null): Promise<Folder[]> {

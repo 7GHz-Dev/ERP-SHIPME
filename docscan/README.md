@@ -2,12 +2,12 @@
 
 A web app (PWA) for scanning documents on a phone. It is deployed separately from the ERP. Shipping staff use it to photograph inspection documents and combine the photos into a single PDF. The PDF is attached to the settlement under **"หลักฐานการตรวจปล่อย"**.
 
-- Images, OCR and PDFs are all processed on the device. Documents are stored in IndexedDB in the browser.
+- Images, OCR and PDFs are all processed on the device. Documents are stored in IndexedDB in the browser, or on the ERP's storage when the user picks **"ให้ระบบเก็บ"** (see [Storage location](#storage-location)).
 - **Edge detection** (`public/detect-worker.js`) is plain JavaScript in its own worker, so it works the moment the camera opens without waiting for OpenCV.
   - It finds edges in brightness and in two color channels, then uses Hough lines plus a 4-sided scoring step. This works on backgrounds close to the paper color, such as white paper on a white or cream table or light wood.
   - It costs about 5 ms per frame on a laptop and runs about 16 times per second.
 - OpenCV (`public/cv-worker.js`) is used only for perspective correction and filters, in a separate worker. The camera keeps detecting the next page while the previous one is still saving.
-- **A file leaves the device only when the user taps "ส่งเข้าใบปิดบัญชี" or "ส่งไปปิดบัญชี".** Signatures are never uploaded.
+- **In "เก็บในเครื่องนี้" mode, a file leaves the device only when the user taps "ส่งเข้าใบปิดบัญชี" or "ส่งไปปิดบัญชี".** Signatures are never uploaded.
 - Stack: Next.js 16, React 19, TypeScript, Tailwind v4, Dexie, OpenCV.js (Web Worker), tesseract.js, pdf-lib, pdfjs-dist, fflate.
 
 ## Running
@@ -49,9 +49,38 @@ Environment variables:
 | ERP (v2) | `DOCSCAN_URL` | DocScan URL that the settlement page opens |
 | ERP (v2) | `SCAN_TICKET_SECRET` | Key for signing tickets (optional; derived from `DATABASE_URL` if unset) |
 
+## Storage location
+
+Settings → **ที่เก็บเอกสาร** has two options. The choice applies to new documents. Existing documents can be moved one at a time from their menu, or all at once from Settings.
+
+- **เก็บในเครื่องนี้** (default): everything stays in IndexedDB, as before.
+- **ให้ระบบเก็บ**: for phones that are short on space.
+  - The user signs in once with their ERP username and password. The ERP returns a storage key, an HMAC token valid for 180 days.
+  - The key only gives access to `docscan/<username>/` in Supabase Storage. It is not an ERP session.
+  - Changing the password or disabling the account invalidates the key immediately.
+
+How "ให้ระบบเก็บ" works (`src/lib/cloud.ts`, server side in `v2/src/lib/docscan-cloud.ts`):
+
+- Each page has 4 images: original, cropped, final and thumbnail. They upload in the background straight to Supabase through signed URLs.
+  - Every upload gets a new file name, so a stale CDN copy is never served.
+  - Once all pages are uploaded, `doc.json` is uploaded, files no longer in use are deleted, and the original, cropped and final images are removed from the phone. Only the thumbnail and metadata stay.
+- Opening a document downloads the final images while it is open. The original and cropped images download only when the user taps crop, filter or markup.
+  - After the document is closed, the next sync removes them from the phone again.
+  - The document being scanned or opened is never cleaned up mid-use.
+- Scanning works offline. Pages wait in the phone and upload once the internet is back.
+- New phone, or browser data cleared: sign in again and the app pulls the document list back from `doc.json` (Settings → ดึงรายการจากระบบ).
+- Deleting a document permanently, or moving it back to the phone, deletes its files from the server.
+- No database table is needed. Everything lives in Storage:
+  - `docscan/<user>/<docId>/<random>.jpg`
+  - `docscan/<user>/<docId>/doc.json`
+  - `docscan/<user>/_meta/folders.json`
+
+Test the whole path: `cd v2 && npx tsx scripts/smoke-docscan-cloud.mts <url> <user> <pass>` (create a temporary account with `scripts/temp-user.mts`).
+
 ## Known limitations
 
 - iOS Safari has no flashlight (torch) control, so the torch button only appears on supported devices.
 - HEIC files open only in browsers that can decode them (Safari). Elsewhere the app asks for JPG/PNG.
 - OCR downloads its language files (Thai/English) the first time it is used, so the first run needs internet.
-- Data lives in this browser only. Clearing site data deletes it, so use Settings → backup (.docscan) to keep a copy.
+- In "เก็บในเครื่องนี้" mode, data lives in this browser only. Clearing site data deletes it, so use Settings → backup (.docscan) to keep a copy. In "ให้ระบบเก็บ" mode, documents can be pulled back from the server.
+- Documents stored on the server need internet to open (except the one currently open). Designed for one phone per account: using the same documents on two phones at once can make the last sync overwrite the other's changes.

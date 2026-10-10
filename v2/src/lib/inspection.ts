@@ -20,7 +20,8 @@ const TICKET_HOURS = 2;
 const MAX_BYTES = 25 * 1024 * 1024;
 const FOLDER = 'inspections';
 
-const secret = () => env.scanTicketSecret || crypto.createHash('sha256').update('scan-ticket:' + (process.env.DATABASE_URL || 'dev')).digest('hex');
+/** กุญแจฝั่งเซิร์ฟเวอร์ของ DocScan (ticket + กุญแจที่เก็บเอกสารใน docscan-cloud.ts) */
+export const secret = () => env.scanTicketSecret || crypto.createHash('sha256').update('scan-ticket:' + (process.env.DATABASE_URL || 'dev')).digest('hex');
 const b64 = (s: string) => Buffer.from(s, 'utf8').toString('base64url');
 const sign = (payload: string) => crypto.createHmac('sha256', secret()).update(payload).digest('base64url');
 

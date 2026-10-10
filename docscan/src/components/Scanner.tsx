@@ -1,6 +1,7 @@
 'use client';
 import { Check, Image as ImageIcon, X, Zap, ZapOff } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { pinDoc } from '@/lib/cloud';
 import { warmUp } from '@/lib/cv';
 import { getSetting, setSetting } from '@/lib/db';
 import { detectDoc, sigCorrelation, warmDetector, type DetectResult, type Signature } from '@/lib/detect';
@@ -137,9 +138,13 @@ export default function Scanner({ getDocumentId, onDone, onClose }: {
     } catch { setTorch(null); }
   };
 
+  // เอกสารที่กำลังสแกน: ห้ามลบรูปออกจากเครื่อง (โหมดให้ระบบเก็บ) จนกว่าจะปิดกล้อง
+  const unpin = useRef<() => void>(() => {});
+  useEffect(() => () => unpin.current(), []);
+
   const ensureDoc = useCallback(() => {
     if (!docPromise.current) {
-      docPromise.current = getDocRef.current().then((id) => { docIdRef.current = id; return id; });
+      docPromise.current = getDocRef.current().then((id) => { docIdRef.current = id; unpin.current = pinDoc(id); return id; });
       docPromise.current.catch(() => { docPromise.current = null; });
     }
     return docPromise.current;

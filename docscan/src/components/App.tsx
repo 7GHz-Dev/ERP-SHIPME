@@ -1,6 +1,7 @@
 'use client';
 import { Camera, FileText, FileUp, Search, Settings as SettingsIcon } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { pinDoc, startCloud } from '@/lib/cloud';
 import { warmUp } from '@/lib/cv';
 import { db, getSetting, setSetting } from '@/lib/db';
 import { warmDetector } from '@/lib/detect';
@@ -62,6 +63,8 @@ function Shell() {
     const ticketP = loadTicket().catch((e) => { ui.toast(friendlyError(e), 'error'); return null; });
     Promise.all([onboardingSeen(), ticketP]).then(([seen, t]) => { setTicket(t); setOnboard(!seen && !t); });
     purgeExpiredTrash().catch(() => undefined);
+    // โหมดให้ระบบเก็บ: อัปที่ค้าง / ลบรูปใหญ่ที่อัปแล้วออกจากเครื่อง (ไม่มีเอกสารบนระบบ = ไม่ทำอะไร)
+    startCloud();
     // เตรียมตัวหาขอบ (เล็ก) ทันที และโหลด OpenCV (ใช้ตอนบันทึกหน้า) ระหว่างผู้ใช้ยังดูหน้าแรก
     warmDetector();
     const t = setTimeout(() => { warmUp(); }, 1200);
@@ -105,17 +108,19 @@ function Shell() {
   const onPdf = async (file: File | undefined) => {
     if (!file) return;
     if (!/pdf$/i.test(file.type) && !/\.pdf$/i.test(file.name)) { ui.toast('ไฟล์นี้ไม่ใช่ PDF', 'error'); return; }
+    let unpin = () => {};
     try {
       setPdfBusy('กำลังอ่าน PDF…');
       const images = await pdfToImages(file, (d, t) => setPdfBusy(`กำลังแปลงหน้า ${d}/${t}…`));
       const docId = importTarget.current || (await createDocument(file.name.replace(/\.pdf$/i, ''), currentFolder)).id;
+      unpin = pinDoc(docId);
       for (let i = 0; i < images.length; i++) {
         setPdfBusy(`กำลังบันทึกหน้า ${i + 1}/${images.length}…`);
         await addPage(docId, await buildPageImages(images[i], null, 'original'));
       }
       go(`/doc/${docId}`);
     } catch (e) { ui.toast(friendlyError(e), 'error'); }
-    finally { setPdfBusy(''); }
+    finally { setPdfBusy(''); unpin(); }
   };
 
   if (onboard === null) return <div className="flex min-h-dvh items-center justify-center"><Spinner className="h-6 w-6 text-primary" /></div>;

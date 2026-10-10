@@ -6,10 +6,12 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createBackup, restoreBackup } from '@/lib/backup';
+import { useCloudStatus } from '@/lib/cloud';
 import { db, getSetting, setSetting } from '@/lib/db';
 import { downloadBlob, formatBytes } from '@/lib/image';
 import { TRASH_DAYS, deleteForever, emptyTrash, restoreDocument, storageStats } from '@/lib/repo';
 import type { DocRecord } from '@/lib/types';
+import StorageSettings from './StorageSettings';
 import { Button, Spinner, friendlyError, inputCls, useBlobUrl, useUi } from './ui';
 
 // ---------- ค้นหา ----------
@@ -112,11 +114,13 @@ export function TrashPage({ onBack }: { onBack: () => void }) {
 export type Theme = 'system' | 'light' | 'dark';
 export function SettingsPage({ theme, setTheme, onTrash }: { theme: Theme; setTheme: (t: Theme) => void; onTrash: () => void }) {
   const ui = useUi();
+  const cloud = useCloudStatus();
   const [stats, setStats] = useState<Awaited<ReturnType<typeof storageStats>> | null>(null);
   const [busy, setBusy] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const reload = () => storageStats().then(setStats);
-  useEffect(() => { reload(); }, []);
+  // ซิงก์เสร็จ (รูปใหญ่ถูกลบออกจากเครื่อง) = พื้นที่ที่ใช้เปลี่ยน
+  useEffect(() => { reload(); }, [cloud.lastSync]);
   const [scanAuto, setScanAuto] = useState(true), [scanConfirm, setScanConfirm] = useState(false);
   useEffect(() => {
     getSetting<boolean>('scanAuto', true).then(setScanAuto);
@@ -163,8 +167,12 @@ export function SettingsPage({ theme, setTheme, onTrash }: { theme: Theme; setTh
     <div className="mx-auto grid max-w-3xl gap-3 px-4 pb-28 pt-[calc(1rem+env(safe-area-inset-top))]">
       <h1 className="text-2xl font-bold">ตั้งค่า</h1>
       <div className="flex items-center gap-2 rounded-2xl bg-emerald-50 p-3 text-sm text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100">
-        <ShieldCheck className="h-5 w-5 shrink-0" />เอกสารของคุณอยู่ในเครื่องนี้ — ไม่มีการอัปโหลดขึ้นเซิร์ฟเวอร์ ยกเว้นตอนคุณกดส่งเข้าใบปิดบัญชีเอง
+        <ShieldCheck className="h-5 w-5 shrink-0" />
+        {cloud.mode === 'cloud' || cloud.session
+          ? 'เอกสารที่ให้ระบบเก็บอยู่บนระบบ ERP SHIPME เห็นได้เฉพาะบัญชีของคุณ — เอกสารที่เก็บในเครื่องไม่ถูกอัปโหลด ยกเว้นตอนกดส่งเข้าใบปิดบัญชีเอง'
+          : 'เอกสารของคุณอยู่ในเครื่องนี้ — ไม่มีการอัปโหลดขึ้นเซิร์ฟเวอร์ ยกเว้นตอนคุณกดส่งเข้าใบปิดบัญชีเอง'}
       </div>
+      <StorageSettings />
       <Row icon={<Camera className="h-5 w-5 text-primary" />} title="การสแกน">
         <div className="grid gap-3">
           <Toggle label="ถ่ายอัตโนมัติเมื่อเจอเอกสาร" hint="จับขอบได้และถือนิ่งครู่หนึ่ง = ถ่ายให้เอง แล้วรอหน้าถัดไป"
@@ -188,7 +196,8 @@ export function SettingsPage({ theme, setTheme, onTrash }: { theme: Theme; setTh
         </div>
       </Row>
       <Row icon={<Archive className="h-5 w-5 text-primary" />} title="สำรองข้อมูล">
-        <p className="mb-3 text-sm text-muted">ไฟล์เดียวรวมเอกสาร หน้า โฟลเดอร์ ข้อความ OCR ลายเซ็น และการตั้งค่า — เก็บไว้หรือย้ายไปเครื่องอื่นได้</p>
+        <p className="mb-3 text-sm text-muted">ไฟล์เดียวรวมเอกสาร หน้า โฟลเดอร์ ข้อความ OCR ลายเซ็น และการตั้งค่า — เก็บไว้หรือย้ายไปเครื่องอื่นได้
+          {cloud.session ? ' (เอกสารที่ให้ระบบเก็บ: แบ็กอัปเก็บเฉพาะข้อมูล รูปอยู่บนระบบอยู่แล้ว)' : ''}</p>
         <div className="flex flex-wrap gap-2">
           <Button variant="primary" loading={busy === 'backup'} onClick={backup}><Download className="h-4 w-4" />ส่งออกแบ็กอัป</Button>
           <Button loading={busy === 'restore'} onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4" />นำเข้าแบ็กอัป</Button>
