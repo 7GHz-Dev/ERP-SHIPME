@@ -62,6 +62,7 @@ import {
 } from './invoices';
 import type { ApiBody, ApiResult, Handler } from './types';
 import { lineDiagnostics, lineMode } from './coord-line';
+import { shipAskList, shipAskSend } from './ship-ask';
 import { checkinPolicy, id, isWindowsDevice, nowIso, publicUser, validYmd, ymd } from './utils';
 
 export type { ApiBody, ApiResult };
@@ -599,6 +600,15 @@ const handlers: Record<string, Handler> = {
   coordStaffNotify: async (body) => {
     const session = await guard(body, COORD_STAFF);
     return session.error || coordStaffNotify(body, session.user);
+  },
+  // ผู้จัดการถามชิปปิ้งทาง LINE ว่างานตรวจปล่อยเสร็จครบหรือยัง (คำตอบเข้ามาทาง webhook)
+  shipAskList: async (body) => {
+    const session = await guard(body, PLAN_ROLES);
+    return session.error || shipAskList(body, session.user);
+  },
+  shipAskSend: async (body) => {
+    const session = await guard(body, PLAN_ROLES);
+    return session.error || shipAskSend(body, session.user);
   },
   lineRichMenuInstall: async (body) => {
     const session = await guard(body, PLAN_ROLES);

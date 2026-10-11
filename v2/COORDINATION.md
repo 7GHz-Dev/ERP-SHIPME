@@ -147,6 +147,24 @@ Per-container steps on the driver page (6 steps):
   - Pickup submitted but "X-Ray แล้ว" not pressed (90 min).
 - **Tested:** 31 checks against the real DB with temporary 2099 data (all deleted), plus screenshots of both pages.
 
+## Ask shipping via LINE: "Is today's inspection work all done?" (2026-10-11)
+
+- **Where:** the manager/admin page → tab "📨 ถามชิปปิ้ง (LINE)" (`public/shipping-ask.js`, API `shipAskList` / `shipAskSend`, logic in `src/lib/ship-ask.ts`, table `shipping_asks`).
+- Choose an inspection date (defaults to today) and tick the shipping staff to ask.
+  - Pre-ticked: staff with containers in that day's plan who have linked LINE and haven't answered "done" yet.
+  - Staff without LINE can't be ticked.
+- Each person gets a LINE card showing:
+  - their own progress in the system (containers closed / total) and the manager's optional message
+  - buttons **✅ เสร็จครบแล้ว** (all done) / **⏳ ยังไม่เสร็จ** (not done yet), which send a postback to the webhook
+  - a button that opens `/staff`
+- Sent even if the person turned notifications off, because it is a direct question from a manager. The same person can be asked again after 10 minutes.
+- Answering "not done" → the bot asks them to type what is still pending. Their **first text message within 3 hours** is saved as the pending note.
+- The person can change their answer later by pressing the other button.
+- Every answer and note shows in the tab (auto-refresh every 30 s). It is also pushed to the asking manager's LINE if they linked LINE at `/staff` → More, with a running tally: done / not done / waiting.
+- Only the LINE account linked to the person who was asked can answer. A forwarded card or a different account is rejected.
+- Answers do not change any container status. The system progress is shown next to the answer.
+- Tested 2026-10-11: 21 checks against the real DB in DEMO mode with temporary 2099 data (all deleted).
+
 ## Not built yet
 
 - Reports / CSV for this flow.

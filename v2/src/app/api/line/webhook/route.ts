@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { drivers, lineWebhookEvents } from '@/db/schema';
 import { verifyLineSignature } from '@/lib/coord-line';
+import { handleShipAskPostback, handleShipAskText } from '@/lib/ship-ask';
 import { nowIso } from '@/lib/utils';
 
 export const runtime = 'nodejs';
@@ -10,7 +11,8 @@ export const preferredRegion = ['sin1'];
 
 /**
  * Webhook ของ LINE OA — ตรวจลายเซ็นกับ body ดิบก่อน parse เสมอ (ลายเซ็นผิด = ไม่ทำอะไรเลย)
- * ตอนนี้ใช้แค่ follow / unfollow (คนขับเพิ่ม/บล็อก OA) เพื่อรู้ว่าส่งข้อความหาได้ไหม
+ * follow / unfollow (คนขับเพิ่ม/บล็อก OA) เพื่อรู้ว่าส่งข้อความหาได้ไหม
+ * postback / ข้อความ = ชิปปิ้งตอบคำถามผู้จัดการ "งานตรวจปล่อยเสร็จครบหรือยัง" (ship-ask.ts)
  * LINE ส่งซ้ำได้ — webhookEventId ที่เคยประมวลผลแล้วข้าม
  */
 export async function POST(request: Request) {
@@ -21,6 +23,7 @@ export async function POST(request: Request) {
   let events: any[] = [];
   try { events = JSON.parse(raw).events || []; } catch { return new Response('bad request', { status: 400 }); }
 
+  const origin = new URL(request.url).origin;
   for (const ev of events) {
     const eventId = String(ev?.webhookEventId || '');
     if (eventId) {
@@ -32,6 +35,10 @@ export async function POST(request: Request) {
     if (!userId) continue;
     if (ev.type === 'follow' || ev.type === 'unfollow') {
       await db.update(drivers).set({ lineFriend: ev.type === 'follow', updatedAt: nowIso() }).where(eq(drivers.lineUserId, userId));
+    } else if (ev.type === 'postback') {
+      await handleShipAskPostback(ev, origin).catch((e) => console.error('[line webhook] postback', e));
+    } else if (ev.type === 'message' && ev.message?.type === 'text') {
+      await handleShipAskText(ev, origin).catch((e) => console.error('[line webhook] text', e));
     }
   }
   return new Response('ok');

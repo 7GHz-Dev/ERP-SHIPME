@@ -731,3 +731,21 @@ export const routeRuns = pgTable('route_runs', {
   createdAt: text('created_at').notNull(),
   confirmedAt: text('confirmed_at').notNull().default('')
 }, (t) => [index('route_runs_batch_idx').on(t.inspectDate, t.username)]);
+
+/**
+ * ผู้จัดการถามชิปปิ้งทาง LINE OA ว่างานตรวจปล่อยของวันนั้นเสร็จครบหรือยัง — 1 แถว = ถาม 1 ครั้งต่อชิปปิ้ง 1 คน
+ * ชิปปิ้งกดปุ่มตอบในแชท (postback) → webhook บันทึกคำตอบ แล้วแจ้งผู้จัดการที่ถาม (ถ้าผูก LINE ไว้)
+ */
+export const shippingAsks = pgTable('shipping_asks', {
+  id: text('id').primaryKey(),
+  inspectDate: text('inspect_date').notNull(),
+  username: citext('username').notNull(),             // ชิปปิ้งที่ถูกถาม
+  askedBy: citext('asked_by').notNull(),
+  askedAt: text('asked_at').notNull(),
+  message: text('message').notNull().default(''),     // ข้อความเพิ่มเติมจากผู้จัดการ
+  sendState: text('send_state').notNull(),            // sent | failed | demo
+  sendError: text('send_error').notNull().default(''),
+  answer: text('answer').notNull().default(''),       // '' = ยังไม่ตอบ | DONE | NOT_DONE
+  answerNote: text('answer_note').notNull().default(''),  // ชิปปิ้งพิมพ์บอกว่ายังค้างอะไร (หลังตอบ "ยังไม่เสร็จ")
+  answeredAt: text('answered_at').notNull().default('')
+}, (t) => [index('shipping_asks_date_idx').on(t.inspectDate, t.username), index('shipping_asks_user_idx').on(t.username, t.askedAt)]);

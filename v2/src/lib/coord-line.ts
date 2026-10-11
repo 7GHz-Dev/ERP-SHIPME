@@ -111,11 +111,26 @@ export async function pushToDriver(input: PushInput): Promise<{ state: 'sent' | 
   return error ? { state: 'failed', error } : { state: 'sent' };
 }
 
+/** ตอบกลับเหตุการณ์จาก webhook (ไม่นับโควตาข้อความ) — replyToken ใช้ได้ครั้งเดียวและหมดอายุเร็ว พลาดก็ข้าม */
+export async function replyLine(replyToken: string, messages: unknown[]) {
+  if (lineMode() !== 'live' || !replyToken) return false;
+  const res = await fetch('https://api.line.me/v2/bot/message/reply', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${env.lineAccessToken}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ replyToken, messages }),
+    signal: AbortSignal.timeout(8000)
+  }).catch(() => null);
+  return Boolean(res?.ok);
+}
+
 // ---------------- การ์ดข้อความ (Flex Message) ----------------
 
 const NAVY = '#0D2748', AMBER = '#FFB020', GREEN = '#06C755';
 
-function bubble(title: string, lines: string[], buttons: { label: string; uri: string; primary?: boolean }[]) {
+/** ปุ่มเปิดลิงก์ (uri) หรือปุ่มตอบในแชท (data = postback ส่งเข้า webhook, displayText = ข้อความที่ขึ้นในแชทแทนผู้กด) */
+export type FlexButton = { label: string; uri?: string; data?: string; displayText?: string; primary?: boolean };
+
+function bubble(title: string, lines: string[], buttons: FlexButton[]) {
   return {
     type: 'bubble',
     header: {
@@ -133,13 +148,15 @@ function bubble(title: string, lines: string[], buttons: { label: string; uri: s
       type: 'box', layout: 'vertical', spacing: 'sm',
       contents: buttons.map((b) => ({
         type: 'button', style: b.primary ? 'primary' : 'secondary', color: b.primary ? GREEN : undefined, height: 'sm',
-        action: { type: 'uri', label: b.label.slice(0, 20), uri: b.uri }
+        action: b.data
+          ? { type: 'postback', label: b.label.slice(0, 20), data: b.data.slice(0, 300), displayText: (b.displayText || b.label).slice(0, 300) }
+          : { type: 'uri', label: b.label.slice(0, 20), uri: b.uri }
       }))
     }
   };
 }
 
-export function flexMessage(altText: string, title: string, lines: string[], buttons: { label: string; uri: string; primary?: boolean }[]) {
+export function flexMessage(altText: string, title: string, lines: string[], buttons: FlexButton[]) {
   return { type: 'flex', altText: altText.slice(0, 400), contents: bubble(title, lines, buttons) };
 }
 

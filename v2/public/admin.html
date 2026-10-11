@@ -299,6 +299,7 @@
 <script src="/shipping-income.js"></script>
 <script src="/shipping-reconcile.js"></script>
 <script src="/job-plan.js"></script>
+<script src="/shipping-ask.js"></script>
 <script src="/ar-report.js"></script>
 <script src="/service-ar.js"></script>
 </head>
@@ -320,6 +321,7 @@
     <button class="navbtn" data-tab="claim">การเบิก</button>
     <button class="navbtn" data-tab="settle">ปิดบัญชี</button>
     <button class="navbtn hidden" data-tab="plan">แพลนงาน</button>
+    <button class="navbtn hidden" data-tab="shipask">📨 ถามชิปปิ้ง (LINE)</button>
     <button class="navbtn" data-tab="invoice">ใบแจ้งหนี้</button>
     <button class="navbtn" data-tab="wht">ใบหัก ณ ที่จ่าย</button>
     <button class="navbtn" data-tab="income">รายงานรายได้ชิปปิ้ง</button>
@@ -461,6 +463,8 @@
 
     <!-- แพลนงานตรวจปล่อย (admin + manager) — เนื้อหาสร้างจาก job-plan.js ตอนเปิดแท็บ -->
     <section id="tab-plan" class="hidden"></section>
+    <!-- ถามชิปปิ้งทาง LINE ว่างานตรวจปล่อยเสร็จครบหรือยัง (admin + manager) — สร้างจาก shipping-ask.js -->
+    <section id="tab-shipask" class="hidden"></section>
 
     <!-- ตั้งค่าระบบ (admin + manager) — รวมการตั้งค่าทั้งหมดไว้ที่เดียว แยกเป็น 3 เรื่อง -->
     <section id="tab-settings" class="hidden">
@@ -1422,12 +1426,17 @@ function enterApp(){
     ['invoice','wht','income','reconcile'].forEach(function(tab){
       document.querySelector('.navbtn[data-tab="'+tab+'"]').classList.toggle('hidden', isManager);
     });
-    // แพลนงานตรวจปล่อย — ผู้จัดการ + admin
+    // แพลนงานตรวจปล่อย + ถามชิปปิ้งทาง LINE — ผู้จัดการ + admin
     document.querySelector('.navbtn[data-tab="plan"]').classList.remove('hidden');
+    document.querySelector('.navbtn[data-tab="shipask"]').classList.remove('hidden');
   }
   $('subbtn-sheet').classList.toggle('hidden', !canEditSheet());   // หน้าตารูปใบปิดบัญชี = เฉพาะ admin
   $('view-app').classList.remove('hidden');
-  switchTab(isAccount ? 'invoice' : (isManager ? 'checkin' : 'dash'));
+  // ลิงก์จากแจ้งเตือน LINE เปิดแท็บที่ต้องการตรง ๆ (?tab=shipask) — เฉพาะแท็บที่บทบาทนี้เห็น
+  var askTab = new URLSearchParams(location.search).get('tab');
+  var askBtn = askTab && document.querySelector('.navbtn[data-tab="'+askTab.replace(/[^a-z]/g,'')+'"]');
+  switchTab(askBtn && !askBtn.classList.contains('hidden') ? askBtn.getAttribute('data-tab')
+    : (isAccount ? 'invoice' : (isManager ? 'checkin' : 'dash')));
   if(isAccount) return;    // loadAll() ยิง action ที่ฝ่ายบัญชีไม่มีสิทธิ์ จะได้ forbidden เต็มหน้าจอ
   loadAll();
 }
@@ -1438,8 +1447,9 @@ Array.prototype.forEach.call(document.querySelectorAll('.navbtn'), function(t){
 });
 function switchTab(name){
   Array.prototype.forEach.call(document.querySelectorAll('.navbtn'), function(t){ t.classList.toggle('active', t.getAttribute('data-tab')===name); });
-  ['checkin','dash','attend','claim','settle','plan','invoice','wht','income','reconcile','receipt','leave','emp','settings'].forEach(function(s){ $('tab-'+s).classList.toggle('hidden', s!==name); });
+  ['checkin','dash','attend','claim','settle','plan','shipask','invoice','wht','income','reconcile','receipt','leave','emp','settings'].forEach(function(s){ $('tab-'+s).classList.toggle('hidden', s!==name); });
   if(name==='plan') initPlanTab();
+  if(name==='shipask') initShipAsk();
   if(name==='checkin') initCheckin();   // ขอสิทธิ์ตำแหน่งเฉพาะตอนเปิดแท็บเข้างานจริง ๆ
   if(name==='claim') initClaimTab();    // โหลดใบเบิกของพนักงานตอนเปิดแท็บครั้งแรก
   if(name==='settle') initSettleTab();
