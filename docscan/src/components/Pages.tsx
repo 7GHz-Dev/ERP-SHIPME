@@ -247,7 +247,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       <div className="w-full max-w-sm">
         <div className="mb-6 rounded-2xl bg-white p-3 shadow-sm ring-1 ring-black/5">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brand/logo.webp" alt="ERP SHIPME" width={640} height={270} className="mx-auto h-auto w-56" />
+          <img src="/brand/logo.webp?v=3" alt="ERP SHIPME Logistics" width={900} height={353} className="mx-auto h-auto w-64" />
         </div>
         <h1 className="text-3xl font-bold text-navy">DocScan</h1>
         <p className="mt-1 text-muted">สแกนเอกสารให้ชัดเหมือนเครื่องสแกน</p>

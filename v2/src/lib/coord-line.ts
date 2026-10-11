@@ -125,7 +125,7 @@ export async function replyLine(replyToken: string, messages: unknown[]) {
 
 // ---------------- การ์ดข้อความ (Flex Message) ----------------
 
-const NAVY = '#0D2748', AMBER = '#FFB020', GREEN = '#06C755';
+const NAVY = '#0B2A52', AMBER = '#D4A044', GREEN = '#06C755';
 
 /** ปุ่มเปิดลิงก์ (uri) หรือปุ่มตอบในแชท (data = postback ส่งเข้า webhook, displayText = ข้อความที่ขึ้นในแชทแทนผู้กด) */
 export type FlexButton = { label: string; uri?: string; data?: string; displayText?: string; primary?: boolean };

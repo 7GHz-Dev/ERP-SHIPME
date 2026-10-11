@@ -29,16 +29,18 @@ function shell(title: string, head: string, main: string, script = '') {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<meta name="theme-color" content="#002967">
+<meta name="theme-color" content="#0B2A52">
 <title>${esc(title)}</title>
-<link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png?v=3">
 ${head}
 <style>
-  :root { --navy:#002967; --blue:#0058eb; --accent:#ffa202; --bg:#f1f5fb; --muted:#64748b; --ok:#166534; --okbg:#dcfce7; --err:#991b1b; --errbg:#fee2e2; }
+  :root { --navy:#0B2A52; --blue:#1E56A8; --accent:#D4A044; --bg:#f1f5fb; --muted:#64748b; --ok:#166534; --okbg:#dcfce7; --err:#991b1b; --errbg:#fee2e2; }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:#0f172a; font-family:-apple-system,'Segoe UI',Roboto,'Noto Sans Thai',sans-serif; font-size:16px; line-height:1.55; }
   header { background:#fff; padding:12px 16px; display:flex; justify-content:center; box-shadow:inset 0 -3px 0 var(--accent); }
-  header img { height:42px; width:auto; display:block; }
+  header { align-items:center; gap:10px; }
+  header .mk { height:38px; width:38px; border-radius:9px; display:block; }
+  header .wm { height:32px; width:auto; display:block; }
   main { max-width:560px; margin:0 auto; padding:16px; }
   .card { background:#fff; border-radius:16px; padding:16px; margin-bottom:14px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
   .lbl { font-size:13px; color:var(--muted); font-weight:700; margin-bottom:6px; }
@@ -48,7 +50,7 @@ ${head}
   .map img { width:100%; height:auto; min-height:140px; display:block; border-radius:12px; border:1px solid #e2e8f0; background:#eef2f7; }
   .map .cap { font-size:13px; color:var(--muted); text-align:center; margin-top:6px; }
   .btn { display:block; width:100%; border:0; border-radius:12px; padding:15px; font-size:17px; font-weight:700; cursor:pointer;
-         background:linear-gradient(135deg,#0058eb,#0a74f0); color:#fff; font-family:inherit; }
+         background:linear-gradient(135deg,#1E56A8,#2A68C2); color:#fff; font-family:inherit; }
   .btn.ghost { background:#e2e8f0; color:#0f172a; margin-top:10px; }
   .st { border-radius:12px; padding:12px; font-size:15px; margin-bottom:12px; }
   .st.wait { background:#fef9c3; color:#854d0e; }
@@ -63,7 +65,7 @@ ${head}
 </style>
 </head>
 <body>
-<header><img src="/brand/logo.webp" alt="ERP SHIPME" width="160" height="42"></header>
+<header><img class="mk" src="/brand/mark.webp?v=3" alt="" width="38" height="38"><img class="wm" src="/brand/wordmark.webp?v=3" alt="ERP SHIPME Logistics" width="166" height="32"></header>
 <main>${main}</main>
 <div class="foot">SHIPME Logistics</div>
 ${script}

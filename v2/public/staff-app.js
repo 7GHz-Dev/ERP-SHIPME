@@ -340,7 +340,7 @@ function drawMap(){
   });
   (d.meetingPoints||[]).forEach(function(p){
     var m=new google.maps.Marker({ map:S.gmap, position:{lat:p.latitude,lng:p.longitude}, title:'จุดนัด: '+p.name,
-      icon:{ path:google.maps.SymbolPath.CIRCLE, scale:7, fillColor:'#0D2748', fillOpacity:1, strokeColor:'#FFB020', strokeWeight:3 } });
+      icon:{ path:google.maps.SymbolPath.CIRCLE, scale:7, fillColor:'#0B2A52', fillOpacity:1, strokeColor:'#D4A044', strokeWeight:3 } });
     S.markers.push(m);
   });
   var rt=S.route && S.route.phase===ph ? S.route : null;
@@ -350,12 +350,12 @@ function drawMap(){
     S.markers.push(st); bounds.extend(st.getPosition()); n++;
     rt.stops.forEach(function(s){
       var mk=new google.maps.Marker({ map:S.gmap, position:{lat:s.lat,lng:s.lng}, zIndex:999, title:s.seq+'. '+s.label,
-        label:{ text:String(s.seq), color:'#2b1b00', fontWeight:'800' }, icon:{ path:google.maps.SymbolPath.CIRCLE, scale:13, fillColor:'#FFB020', fillOpacity:1, strokeColor:'#0D2748', strokeWeight:2 } });
+        label:{ text:String(s.seq), color:'#2b1b00', fontWeight:'800' }, icon:{ path:google.maps.SymbolPath.CIRCLE, scale:13, fillColor:'#D4A044', fillOpacity:1, strokeColor:'#0B2A52', strokeWeight:2 } });
       S.markers.push(mk); bounds.extend(mk.getPosition()); n++;
     });
     // เส้นทางวาดเฉพาะผลจาก Google Routes — ประมาณการแสดงแค่ลำดับเลข
     if(rt.polyline && google.maps.geometry){
-      var line=new google.maps.Polyline({ map:S.gmap, path:google.maps.geometry.encoding.decodePath(rt.polyline), strokeColor:'#0D2748', strokeOpacity:.85, strokeWeight:5 });
+      var line=new google.maps.Polyline({ map:S.gmap, path:google.maps.geometry.encoding.decodePath(rt.polyline), strokeColor:'#0B2A52', strokeOpacity:.85, strokeWeight:5 });
       S.markers.push(line);
     }
   }

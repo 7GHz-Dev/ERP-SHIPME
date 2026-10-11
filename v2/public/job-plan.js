@@ -761,7 +761,7 @@ function mmCompose(){
     g.fillStyle='#fff'; g.font='bold '+Math.round(bar*0.55)+'px "Noto Sans Thai", sans-serif'; g.textBaseline='middle';
     g.fillText(text, Math.round(bar*0.4), y+bar/2);
   };
-  if(b) label(0, 'แผนที่จุดนัด', '#002967');
+  if(b) label(0, 'แผนที่จุดนัด', '#0B2A52');
   g.drawImage(a, 0, bar, W, ha);
   if(b){ label(bar+ha, 'หน้างานจริง', '#e08a00'); g.drawImage(b, 0, bar*2+ha, W, hb); }
   mm.w=W; mm.h=H;
@@ -865,7 +865,7 @@ function mpDrawMap(){
 function mpSetDraft(lat, lng, pan){
   $('mp-lat').value=Number(lat).toFixed(6); $('mp-lng').value=Number(lng).toFixed(6);
   if(mp.gmap){
-    if(!mp.draft) mp.draft=new google.maps.Marker({ map:mp.gmap, icon:{ path:google.maps.SymbolPath.CIRCLE, scale:9, fillColor:'#FFB020', fillOpacity:1, strokeColor:'#0D2748', strokeWeight:3 }, title:'จุดใหม่' });
+    if(!mp.draft) mp.draft=new google.maps.Marker({ map:mp.gmap, icon:{ path:google.maps.SymbolPath.CIRCLE, scale:9, fillColor:'#D4A044', fillOpacity:1, strokeColor:'#0B2A52', strokeWeight:3 }, title:'จุดใหม่' });
     mp.draft.setPosition({ lat:Number(lat), lng:Number(lng) });
     if(pan){ mp.gmap.panTo({ lat:Number(lat), lng:Number(lng) }); mp.gmap.setZoom(17); }
   }

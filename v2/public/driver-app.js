@@ -116,7 +116,7 @@ function home(){
       if(res.requests.length) sendLocation(res.requests); else toast('ตอนนี้ชิปปิ้งยังไม่ได้ขอตำแหน่ง', 3500); }
     if(q.get('help') && !D.shortcutDone){ D.shortcutDone=true; renderHelp(); }
     if(q.get('m') && !D.shortcutDone){ D.shortcutDone=true;
-      var el=document.querySelector('[data-meet="'+q.get('m')+'"]'); if(el){ el.scrollIntoView({ block:'center' }); el.style.boxShadow='0 0 0 3px #FFB020'; } }
+      var el=document.querySelector('[data-meet="'+q.get('m')+'"]'); if(el){ el.scrollIntoView({ block:'center' }); el.style.boxShadow='0 0 0 3px #D4A044'; } }
   });
 }
 

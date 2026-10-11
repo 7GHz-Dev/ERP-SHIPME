@@ -3,19 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#0D2748">
+<meta name="theme-color" content="#0B2A52">
 <title>SHIPME — งานชิปปิ้ง</title>
-<link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png">
-<link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png?v=3">
+<link rel="apple-touch-icon" href="/brand/apple-touch-icon.png?v=3">
 <style>
-  /* SHIPME Driver Coordination — Navy #0D2748 • Amber #FFB020 • LINE Green #06C755 */
-  :root { --navy:#0D2748; --navy2:#16365f; --amber:#FFB020; --green:#06C755; --bg:#eef1f5; --card:#fff; --line:#e3e8ef;
+  /* SHIPME Driver Coordination — กรมท่า #0B2A52 • ทอง #D4A044 • LINE Green #06C755 (ป้ายโหมดทดลองคงสีส้ม = เตือน) */
+  :root { --navy:#0B2A52; --navy2:#163F7E; --amber:#D4A044; --green:#06C755; --bg:#eef1f5; --card:#fff; --line:#e3e8ef;
           --muted:#6b7686; --text:#111827; --red:#dc2626; --redbg:#fee2e2; --okbg:#dcfce7; --ok:#15803d; --warnbg:#fef3c7; --warn:#92400e; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html, body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,'Segoe UI',Roboto,'Noto Sans Thai',sans-serif; font-size:15px; }
   .app { max-width:520px; margin:0 auto; min-height:100vh; padding-bottom:calc(72px + env(safe-area-inset-bottom)); }
-  header { position:sticky; top:0; z-index:30; background:var(--navy); color:#fff; padding:10px 14px; display:flex; align-items:center; gap:10px; }
-  header img { width:34px; height:34px; border-radius:9px; background:#fff; padding:2px; }
+  header { position:sticky; top:0; z-index:30; background:linear-gradient(120deg,#001D46,var(--navy) 55%,#163F7E); box-shadow:inset 0 -3px 0 var(--amber); color:#fff; padding:10px 14px; display:flex; align-items:center; gap:10px; }
+  header img { width:34px; height:34px; border-radius:9px; box-shadow:0 0 0 1px rgba(242,203,122,.55); }
   header .t { flex:1; min-width:0; line-height:1.2; }
   header .t b { color:var(--amber); font-size:16px; } header .t span { font-size:12px; opacity:.85; display:block; }
   header button { background:rgba(255,255,255,.12); color:#fff; border:0; border-radius:10px; width:38px; height:38px; font-size:17px; }
@@ -136,7 +136,7 @@
 <body>
 <div class="app">
   <header>
-    <img src="/brand/mark.webp" alt="SHIPME">
+    <img src="/brand/mark.webp?v=3" alt="SHIPME">
     <div class="t"><b>SHIPME</b> <span id="hd-sub">Shipping Staff</span></div>
     <button id="btn-refresh" title="โหลดใหม่">↻</button>
   </header>

@@ -4,16 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ERP SHIPME — ผู้ดูแลระบบ</title>
-<meta name="theme-color" content="#002967">
-<link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png">
-<link rel="icon" type="image/png" sizes="64x64" href="/brand/favicon-64.png">
-<link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+<meta name="theme-color" content="#0B2A52">
+<link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png?v=3">
+<link rel="icon" type="image/png" sizes="64x64" href="/brand/favicon-64.png?v=3">
+<link rel="apple-touch-icon" href="/brand/apple-touch-icon.png?v=3">
 <style>
 @font-face{font-family:Sarabun;font-style:normal;font-weight:400;src:url("/fonts/Sarabun-Regular.ttf") format("truetype");font-display:swap}@font-face{font-family:Sarabun;font-style:normal;font-weight:600;src:url("/fonts/Sarabun-SemiBold.ttf") format("truetype");font-display:swap}@font-face{font-family:Sarabun;font-style:normal;font-weight:700;src:url("/fonts/Sarabun-Bold.ttf") format("truetype");font-display:swap}@font-face{font-family:Sarabun;font-style:normal;font-weight:800;src:url("/fonts/Sarabun-ExtraBold.ttf") format("truetype");font-display:swap}
 #tab-invoice,#tab-invoice input,#tab-invoice button,#tab-invoice select{font-family:Sarabun,sans-serif}
 
-  /* ธีม ERP SHIPME (สีจากโลโก้): น้ำเงินเข้ม #002967 • น้ำเงิน #0058eb • ฟ้า #0099fd • ส้ม #ffa202 */
-  :root { --blue:#002967; --blue2:#0058eb; --cyan:#0099fd; --accent:#ffa202; --bg:#f3f6fb; --card:#fff; --muted:#64748b; --line:#e2e8f0; --gridline:#dfe3e8; }
+  /* ธีม ERP SHIPME Logistics (สีจากโลโก้ใหม่): กรมท่า #0B2A52 • น้ำเงิน #1E56A8 • ฟ้า #4A8FE0 • ทอง #D4A044 / #F2CB7A */
+  :root { --blue:#0B2A52; --blue2:#1E56A8; --cyan:#4A8FE0; --accent:#D4A044; --bg:#f2f6fb; --card:#fff; --muted:#64748b; --line:#e2e8f0; --gridline:#dfe3e8; }
   * { box-sizing:border-box; }
   body { margin:0; font-family:-apple-system,'Segoe UI',Roboto,'Noto Sans Thai',sans-serif; background:var(--bg); color:#0f172a; }
   .btn { border:0; border-radius:9px; padding:9px 15px; font-size:14px; font-weight:600; cursor:pointer; }
@@ -49,9 +49,11 @@
 
   /* shell */
   header.top { height:57px; background:#fff; border-bottom:1px solid var(--line); padding:0 20px; display:flex; align-items:center; justify-content:space-between; gap:10px; position:sticky; top:0; z-index:20;
-               box-shadow:inset 0 -3px 0 transparent; background-image:linear-gradient(90deg,#002967,#0058eb 45%,#0099fd 75%,#ffa202); background-size:100% 3px; background-repeat:no-repeat; background-position:bottom; }
+               box-shadow:inset 0 -3px 0 transparent; background-image:linear-gradient(90deg,#001D46,#0B2A52 30%,#1E56A8 55%,#D4A044 85%,#F2CB7A); background-size:100% 3px; background-repeat:no-repeat; background-position:bottom; }
   header.top .brand { font-weight:800; font-size:16px; color:var(--blue); display:flex; align-items:center; gap:12px; }
-  header.top .brand-logo { height:40px; width:auto; display:block; }
+  /* โลโก้แนวนอน: สัญลักษณ์ S ทอง + ตัวอักษร ERP SHIPME LOGISTICS (โลโก้เต็มรูปเรือเล็กเกินอ่านที่ความสูงหัวเพจ) */
+  header.top .brand-mark { height:38px; width:38px; border-radius:9px; display:block; box-shadow:0 1px 3px rgba(0,29,70,.25); }
+  header.top .brand-logo { height:34px; width:auto; display:block; }
   header.top .brand-sep { width:1px; height:26px; background:var(--line); }
   header.top .who { font-size:13px; color:var(--muted); }
   .nav { display:flex; gap:4px; background:#fff; padding:0 20px; border-bottom:1px solid var(--line); position:sticky; top:57px; z-index:19; overflow-x:auto; white-space:nowrap; }
@@ -173,7 +175,8 @@
     .wrap { padding:14px; }
     header.top .who { display:none; }
     header.top { height:50px; padding:0 14px; }
-    header.top .brand-logo { height:32px; }
+    header.top .brand-mark { height:32px; width:32px; }
+    header.top .brand-logo { height:28px; }
     header.top .brand-sep, #brand-title { display:none; }
     .nav { top:50px; }
     .toolbar > * { flex:1 1 100%; }
@@ -308,7 +311,7 @@
 <!-- ===== APP ===== -->
 <div id="view-app" class="hidden">
   <header class="top">
-    <div class="brand"><img class="brand-logo" src="/brand/logo.webp" alt="ERP SHIPME" width="640" height="270"><span class="brand-sep"></span><span id="brand-title">แดชบอร์ดผู้ดูแล</span></div>
+    <div class="brand"><img class="brand-mark" src="/brand/mark.webp?v=3" alt="" width="192" height="192"><img class="brand-logo" src="/brand/wordmark.webp?v=3" alt="ERP SHIPME Logistics" width="832" height="160"><span class="brand-sep"></span><span id="brand-title">แดชบอร์ดผู้ดูแล</span></div>
     <div style="display:flex;align-items:center;gap:12px">
       <span class="who" id="who"></span>
       <button id="btn-logout" class="btn btn-ghost btn-sm">ออกจากระบบ</button>
@@ -2548,7 +2551,7 @@ function renderSettlements(){
       '<td>'+cntr+'</td>'+
       '<td>'+fmtM(r.totalExpense)+'</td>'+
       '<td>'+fmtM(r.claimTotal)+'</td>'+
-      '<td style="font-weight:700;color:'+(bal>=0?'#002967':'#dc2626')+'">'+fmtM(Math.abs(bal))+
+      '<td style="font-weight:700;color:'+(bal>=0?'#0B2A52':'#dc2626')+'">'+fmtM(Math.abs(bal))+
         '<div class="muted" style="font-weight:400">'+(bal>=0?'โอนคืนบริษัท':'บริษัทโอนคืน')+'</div></td>'+
       '<td class="time-cell">'+(r.returnedDate?esc(fmtD(r.returnedDate)):'')+
         ((settleStatus(r)!=='done' || !r.returnedDate) ? ('<div>'+SM_STATUS_TH[settleStatus(r)]+'</div>'+settleOwedText(r)) : '')+'</td>'+
@@ -3463,10 +3466,10 @@ $('line-check').addEventListener('click', function(){
 function drawRichMenu(title, buttons, accent){
   var c=document.createElement('canvas'); c.width=2500; c.height=843;
   var g=c.getContext('2d'), w=2500/buttons.length;
-  g.fillStyle='#0D2748'; g.fillRect(0,0,2500,843);
+  g.fillStyle='#0B2A52'; g.fillRect(0,0,2500,843);
   buttons.forEach(function(b, i){
     var x=i*w;
-    g.fillStyle=i%2?'#12345c':'#0f2d52'; g.fillRect(x+18,18,w-36,807);
+    g.fillStyle=i%2?'#123563':'#0e3060'; g.fillRect(x+18,18,w-36,807);
     g.fillStyle=accent; g.fillRect(x+18,18,w-36,14);
     g.font='260px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif'; g.textAlign='center'; g.textBaseline='middle';
     g.fillText(b.icon, x+w/2, 360);
@@ -3479,7 +3482,7 @@ function drawRichMenu(title, buttons, accent){
 function richMenuImages(){
   return {
     driverImage: drawRichMenu('SHIPME • คนขับ', [{icon:'📋',label:'งานของฉัน'},{icon:'📍',label:'ส่งตำแหน่ง'},{icon:'☎️',label:'ช่วยเหลือ'}], '#06C755'),
-    staffImage: drawRichMenu('SHIPME • ชิปปิ้ง', [{icon:'🗂️',label:'งานชิปปิ้ง'},{icon:'🗺️',label:'แผนที่'},{icon:'📦',label:'สถานะงาน'}], '#FFB020')
+    staffImage: drawRichMenu('SHIPME • ชิปปิ้ง', [{icon:'🗂️',label:'งานชิปปิ้ง'},{icon:'🗺️',label:'แผนที่'},{icon:'📦',label:'สถานะงาน'}], '#D4A044')
   };
 }
 $('rm-install').addEventListener('click', function(){

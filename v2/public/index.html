@@ -3,24 +3,26 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta name="theme-color" content="#002967">
+<meta name="theme-color" content="#0B2A52">
 <title>ERP SHIPME — เช็คชื่อเข้างาน</title>
-<link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png">
-<link rel="icon" type="image/png" sizes="64x64" href="/brand/favicon-64.png">
-<link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png?v=3">
+<link rel="icon" type="image/png" sizes="64x64" href="/brand/favicon-64.png?v=3">
+<link rel="apple-touch-icon" href="/brand/apple-touch-icon.png?v=3">
 <style>
-  /* ธีม ERP SHIPME (สีจากโลโก้): น้ำเงินเข้ม #002967 • น้ำเงิน #0058eb • ฟ้า #0099fd • ส้ม #ffa202 */
-  :root { --blue:#002967; --blue2:#0058eb; --cyan:#0099fd; --accent:#ffa202; --bg:#f1f5fb; --card:#fff; --ok:#16a34a; --err:#dc2626; --muted:#64748b;
-          --brand-grad:linear-gradient(120deg,#002967 0%,#0042b8 55%,#0058eb 100%); }
+  /* ธีม ERP SHIPME Logistics (สีจากโลโก้ใหม่): กรมท่า #0B2A52 • น้ำเงิน #1E56A8 • ฟ้า #4A8FE0 • ทอง #D4A044 / #F2CB7A */
+  :root { --blue:#0B2A52; --blue2:#1E56A8; --cyan:#4A8FE0; --accent:#D4A044; --bg:#f1f5fb; --card:#fff; --ok:#16a34a; --err:#dc2626; --muted:#64748b;
+          --brand-grad:linear-gradient(120deg,#001D46 0%,#0B2A52 50%,#1E56A8 100%); }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   body { margin:0; font-family:-apple-system,'Segoe UI',Roboto,'Noto Sans Thai',sans-serif; background:var(--bg); color:#0f172a; }
   .app { max-width:480px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column; }
   header { background:var(--brand-grad); color:#fff; padding:14px 16px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:10;
-           box-shadow:inset 0 -3px 0 var(--accent); }
+           box-shadow:0 2px 8px rgba(0,29,70,.18); }
+  /* เส้นทองใต้หัว (sticky = เป็นกรอบอ้างอิงของ ::after) */
+  header::after { content:''; position:absolute; left:0; right:0; bottom:0; height:3px; background:linear-gradient(90deg,#D4A044,#F2CB7A 50%,#D4A044); }
   header .title { font-weight:700; font-size:17px; }
   header .sub { font-size:12px; opacity:.85; }
   .btn { border:0; border-radius:12px; padding:14px 16px; font-size:16px; font-weight:600; width:100%; cursor:pointer; }
-  .btn-primary { background:linear-gradient(135deg,#0058eb,#0a74f0); color:#fff; box-shadow:0 2px 6px rgba(0,88,235,.25); }
+  .btn-primary { background:linear-gradient(135deg,#1E56A8,#2A68C2); color:#fff; box-shadow:0 2px 6px rgba(30,86,168,.25); }
   .btn-primary:disabled { background:#94a3b8; }
   .btn-ghost { background:#e2e8f0; color:#0f172a; }
   .btn-ok { background:#16a34a; color:#fff; }
@@ -29,11 +31,11 @@
   .card { background:var(--card); border-radius:16px; padding:18px; box-shadow:0 1px 3px rgba(0,0,0,.08); margin-bottom:14px; }
   label { font-size:13px; color:var(--muted); font-weight:600; display:block; margin-bottom:6px; }
   input { width:100%; padding:13px; border:1px solid #cbd5e1; border-radius:12px; font-size:16px; margin-bottom:14px; }
-  input:focus, select:focus, textarea:focus { outline:none; border-color:var(--blue2); box-shadow:0 0 0 3px rgba(0,88,235,.12); }
+  input:focus, select:focus, textarea:focus { outline:none; border-color:var(--blue2); box-shadow:0 0 0 3px rgba(30,86,168,.12); }
   /* หน้าเข้าสู่ระบบ: โลโก้ ERP SHIPME */
-  header .hmark { width:40px; height:40px; border-radius:12px; background:#fff; padding:3px; flex:0 0 auto; box-shadow:0 1px 3px rgba(0,0,0,.25); }
-  .brand-hero { text-align:center; padding:26px 16px 6px; }
-  .brand-hero img { width:min(300px,78%); height:auto; display:block; margin:0 auto; }
+  header .hmark { width:40px; height:40px; border-radius:11px; flex:0 0 auto; box-shadow:0 0 0 1px rgba(242,203,122,.55),0 1px 3px rgba(0,0,0,.3); }
+  .brand-hero { text-align:center; padding:22px 16px 6px; background:radial-gradient(120% 90% at 50% 0%,#ffffff 0%,#eaf2fc 70%,transparent 100%); }
+  .brand-hero img { width:min(360px,90%); height:auto; display:block; margin:0 auto; filter:drop-shadow(0 6px 10px rgba(0,29,70,.12)); }
   .brand-hero .tag { margin-top:6px; font-size:13px; color:var(--muted); }
   .brand-hero .tag b { color:var(--blue); }
   /* ช่องวันที่แบบพอดีเนื้อหา (ไม่ต้องกินความกว้างทั้งแถว) */
@@ -222,7 +224,7 @@
   .gps-step .miss { font-size:12px; color:var(--muted); background:#f7f9fc; border:1px dashed #cbd5e1;
                     border-radius:10px; padding:10px; }
   /* ---- งานปล่อย + SMS คนขับรถ (release-jobs.js) ---- */
-  .rl-badge { display:inline-block; min-width:18px; padding:0 5px; margin-left:5px; border-radius:999px; background:var(--accent); color:#002967; font-size:11px; font-weight:800; line-height:18px; text-align:center; }
+  .rl-badge { display:inline-block; min-width:18px; padding:0 5px; margin-left:5px; border-radius:999px; background:var(--accent); color:#0B2A52; font-size:11px; font-weight:800; line-height:18px; text-align:center; }
   .rl-dates { display:flex; gap:6px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:2px; }
   .rl-day { flex:0 0 auto; border:1px solid #cbd5e1; background:#fff; border-radius:12px; padding:7px 11px; font-size:13px; font-weight:700; color:#0f172a; cursor:pointer; text-align:center; }
   .rl-day small { display:block; font-weight:600; color:var(--muted); font-size:11px; }
@@ -264,7 +266,7 @@
   <!-- ======= LOGIN ======= -->
   <div id="screen-login">
     <div class="brand-hero">
-      <img src="/brand/logo.webp" alt="ERP SHIPME" width="640" height="270">
+      <img src="/brand/logo.webp?v=3" alt="ERP SHIPME Logistics" width="900" height="353">
       <div class="tag"><b>ERP SHIPME</b> • เช็คชื่อเข้างาน • เบิก • ปิดบัญชี</div>
     </div>
     <div class="content">
@@ -284,7 +286,7 @@
   <!-- ======= CHECK-IN ======= -->
   <div id="screen-checkin" class="hidden">
     <header>
-      <div style="display:flex;align-items:center;gap:10px"><img class="hmark" src="/brand/mark.webp" alt="ERP SHIPME" width="40" height="40"><div><div class="title" id="hi-name">สวัสดี</div><div class="sub" id="hi-role">พนักงาน</div></div></div>
+      <div style="display:flex;align-items:center;gap:10px"><img class="hmark" src="/brand/mark.webp?v=3" alt="ERP SHIPME" width="40" height="40"><div><div class="title" id="hi-name">สวัสดี</div><div class="sub" id="hi-role">พนักงาน</div></div></div>
       <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end">
         <button id="btn-gorelease" class="btn-link hidden">งานปล่อย<span id="rl-badge" class="rl-badge hidden"></span></button>
         <button id="btn-goclaim" class="btn-link hidden">เบิก</button>
