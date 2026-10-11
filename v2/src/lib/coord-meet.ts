@@ -6,7 +6,8 @@ import {
 } from '@/db/schema';
 import { loadBatch, logEvents, staffScope, xrayGate, type Phase } from './coord';
 import {
-  driverUrl, flexMessage, installRichMenus, lineMode, linkUserRichMenu, notifyStaff, pushToDriver, staffUrl, verifyLineIdToken
+  driverUrl, flexMessage, installRichMenus, lineMode, linkUserRichMenu, notifyStaff, pushToDriver, staffUrl, verifyLineIdToken,
+  routesErrorText
 } from './coord-line';
 import { env } from './env';
 import { sendPlainSms, smsConfig, thShortDate } from './sms';
@@ -293,7 +294,7 @@ async function travelMatrix(points: Pt[], estimate: boolean): Promise<{ m: Matri
         signal: AbortSignal.timeout(20000)
       });
       const data = await res.json().catch(() => null) as any;
-      if (!res.ok || !Array.isArray(data)) return { m: est, source: 'GOOGLE_ROUTES_API', error: String(data?.error?.message || `HTTP ${res.status}`) };
+      if (!res.ok || !Array.isArray(data)) return { m: est, source: 'GOOGLE_ROUTES_API', error: routesErrorText(data, res.status) };
       for (const e of data) {
         if (e.condition === 'ROUTE_EXISTS' && e.duration) grid[o + (e.originIndex || 0)][e.destinationIndex || 0] = parseInt(String(e.duration), 10);
       }

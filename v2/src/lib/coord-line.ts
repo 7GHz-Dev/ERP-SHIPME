@@ -204,7 +204,7 @@ export async function lineDiagnostics(origin: string) {
       const data = await res.json().catch(() => null) as any;
       const el = Array.isArray(data) ? data[0] : null;
       out.routes = el?.duration ? { ok: true, seconds: parseInt(el.duration, 10), meters: el.distanceMeters }
-        : { ok: false, error: String(data?.error?.message || data?.[0]?.error?.message || `HTTP ${res.status}`).slice(0, 200) };
+        : { ok: false, error: routesErrorText(data, res.status) };
     } catch { out.routes = { ok: false, error: 'เชื่อมต่อ Google Routes ไม่ได้' }; }
   } else out.routes = { ok: false, error: 'ยังไม่ได้ตั้ง GOOGLE_ROUTES_SERVER_KEY (ใช้ประมาณการ)' };
   out.cron = { configured: Boolean(env.cronSecret) };
@@ -212,6 +212,32 @@ export async function lineDiagnostics(origin: string) {
   const used = await call('/v2/bot/message/quota/consumption');
   out.quota = { type: quota.data?.type, limit: quota.data?.value ?? null, used: used.data?.totalUsage ?? null };
   return out;
+}
+
+// ---------------- Google Routes: อ่านสาเหตุ error ให้คนอ่านรู้เรื่อง ----------------
+
+/**
+ * Routes API ตอบ error ได้ทั้งแบบ object และ array (computeRouteMatrix) — ดึงข้อความจริงออกมา
+ * แล้วแปลสาเหตุที่เจอบ่อยเป็นวิธีแก้ (ส่วนใหญ่เป็นการตั้งค่าคีย์ใน Google Cloud ไม่ใช่โค้ด)
+ */
+export function routesErrorText(data: any, status: number) {
+  const err = data?.error || (Array.isArray(data) ? data.find((x: any) => x?.error)?.error : null) || {};
+  const reason = String((err.details || []).find((d: any) => d?.reason)?.reason || err.status || '');
+  const msg = String(err.message || `HTTP ${status}`);
+  const hint =
+    /referer/i.test(msg) || reason === 'API_KEY_HTTP_REFERRER_BLOCKED'
+      ? 'คีย์ GOOGLE_ROUTES_SERVER_KEY ถูกจำกัดแบบเว็บไซต์ (HTTP referrers) ซึ่งใช้จากเซิร์ฟเวอร์ไม่ได้ — ใน Google Cloud ตั้ง Application restrictions = None และ API restrictions = Routes API'
+    : /IP address/i.test(msg) || reason === 'API_KEY_IP_ADDRESS_BLOCKED'
+      ? 'คีย์ถูกจำกัด IP — เซิร์ฟเวอร์ Vercel เปลี่ยน IP ตลอด ให้ตั้ง Application restrictions = None'
+    : reason === 'SERVICE_DISABLED' || /has not been used|is disabled/i.test(msg)
+      ? 'ยังไม่ได้เปิด Routes API ในโปรเจกต์ Google Cloud ของคีย์นี้'
+    : reason === 'API_KEY_SERVICE_BLOCKED' || /are blocked/i.test(msg)
+      ? 'คีย์นี้ไม่ได้อนุญาต Routes API — เพิ่ม Routes API ใน API restrictions ของคีย์'
+    : reason === 'BILLING_DISABLED' || /billing/i.test(msg)
+      ? 'โปรเจกต์ Google Cloud ยังไม่ได้ผูกบัญชีชำระเงิน (Billing)'
+    : /API key not valid/i.test(msg) ? 'คีย์ไม่ถูกต้อง — ตรวจค่า GOOGLE_ROUTES_SERVER_KEY ใน Vercel'
+    : '';
+  return (hint ? `${hint} (${msg})` : msg).slice(0, 300);
 }
 
 // ---------------- แจ้งเตือนชิปปิ้งทาง LINE ----------------
