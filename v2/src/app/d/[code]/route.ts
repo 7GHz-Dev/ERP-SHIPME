@@ -38,10 +38,8 @@ ${head}
   :root { --navy:#0B2A52; --blue:#1E56A8; --accent:#D4A044; --bg:#f1f5fb; --muted:#64748b; --ok:#166534; --okbg:#dcfce7; --err:#991b1b; --errbg:#fee2e2; }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:#0f172a; font-family:-apple-system,'Segoe UI',Roboto,'Noto Sans Thai',sans-serif; font-size:16px; line-height:1.55; }
-  header { background:#fff; padding:12px 16px; display:flex; justify-content:center; box-shadow:inset 0 -3px 0 var(--accent); }
-  header { align-items:center; gap:10px; }
-  header .mk { height:38px; width:38px; border-radius:9px; display:block; }
-  header .wm { height:32px; width:auto; display:block; }
+  header { background:#fff; padding:8px 16px; display:flex; justify-content:center; box-shadow:inset 0 -3px 0 var(--accent); }
+  header img { height:58px; width:auto; display:block; }
   main { max-width:560px; margin:0 auto; padding:16px; }
   .card { background:#fff; border-radius:16px; padding:16px; margin-bottom:14px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
   .lbl { font-size:13px; color:var(--muted); font-weight:700; margin-bottom:6px; }
@@ -66,7 +64,7 @@ ${head}
 </style>
 </head>
 <body>
-<header><img class="mk" src="/brand/mark.svg?v=4" alt="" width="38" height="38"><img class="wm" src="/brand/wordmark.svg?v=4" alt="ERP SHIPME Logistics" width="174" height="32"></header>
+<header><img src="/brand/logo.webp?v=4" alt="ERP SHIPME Logistics" width="148" height="58"></header>
 <main>${main}</main>
 <div class="foot">SHIPME Logistics</div>
 ${script}
