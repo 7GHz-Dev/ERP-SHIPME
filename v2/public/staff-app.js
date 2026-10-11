@@ -353,13 +353,51 @@ function drawMap(){
         label:{ text:String(s.seq), color:'#2b1b00', fontWeight:'800' }, icon:{ path:google.maps.SymbolPath.CIRCLE, scale:13, fillColor:'#D4A044', fillOpacity:1, strokeColor:'#0B2A52', strokeWeight:2 } });
       S.markers.push(mk); bounds.extend(mk.getPosition()); n++;
     });
-    // เส้นทางวาดเฉพาะผลจาก Google Routes — ประมาณการแสดงแค่ลำดับเลข
-    if(rt.polyline && google.maps.geometry){
-      var line=new google.maps.Polyline({ map:S.gmap, path:google.maps.geometry.encoding.decodePath(rt.polyline), strokeColor:'#0B2A52', strokeOpacity:.85, strokeWeight:5 });
-      S.markers.push(line);
-    }
+    drawRouteLines(rt);
   }
   if(n===1){ S.gmap.setCenter(bounds.getCenter()); S.gmap.setZoom(15); } else if(n>1) S.gmap.fitBounds(bounds, 40);
+}
+
+/**
+ * ตีเส้นเชื่อมทุกจุดตามลำดับ: จุดเริ่ม → 1 → 2 → … (หัวลูกศรบอกทิศ + ป้ายเวลาเดินทางแต่ละช่วง)
+ *   Google Routes = เส้นถนนจริง (เส้นทึบ) / ประมาณการ = เส้นตรงประ (ไม่ใช่เส้นทางถนนจริง)
+ * คนขับที่ "มาหาที่จุดนัด" ตีเส้นประสีเขียวจากตำแหน่งคนขับไปจุดนั้น
+ */
+function drawRouteLines(rt){
+  var NAVY='#0B2A52', GOLD='#D4A044';
+  var push=function(o){ S.markers.push(o); return o; };
+  var arrow={ path:google.maps.SymbolPath.FORWARD_CLOSED_ARROW, scale:3.2, fillColor:GOLD, fillOpacity:1, strokeColor:NAVY, strokeWeight:1.2 };
+  var dash={ path:'M 0,-1 0,1', strokeOpacity:1, strokeColor:NAVY, strokeWeight:4, scale:3 };
+  var pts=[{lat:rt.start.lat,lng:rt.start.lng}].concat(rt.stops.map(function(s){ return {lat:s.lat,lng:s.lng}; }));
+  var road=rt.polyline && google.maps.geometry ? google.maps.geometry.encoding.decodePath(rt.polyline) : null;
+  if(road){
+    push(new google.maps.Polyline({ map:S.gmap, path:road, strokeColor:NAVY, strokeOpacity:.85, strokeWeight:5,
+      icons:[{ icon:arrow, offset:'60px', repeat:'140px' }] }));
+  }
+  for(var i=1;i<pts.length;i++){
+    var a=pts[i-1], b=pts[i];
+    if(!road){
+      // เส้นตรงประต่อช่วง + ลูกศรกลางช่วง
+      push(new google.maps.Polyline({ map:S.gmap, path:[a,b], strokeOpacity:0, geodesic:false,
+        icons:[{ icon:dash, offset:'0', repeat:'14px' }, { icon:arrow, offset:'55%' }] }));
+    }
+    var sec=rt.stops[i-1].legSeconds||0;
+    if(sec>0) push(new google.maps.Marker({ map:S.gmap, position:{lat:(a.lat+b.lat)/2,lng:(a.lng+b.lng)/2}, clickable:false, zIndex:500,
+      label:{ text:Math.max(1,Math.round(sec/60))+' น.', color:NAVY, fontSize:'11px', fontWeight:'800' },
+      icon:{ path:'M -20,-10 H 20 A 4 4 0 0 1 24 -6 V 6 A 4 4 0 0 1 20 10 H -20 A 4 4 0 0 1 -24 6 V -6 A 4 4 0 0 1 -20 -10 Z',
+             fillColor:'#fff', fillOpacity:.95, strokeColor:GOLD, strokeWeight:1.5, scale:1, labelOrigin:new google.maps.Point(0,0) } }));
+  }
+  // คนขับเดินทางมาหาที่จุดนัด: เส้นประสีเขียวจากตำแหน่งคนขับ
+  var greenDash={ path:'M 0,-1 0,1', strokeOpacity:1, strokeColor:'#06C755', strokeWeight:3, scale:2.5 };
+  rt.stops.forEach(function(s){
+    (s.drivers||[]).forEach(function(d){
+      if(d.mode!=='DRIVER_TO_STAFF') return;
+      var x=S.data.drivers.filter(function(v){ return v.id===d.driverId; })[0];
+      var l=x && x.phases[rt.phase] && x.phases[rt.phase].location; if(!l) return;
+      push(new google.maps.Polyline({ map:S.gmap, path:[{lat:l.lat,lng:l.lng},{lat:s.lat,lng:s.lng}], strokeOpacity:0,
+        icons:[{ icon:greenDash, offset:'0', repeat:'10px' }, { icon:{ path:google.maps.SymbolPath.FORWARD_CLOSED_ARROW, scale:2.6, fillColor:'#06C755', fillOpacity:1, strokeColor:'#fff', strokeWeight:1 }, offset:'60%' }] }));
+    });
+  });
 }
 
 // ---------------- แผงล่าง: คนขับ / งาน ----------------
@@ -668,6 +706,7 @@ function renderRoute(){
   el.innerHTML='<div style="margin-top:10px">'+(r.source==='ESTIMATE'?'<div class="gate closed" style="font-size:13px">⚠️ เวลาเป็นค่าประมาณจากระยะทาง ไม่ใช่ผลจาก Google Routes — ใช้ดูลำดับเป็นหลัก</div>':'<span class="stage ok">ผลจาก Google Routes</span>')+
     '<div class="counters"><span class="cnt">ชิปปิ้งเดินทาง ~'+mins(t.staffTravelSeconds)+' นาที</span><span class="cnt">คนขับเดินทาง ~'+mins(t.driverIncrementalTravelSeconds)+' นาที</span>'+
     '<span class="cnt">รอรวม ~'+mins((t.staffWaitingSeconds||0)+(t.driverWaitingSeconds||0))+' นาที</span></div>'+
+    '<div class="muted" style="margin:6px 0 4px;font-size:12px">แผนที่: '+(r.polyline?'เส้นทึบ = เส้นทางถนนจริง':'เส้นประ = เส้นตรงเชื่อมจุด (ไม่ใช่เส้นถนน)')+' • ลูกศรบอกลำดับ • ป้ายบนเส้น = นาทีของช่วงนั้น • เส้นประเขียว = คนขับมาหาที่จุดนัด</div>'+
     r.stops.map(function(s){
       return '<div class="pick" style="display:block"><div class="row"><b class="grow">'+s.seq+'. '+esc(s.label)+'</b><span class="stage blue">'+hm(s.eta)+' น.</span></div>'+
         s.drivers.map(function(x){ return '<div class="muted">👤 '+esc(x.name)+' • '+(x.mode==='STAFF_TO_DRIVER'?'ชิปปิ้งไปหา':'คนขับมาหา ~'+mins(x.travelSeconds)+' นาที')+' • '+esc(x.containers.join(', '))+'</div>'; }).join('')+'</div>';

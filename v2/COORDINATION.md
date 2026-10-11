@@ -91,6 +91,7 @@ Based on `SHIPME_Driver_Coordination_MASTER_BUILD_PROMPT.md` v2.0, built inside 
    - Confirming the plan creates meetings in order and sends them by LINE.
    - Uses Google Routes API if `GOOGLE_ROUTES_SERVER_KEY` is set (and draws the real road polyline). Without it, times are estimated from distance (straight line × 1.35 at 30 km/h), labelled "ประมาณการ" (estimate), and no polyline is drawn.
    - If a key is set but the call fails, it shows "คำนวณไม่ได้" (can't calculate) and lets staff choose the estimate instead.
+  - The map links every stop in order (start → 1 → 2 → …) with direction arrows and a minutes label on each leg: a solid road line from Google Routes, or a dashed straight line when estimating. Drivers who come to a meeting point get a green dashed line from their location (2026-10-11).
 
 Tested against the real DB with temporary data in DEMO mode (deleted afterwards):
 - Meetings: overlap check, permissions, accept/reschedule, replacement, MET.
