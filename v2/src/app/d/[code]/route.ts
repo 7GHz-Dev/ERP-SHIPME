@@ -31,7 +31,8 @@ function shell(title: string, head: string, main: string, script = '') {
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#0B2A52">
 <title>${esc(title)}</title>
-<link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png?v=3">
+<link rel="icon" type="image/svg+xml" href="/brand/mark.svg?v=4">
+<link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png?v=4">
 ${head}
 <style>
   :root { --navy:#0B2A52; --blue:#1E56A8; --accent:#D4A044; --bg:#f1f5fb; --muted:#64748b; --ok:#166534; --okbg:#dcfce7; --err:#991b1b; --errbg:#fee2e2; }
@@ -65,7 +66,7 @@ ${head}
 </style>
 </head>
 <body>
-<header><img class="mk" src="/brand/mark.webp?v=3" alt="" width="38" height="38"><img class="wm" src="/brand/wordmark.webp?v=3" alt="ERP SHIPME Logistics" width="166" height="32"></header>
+<header><img class="mk" src="/brand/mark.svg?v=4" alt="" width="38" height="38"><img class="wm" src="/brand/wordmark.svg?v=4" alt="ERP SHIPME Logistics" width="174" height="32"></header>
 <main>${main}</main>
 <div class="foot">SHIPME Logistics</div>
 ${script}

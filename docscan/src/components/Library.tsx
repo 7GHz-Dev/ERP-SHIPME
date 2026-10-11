@@ -97,7 +97,7 @@ export default function Library({ folderId, ticket, onOpenFolder, onOpenDoc, onS
       <header className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brand/mark.webp?v=3" alt="" width={40} height={40} className="h-10 w-10 rounded-[10px]" />
+          <img src="/brand/mark.svg?v=4" alt="" width={40} height={40} className="h-10 w-10 rounded-[10px]" />
           <div className="leading-tight">
             <h1 className="text-2xl font-bold tracking-tight text-navy">DocScan</h1>
             <p className="text-xs font-semibold text-muted">by ERP <span className="text-accent">SHIPME</span></p>
