@@ -11,7 +11,7 @@ import { addPage } from '@/lib/repo';
 import type { Point, Quad } from '@/lib/types';
 import CaptureFlow from './CaptureFlow';
 import CropEditor from './CropEditor';
-import { Button, Spinner, friendlyError, useBlobUrl, useUi } from './ui';
+import { Button, Spinner, friendlyError, saveErrorText, useBlobUrl, useUi } from './ui';
 
 const LIVE_MAX = 400;       // ความละเอียดที่ใช้หาขอบแบบสด (ตัวหาขอบใช้ ~5ms/เฟรม — จับได้หลายสิบครั้งต่อวินาที)
 const STABLE_MS = 450;      // กรอบต้องนิ่งนานเท่านี้ก่อนถ่ายอัตโนมัติ
@@ -166,7 +166,7 @@ export default function Scanner({ getDocumentId, onDone, onClose }: {
         setCount((n) => n + 1);
         setLastThumb(page.thumbnail);
       } catch (e) {
-        ui.toast(`บันทึกหน้าไม่สำเร็จ: ${friendlyError(e)}`, 'error');
+        ui.toast(`บันทึกหน้าไม่สำเร็จ: ${await saveErrorText(e)}`, 'error');
       }
       jobs.current.shift();
     }

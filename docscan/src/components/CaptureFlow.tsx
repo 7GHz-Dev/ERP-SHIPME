@@ -6,7 +6,7 @@ import { buildPageFromCanvas, buildPageImages, suggestQuad } from '@/lib/process
 import { addPage } from '@/lib/repo';
 import type { Quad } from '@/lib/types';
 import CropEditor from './CropEditor';
-import { Button, Spinner, friendlyError, useUi } from './ui';
+import { Button, Spinner, saveErrorText, useUi } from './ui';
 
 /**
  * คิวรูป → (ยืนยันกรอบทีละรูป หรือครอบอัตโนมัติทั้งหมด) → เพิ่มเป็นหน้าของเอกสาร
@@ -46,7 +46,7 @@ export default function CaptureFlow({ documentId, items, confirm = true, onDone,
         setAdded((a) => a + 1);
         setI((x) => x + 1);
       } catch (e) {
-        ui.toast(friendlyError(e), 'error');
+        ui.toast(await saveErrorText(e), 'error');
         if (alive) setI((x) => x + 1);
       }
     })();
@@ -65,7 +65,7 @@ export default function CaptureFlow({ documentId, items, confirm = true, onDone,
       for (const b of others) { await addPage(documentId, await buildPageImages(b, null)); setAdded((a) => a + 1); }
       setI((x) => x + 1 + others.length);
     } catch (e) {
-      ui.toast(friendlyError(e), 'error');
+      ui.toast(await saveErrorText(e), 'error');
     } finally {
       setSaving(false);
     }

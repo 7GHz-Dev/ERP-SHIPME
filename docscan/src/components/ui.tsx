@@ -134,13 +134,31 @@ export function UiProvider({ children }: { children: ReactNode }) {
 /** ข้อความ error ที่ผู้ใช้อ่านเข้าใจ — ไม่โชว์ stack trace */
 export function friendlyError(e: unknown) {
   const m = e instanceof Error ? e.message : String(e);
-  // Safari เครื่องเต็ม: "Error preparing Blob/File data to be stored in object store"
-  if (/QuotaExceeded|quota|preparing Blob/i.test(m)) return 'พื้นที่เก็บในเครื่องเต็ม — ล้างถังขยะ หรือเปลี่ยนเป็น "ให้ระบบเก็บ" ที่ ตั้งค่า → ที่เก็บเอกสาร';
+  // ไม่ใช่พื้นที่ว่างของเครื่อง แต่เป็นที่เก็บที่เบราว์เซอร์แบ่งให้เว็บนี้ (คนละเรื่องกัน — เครื่องเหลือหลาย GB ก็เต็มได้)
+  if (/QuotaExceeded|quota/i.test(m)) return 'ที่เก็บที่เบราว์เซอร์แบ่งให้ DocScan เต็ม (ไม่ใช่พื้นที่ว่างของเครื่อง) — ล้างถังขยะ หรือเปลี่ยนเป็น "ให้ระบบเก็บ" ที่ ตั้งค่า → ที่เก็บเอกสาร';
+  // ลองเก็บแบบสำรองแล้วยังไม่ได้ (ดู db.ts writeWithFallback)
+  if (/preparing Blob/i.test(m)) return 'Safari บันทึกรูปลงเครื่องไม่ได้ — ถ้าเปิดแบบส่วนตัว (Private) หรือเปิดจากในแอป LINE ให้เปิด DocScan ด้วย Safari ปกติ หรือเปลี่ยนเป็น "ให้ระบบเก็บ" ที่ ตั้งค่า → ที่เก็บเอกสาร';
   if (/NotAllowedError|Permission/i.test(m)) return 'ไม่ได้รับอนุญาตให้ใช้กล้อง — เปิดสิทธิ์กล้องในการตั้งค่าเบราว์เซอร์';
   if (/NotFoundError|DevicesNotFound/i.test(m)) return 'ไม่พบกล้องในอุปกรณ์นี้ — ใช้ "นำเข้ารูป" แทน';
   if (/^[A-Za-z]+Error:|at .*\(/.test(m) || m.length > 200) return 'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง';
   return m || 'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง';
 }
+
+/**
+ * ข้อความ error ตอนบันทึกหน้า — ถ้าเป็นเรื่องที่เก็บ แนบตัวเลขจริงที่เบราว์เซอร์ให้ (ใช้ไป / ได้สูงสุด)
+ * ให้เห็นว่าเป็นโควตาของเบราว์เซอร์ ไม่ใช่พื้นที่ว่างของเครื่อง
+ */
+export async function saveErrorText(e: unknown) {
+  const text = friendlyError(e);
+  const m = e instanceof Error ? `${e.name} ${e.message}` : String(e);
+  if (!/QuotaExceeded|quota|preparing Blob/i.test(m)) return text;
+  try {
+    const est = await navigator.storage?.estimate?.();
+    if (est?.quota) return `${text} (DocScan ใช้ไป ${fmtSize(est.usage || 0)} จากที่ได้ ${fmtSize(est.quota)})`;
+  } catch { /* ignore */ }
+  return text;
+}
+const fmtSize = (n: number) => n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : `${Math.round(n / 1e6)} MB`;
 
 /** แปลง Blob เป็น object URL แล้วคืนให้อัตโนมัติเมื่อเลิกใช้ — Blob ว่าง (ภาพอยู่บนระบบ ยังไม่ได้ดึงมา) = ไม่มีรูป */
 export function useBlobUrl(blob: Blob | null | undefined) {

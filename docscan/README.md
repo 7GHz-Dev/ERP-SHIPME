@@ -73,6 +73,10 @@ How "ให้ระบบเก็บ" works (`src/lib/cloud.ts`, server side i
 - On the phone, each page's server file references live in the `cloudRefs` table, kept apart from the images.
   - Reason: Safari copies every Blob in a row to temporary files on each write. On a full phone, writing a page row that holds full-size images fails with "Error preparing Blob/File data to be stored in object store".
   - Removing images from the phone sets those fields to `null`, so the row written back holds only the thumbnail.
+- "Error preparing Blob/File data" does **not** always mean the phone is full. Safari also throws it in private browsing and in in-app browsers (LINE etc.), where it can't write temporary image files even with GBs free.
+  - Every image write uses `writeWithFallback` (`src/lib/db.ts`). On that error it writes again with images as raw `ArrayBuffer` data, which needs no temporary files.
+  - A `reading` hook turns them back into `Blob`, so the rest of the app is unchanged.
+  - Error messages now say the limit is the browser's storage for DocScan, not the phone's free space, and show the real usage / quota (`navigator.storage.estimate`).
 - When the phone is full:
   - An image downloaded from the system that can't be saved is kept in memory while the document is open.
   - A new page that can't be saved uploads to the system right away (`storeRemotely`).

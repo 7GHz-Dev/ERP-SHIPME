@@ -1,5 +1,5 @@
 import { FIELD, KINDS, filesOf, forgetFiles, getMode, hasBlob, isStorageFull, pageBlob, refsOf, requestSync, storeRemotely } from './cloud';
-import { db, getPages, uid } from './db';
+import { db, getPages, isBlobWriteError, packBlobs, uid, writeWithFallback } from './db';
 import { safeName } from './image';
 import { rebuildProcessed } from './process';
 import type { BlobKind, CloudRefs, DocRecord, Folder, PageRecord, StorageMode } from './types';
@@ -31,13 +31,13 @@ export async function refreshDocument(documentId: string) {
   const pages = await getPages(documentId);
   const refs = await refsOf(pages.map((p) => p.id));
   const cover = pages[0]?.thumbnail;
-  await db.documents.update(documentId, {
+  await writeWithFallback({
     pageCount: pages.length, size: pages.reduce((s, p) => s + pageBytes(p, refs.get(p.id)), 0),
     // ภาพย่อหน้าแรกยังไม่ได้ดึงจากระบบ (เพิ่งดึงรายการมา) = ใช้ปกเดิมไปก่อน
     ...(hasBlob(cover) || !pages.length ? { thumbnail: cover || null } : {}),
     ocrText: pages.map((p) => p.ocrText).filter(Boolean).join('\n\n'),
     updatedAt: Date.now()
-  });
+  } as Partial<DocRecord>, (changes) => db.documents.update(documentId, changes));
   requestSync();
 }
 
@@ -52,7 +52,7 @@ export async function addPage(documentId: string, img: NewPage, atOrder?: number
     adjustments: { ...DEFAULT_ADJUST }, markup: [], ocrText: ''
   };
   try {
-    await db.pages.add(page);
+    await writeWithFallback(page, (r) => db.pages.add(r));
   } catch (e) {
     // เครื่องเต็ม + เอกสารให้ระบบเก็บ = อัปขึ้นระบบเลย ไม่ต้องเก็บรูปในเครื่อง
     if (!isStorageFull(e) || (await db.documents.get(documentId))?.storage !== 'cloud') throw e;
@@ -74,11 +74,12 @@ export async function updatePage(id: string, patch: Partial<PageRecord>, rebuild
   const changed: BlobKind[] = KINDS.filter((k) => FIELD[k] in patch || (rebuild && (k === 'p' || k === 't')));
   let next: PageRecord | undefined;
   const dropped: (string | undefined)[] = [];
-  // อ่านหน้าล่าสุดอีกรอบแล้วค่อยเขียน — ไม่ทับสิ่งที่ตัวซิงก์เพิ่งจดระหว่างสร้างภาพ
-  await db.transaction('rw', db.pages, db.cloudRefs, async () => {
+  // Safari เขียนรูปเป็นไฟล์ไม่ได้ (โหมดส่วนตัว / ในแอปอื่น) = เตรียมทั้งแถวเป็นข้อมูลดิบไว้ก่อนเปิด transaction แล้วเขียนใหม่
+  let packed: PageRecord | null = null;
+  const write = () => db.transaction('rw', db.pages, db.cloudRefs, async () => {
     const cur = await db.pages.get(id);
     if (!cur) return;
-    next = { ...cur, ...patch, ...rebuilt };
+    next = packed ?? { ...cur, ...patch, ...rebuilt };
     delete next.cloud;   // ที่เก็บแบบเก่า (ย้ายไป cloudRefs แล้ว)
     if (changed.length) {
       next.rev = (cur.rev ?? 0) + 1;
@@ -91,6 +92,19 @@ export async function updatePage(id: string, patch: Partial<PageRecord>, rebuild
     }
     await db.pages.put(next);
   });
+  try {
+    await write();
+  } catch (e) {
+    if (!isBlobWriteError(e)) throw e;
+    const cur = await db.pages.get(id);
+    if (!cur) return;
+    const full: PageRecord = { ...cur, ...patch, ...rebuilt };
+    delete full.cloud;
+    packed = await packBlobs(full);
+    dropped.length = 0;
+    await write();
+    next = { ...full, rev: next?.rev ?? full.rev };
+  }
   await forgetFiles(dropped);
   await refreshDocument(page.documentId);
   return next;

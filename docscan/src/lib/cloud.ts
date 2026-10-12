@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { db, getPages, getSetting, setSetting, uid } from './db';
+import { db, getPages, getSetting, isBlobWriteError, packBlobs, setSetting, uid } from './db';
 import { post } from './erp';
 import type { BlobKind, CloudRefs, DocRecord, Folder, PageRecord, StorageMode } from './types';
 
@@ -244,13 +244,18 @@ export function hydrate(docId: string, kinds: BlobKind[], opts: { pageIds?: stri
         if (!url) throw new Error('ไม่พบไฟล์ของเอกสารนี้บนระบบ');
         const blob = await download(url);
         if (!full) {
+          const save = (value: Blob) => db.transaction('rw', db.pages, db.cloudRefs, async () => {
+            const [cur, ref] = await Promise.all([db.pages.get(x.id), db.cloudRefs.get(x.id)]);
+            if (!cur || ref?.refs[x.k]?.f !== x.f || hasBlob(stored(cur, x.k))) return;
+            const patch: Partial<PageRecord> = {};
+            patch[FIELD[x.k]] = value;
+            await db.pages.update(x.id, patch);
+          });
           try {
-            await db.transaction('rw', db.pages, db.cloudRefs, async () => {
-              const [cur, ref] = await Promise.all([db.pages.get(x.id), db.cloudRefs.get(x.id)]);
-              if (!cur || ref?.refs[x.k]?.f !== x.f || hasBlob(stored(cur, x.k))) return;
-              const patch: Partial<PageRecord> = {};
-              patch[FIELD[x.k]] = blob;
-              await db.pages.update(x.id, patch);
+            // Safari เขียนรูปเป็นไฟล์ไม่ได้ = ลองแบบข้อมูลดิบ (ดู db.ts)
+            await save(blob).catch(async (e) => {
+              if (!isBlobWriteError(e)) throw e;
+              await save((await packBlobs({ b: blob })).b);
             });
           } catch (e) {
             if (!isStorageFull(e)) throw e;
