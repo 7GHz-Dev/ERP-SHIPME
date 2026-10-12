@@ -1195,6 +1195,8 @@
     <input id="emp-name" type="text" placeholder="ชื่อ-สกุล">
     <label>รหัสชิปปิ้ง <span class="muted">(ค่าในช่อง "ชิปปิ้ง" ของชีตงานขนส่ง เช่น NON / AUN / FOLK / BEST)</span></label>
     <input id="emp-shipping" type="text" placeholder="เว้นว่างได้ถ้าไม่ต้องใช้เมนูปิดบัญชี">
+    <label>เบอร์มือถือ <span class="muted">(ชิปปิ้ง: คนขับกดโทรหาจากหน้างานใน LINE)</span></label>
+    <input id="emp-phone" type="tel" inputmode="tel" placeholder="เช่น 0812345678">
     <label>สิทธิ์</label>
     <select id="emp-role">
       <option value="employee-office">พนักงานสำนักงาน — คอม Windows • ไม่ถ่ายรูป</option>
@@ -1877,12 +1879,13 @@ function openEmpModal(emp){
     $('emp-pass-hint').textContent='(เว้นว่าง = ไม่เปลี่ยนรหัส)';
     $('emp-name').value=emp.name;
     $('emp-shipping').value=emp.shippingCode||'';
+    $('emp-phone').value=emp.phone||'';
     $('emp-role').value=ROLE_VALID[emp.role]?emp.role:'employee-shipping';
     $('emp-active').value=String(emp.active).toLowerCase()==='no'?'no':'yes';
   } else {
     $('emp-modal-title').textContent='เพิ่มพนักงาน';
     $('emp-orig').value='';
-    $('emp-username').value=''; $('emp-password').value=''; $('emp-name').value=''; $('emp-shipping').value='';
+    $('emp-username').value=''; $('emp-password').value=''; $('emp-name').value=''; $('emp-shipping').value=''; $('emp-phone').value='';
     $('emp-pass-hint').textContent='';
     $('emp-role').value='employee-office'; $('emp-active').value='yes';
   }
@@ -1899,6 +1902,7 @@ $('emp-save').addEventListener('click', function(){
     password:$('emp-password').value,
     name:$('emp-name').value.trim()||username,
     shippingCode:$('emp-shipping').value.trim(),
+    phone:$('emp-phone').value.trim(),
     role:$('emp-role').value,
     active:$('emp-active').value
   };

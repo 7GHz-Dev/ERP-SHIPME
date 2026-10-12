@@ -11,6 +11,7 @@ import { nowIso, ymd } from './utils';
  * เฉพาะคนขับที่ผูก LINE แล้ว (ไม่เตือนทาง SMS เพราะเสียเงินทุกข้อความ) และเฉพาะ 06:00–21:00 เวลาไทย
  */
 const HOURS = { from: 6, to: 21 };
+const SCAN_DEADLINE_MIN = 30;   // ยืนยันส่งงานรับตู้แล้ว ต้องเข้า Fast Scan ภายในกี่นาที
 const min = (n: number) => n * 60000;
 const agoIso = (n: number) => new Date(Date.now() - min(n)).toISOString();
 
@@ -65,8 +66,9 @@ export async function runCoordReminders(origin: string, opts: { date?: string; i
       'ดูนัดหมาย', `m=${m.id}`)) counts.meeting++;
   }
 
-  // 4) รายตู้: ได้การ์ดแล้วยังไม่ส่งงานรับตู้ (90 นาที) / ส่งงานรับตู้แล้วยังไม่กด "X-Ray แล้ว" (90 นาที)
-  //    / ชิปปิ้งส่ง EIR แล้วคนขับยังไม่ยืนยัน (15 นาที) / รับ EIR แล้วยังไม่ส่งรูป (60 นาที)
+  // 4) รายตู้: ได้การ์ดแล้วยังไม่ส่งงานรับตู้ (90 นาที)
+  //    / ยืนยันส่งงานรับตู้แล้ว ต้องเข้า Fast Scan ภายใน 30 นาที — เกินแล้วเตือนทุก 5 นาที (ทุกรอบของ cron) จนกว่าจะกด
+  //    / ชิปปิ้งส่งมอบ EIR แล้ว 15 นาที ยังไม่ส่งรูป EIR + ซีลตะกั่ว
   const steps = await db.select().from(jobSteps).where(and(eq(jobSteps.inspectDate, today), eq(jobSteps.completedAt, ''), sql`${jobSteps.driverId} <> ''`));
   const ids = steps.map((s) => s.itemId);
   const items = ids.length ? await db.select({ id: jobPlanItems.id, containerNo: jobPlanItems.containerNo, bl: jobPlanItems.bl }).from(jobPlanItems).where(inArray(jobPlanItems.id, ids)) : [];
@@ -74,16 +76,23 @@ export async function runCoordReminders(origin: string, opts: { date?: string; i
   for (const s of steps) {
     const card = s.cardHandedAt || s.cardAckAt;
     if (card && !s.pickedUpAt && card < agoIso(90)) {
-      if (await push(s.driverId, `remind-pickup:${s.itemId}`, `⏰ ส่งงานรับตู้ ${cn(s.itemId)}`, ['รับตู้แล้ว ถ่ายรูปหน้ารถ หลังรถ และซีลตู้', 'แล้วกด "ส่งงานรับตู้"'], 'ส่งงานรับตู้', 'home=1')) counts.pickup++;
+      if (await push(s.driverId, `remind-pickup:${s.itemId}`, `⏰ รับตู้ ${cn(s.itemId)}`, ['รับตู้แล้ว ถ่ายรูปหน้ารถ ท้ายรถ และซีลตู้', 'แล้วกด "ยืนยันส่งงาน"'], 'ส่งรูปรับตู้', 'home=1')) counts.pickup++;
     }
-    if (s.pickedUpAt && s.xrayStatus === 'pending' && s.pickedUpAt < agoIso(90)) {
-      if (await push(s.driverId, `remind-xray:${s.itemId}`, `⏰ ตู้ ${cn(s.itemId)} เข้าเครื่อง X-Ray แล้วหรือยัง?`, ['เข้าเครื่องแล้ว กด "X-Ray แล้ว" ให้ชิปปิ้งเช็กผล'], 'อัปเดตสถานะ X-Ray', 'home=1')) counts.xray++;
+    if (s.pickedUpAt && s.xrayStatus === 'pending' && s.pickedUpAt < agoIso(SCAN_DEADLINE_MIN)) {
+      // รอบเตือนที่ 1, 2, 3… (ทุก 5 นาทีหลังเลยกำหนด) — ref ต่างกันทุกรอบ จึงส่งได้ทุกรอบ แต่ไม่ซ้ำในรอบเดียวกัน
+      const late = Math.floor((Date.now() - Date.parse(s.pickedUpAt)) / 60000) - SCAN_DEADLINE_MIN;
+      const round = Math.floor(late / 5);
+      if (await push(s.driverId, `remind-scan:${s.itemId}:${round}`, `⏰ ตู้ ${cn(s.itemId)} ต้องเข้า Fast Scan`,
+        [`เลยกำหนด 30 นาทีหลังยืนยันส่งงานรับตู้มาแล้ว ${late} นาที`, 'เข้า Fast Scan แล้วกด "เข้า Fast Scan แล้ว"'], 'เข้า Fast Scan แล้ว', 'home=1')) counts.xray++;
+      if (round === 0) {
+        const d = await driverOf(s.driverId);
+        await notifyStaff({ username: String(s.username), level: 'important', ref: `scan-late:${s.itemId}`, title: `⏰ ${cn(s.itemId)} ยังไม่เข้า Fast Scan`,
+          lines: [`คนขับ ${d?.name || ''} ยืนยันส่งงานรับตู้เกิน 30 นาทีแล้ว`, d?.phone ? `โทร ${d.phone}` : ''].filter(Boolean),
+          url: staffUrl(origin, `date=${s.inspectDate}`) });
+      }
     }
-    if (s.eirHandedAt && !s.eirReceivedAt && s.eirHandedAt < agoIso(15)) {
-      if (await push(s.driverId, `remind-eir:${s.itemId}`, `⏰ ยืนยันรับ EIR ตู้ ${cn(s.itemId)}`, ['ชิปปิ้งบันทึกว่าส่งมอบ EIR ให้คุณแล้ว', 'ถ้าได้รับแล้ว กด "ได้รับ EIR แล้ว"'], 'ยืนยันรับ EIR', 'home=1')) counts.eirReceipt++;
-    }
-    if (s.eirReceivedAt && s.eirReceivedAt < agoIso(60)) {
-      if (await push(s.driverId, `remind-photo:${s.itemId}`, `⏰ ส่งรูปจบงานตู้ ${cn(s.itemId)}`, ['ตรวจปล่อยเสร็จแล้ว ถ่ายรูปการ์ด EIR + รูป Seal ตู้ แล้วกด "ยืนยันจบงาน"'], 'ส่งรูปจบงาน', 'home=1')) counts.photos++;
+    if (s.eirHandedAt && !s.completedAt && s.eirHandedAt < agoIso(15)) {
+      if (await push(s.driverId, `remind-eir:${s.itemId}`, `⏰ ส่งรูป EIR ตู้ ${cn(s.itemId)}`, ['ชิปปิ้งบันทึกว่าส่งมอบ EIR ออกท่าให้คุณแล้ว', 'ถ่ายรูปเอกสาร EIR + ซีลตะกั่ว แล้วกด "ยืนยันส่งงาน"'], 'ส่งรูป EIR', 'home=1')) counts.eirReceipt++;
     }
   }
   return { ok: true, at: now, counts };

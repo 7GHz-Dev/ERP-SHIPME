@@ -549,6 +549,9 @@ function renderMore(){
           '<button class="btn btn-ghost btn-sm" data-demo-open="'+esc(x.id)+'">เปิดหน้าคนขับ (DEMO)</button></div>':'');
     }).join('')+'</div>';
   var me=d.me||{};
+  html+='<div class="card"><b>📞 เบอร์มือถือของฉัน</b><div class="muted" style="margin:4px 0 8px">คนขับกดโทรหาคุณได้จากหน้างานใน LINE (ขั้นรับการ์ด / รับ EIR)</div>'+
+    '<div class="row"><input id="my-phone" class="search grow" type="tel" inputmode="tel" style="margin:0" placeholder="เช่น 0812345678" value="'+esc(me.phone||'')+'">'+
+    '<button class="btn btn-navy btn-sm" id="my-phone-save">บันทึก</button></div>'+(me.phone?'':'<div class="muted" style="color:var(--red);margin-top:6px">ยังไม่ได้ใส่เบอร์ — คนขับจะไม่มีปุ่มโทรหาคุณ</div>')+'</div>';
   html+='<div class="card"><b>🔔 LINE ของฉัน (แจ้งเตือนงาน)</b><div class="muted" style="margin:4px 0 8px">'+
     (me.linked?'ผูกแล้ว'+(me.lineName?' • '+esc(me.lineName):'')+' — ได้ข้อความเมื่อคนขับส่งพิกัด / ผ่าน X-Ray ครบ / ขอเลื่อนนัด / จบงาน':'ผูก LINE เพื่อรับแจ้งเตือนและเมนู "งานชิปปิ้ง" ในแชท SHIPME')+'</div>'+
     (me.linked
@@ -572,6 +575,9 @@ function renderMore(){
     });
   }); });
   $('ob-load').addEventListener('click', loadOutbox);
+  $('my-phone-save').addEventListener('click', function(){
+    api({ action:'coordStaffNotify', phone:$('my-phone').value.trim() }).then(function(r){ toast(r.ok?'บันทึกเบอร์แล้ว':(r.error==='bad_phone'?'เบอร์ไม่ถูกต้อง':errText(r))); if(r.ok) load(true); });
+  });
   if($('nt-level')){ $('nt-level').value=me.notify||'important';
     $('nt-level').addEventListener('change', function(){ api({ action:'coordStaffNotify', level:this.value }).then(function(r){ toast(r.ok?'บันทึกแล้ว':errText(r)); load(true); }); }); }
   if($('nt-unlink')) $('nt-unlink').addEventListener('click', function(){ if(!confirm('ยกเลิกการผูก LINE ของคุณ?')) return;

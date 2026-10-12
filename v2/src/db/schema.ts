@@ -31,6 +31,7 @@ export const users = pgTable('users', {
   role: text('role').notNull(),
   active: boolean('active').notNull().default(true),
   shippingCode: text('shipping_code').notNull().default(''),
+  phone: text('phone').notNull().default(''),          // เบอร์มือถือ — คนขับกดโทรหาชิปปิ้งจากหน้า /driver
   // LINE ของชิปปิ้ง (แจ้งเตือนงานประสานคนขับ + Rich Menu "งานชิปปิ้ง")
   lineUserId: text('line_user_id').notNull().default(''),
   lineName: text('line_name').notNull().default(''),

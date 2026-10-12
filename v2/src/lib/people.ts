@@ -69,7 +69,8 @@ export async function listEmployees(): Promise<ApiResult> {
       name: row.name,
       role: normalizeRole(row.role),
       active: row.active ? 'yes' : 'no',
-      shippingCode: row.shippingCode || ''
+      shippingCode: row.shippingCode || '',
+      phone: row.phone || ''
     }))
   };
 }
@@ -86,6 +87,8 @@ export async function saveEmployee(body: ApiBody): Promise<ApiResult> {
   const name = String(employee.name || username).trim();
   const active = parseActive(employee.active);
   const shippingCode = String(employee.shippingCode || '').trim();
+  // ไม่ส่งมา (เช่น ปุ่มเปิด/ปิดบัญชี) = คงเบอร์เดิม
+  const phone = employee.phone === undefined ? undefined : String(employee.phone || '').replace(/[^\d+]/g, '').slice(0, 20);
 
   if (existing) {
     // เปลี่ยนชื่อผู้ใช้ไปชนกับคนอื่น (citext จึงเทียบไม่สนตัวพิมพ์ให้เอง)
@@ -95,7 +98,7 @@ export async function saveEmployee(body: ApiBody): Promise<ApiResult> {
 
     const passwordHashValue = employee.password ? passwordHash(String(employee.password)) : existing.passwordHash;
     await db.update(users)
-      .set({ username, passwordHash: passwordHashValue, name, role, active, shippingCode, updatedAt: now })
+      .set({ username, passwordHash: passwordHashValue, name, role, active, shippingCode, ...(phone === undefined ? {} : { phone }), updatedAt: now })
       .where(eq(users.username, original));
     return { ok: true, mode: 'updated', username };
   }
@@ -112,6 +115,7 @@ export async function saveEmployee(body: ApiBody): Promise<ApiResult> {
     role,
     active,
     shippingCode,
+    phone: phone || '',
     createdAt: now,
     updatedAt: now
   });

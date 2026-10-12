@@ -467,9 +467,9 @@ export async function coordXrayResult(body: ApiBody, user: Staff): Promise<ApiRe
       if (!d?.lineUserId) continue;
       const cns = list.map((i) => i.containerNo || i.bl).join(', ');
       const msg = result === 'passed'
-        ? flexMessage(`ผล X-Ray ผ่านแล้ว (${list.length} ตู้)`, '✅ ผล X-Ray ผ่านแล้ว', [`ตู้: ${cns}`, 'รอชิปปิ้งนัดส่งมอบ EIR ออกท่า — จะได้ข้อความนัดทาง LINE'],
+        ? flexMessage(`ผล Fast Scan ผ่านแล้ว (${list.length} ตู้)`, '✅ ผล Fast Scan ผ่านแล้ว', [`ตู้: ${cns}`, 'รอชิปปิ้งนัดหมายรับ EIR ออกท่า — จะได้ข้อความนัดทาง LINE'],
           [{ label: 'ดูงานของฉัน', uri: driverUrl(origin, 'home=1', true), primary: true }])
-        : flexMessage(`ผล X-Ray ต้องตรวจเพิ่ม (${list.length} ตู้)`, '⚠️ ผล X-Ray: ต้องตรวจเพิ่ม', [`ตู้: ${cns}`, note || 'กรุณารอคำแนะนำจากชิปปิ้ง'],
+        : flexMessage(`ผล Fast Scan ต้องตรวจเพิ่ม (${list.length} ตู้)`, '⚠️ ผล Fast Scan: ต้องตรวจเพิ่ม', [`ตู้: ${cns}`, note || 'กรุณารอคำแนะนำจากชิปปิ้ง'],
           [{ label: 'ดูงานของฉัน', uri: driverUrl(origin, 'home=1', true), primary: true }]);
       await pushToDriver({ lineUserId: d.lineUserId, driverId, kind: `XRAY_RESULT_${result.toUpperCase()}`, ref: `xray-${result}:${driverId}:${at}`, messages: [msg] });
     }
@@ -687,7 +687,7 @@ export async function driverHome(body: ApiBody): Promise<ApiResult> {
       const ev = evidence.filter((e) => e.itemId === i.id);
       return {
         id: i.id, inspectDate: i.inspectDate, bl: i.bl, containerNo: i.containerNo, port: i.port, destination: i.destination,
-        stage: stageOf(s), cardHandedAt: s.cardHandedAt, cardAckAt: s.cardAckAt, pickedUpAt: s.pickedUpAt, xrayStatus: s.xrayStatus,
+        staff: String(i.username), stage: stageOf(s), cardHandedAt: s.cardHandedAt, cardAckAt: s.cardAckAt, pickedUpAt: s.pickedUpAt, xrayStatus: s.xrayStatus,
         xrayAt: s.xrayAt, eirHandedAt: s.eirHandedAt, eirReceivedAt: s.eirReceivedAt, completedAt: s.completedAt,
         eirGateOpen: gates[`${i.inspectDate}|${String(i.username)}`] || false,
         evidence: ev.map((e) => ({ id: e.id, kind: e.kind, url: e.url }))
@@ -812,7 +812,7 @@ export async function driverStep(body: ApiBody): Promise<ApiResult> {
       await notifyStaff({ username: staff, level: 'important', ref: `scan-all:${s.inspectDate}`, title: `🛃 เข้าเครื่อง X-Ray ครบ ${p.total}/${p.total} ตู้`,
         lines: [`งานวันที่ ${thShortDate(s.inspectDate)}`, 'เช็กผล X-Ray แล้วบันทึก "ผ่าน" เพื่อนัดส่งมอบ EIR'], url: staffUrl(origin, `date=${s.inspectDate}`), button: 'บันทึกผล X-Ray' });
     } else {
-      await notifyStaff({ username: staff, level: 'all', ref: `scan:${s.itemId}`, title: `🛃 ${cn} เข้าเครื่อง X-Ray แล้ว — รอผล`,
+      await notifyStaff({ username: staff, level: 'all', ref: `scan:${s.itemId}`, title: `🛃 ${cn} เข้า Fast Scan (X-Ray) แล้ว — รอผล`,
         lines: [`คนขับ ${driver.name}`, `เข้าเครื่องแล้ว ${p.scanned}/${p.total} ตู้`], url: staffUrl(origin, `date=${s.inspectDate}`) });
     }
   } else if ((op === 'xray' && body.status === 'hold') || op === 'problem') {
@@ -886,19 +886,30 @@ export async function driverEvidenceDelete(body: ApiBody): Promise<ApiResult> {
   return { ok: true };
 }
 
-/** ตรวจปล่อยเสร็จแล้ว — ต้องได้รับ EIR และมีรูปการ์ด EIR + รูป Seal ของตู้นี้ครบ แล้วจบงานทันที (ไม่ต้องรอตรวจ) */
+/**
+ * ขั้น 3 ของคนขับ: ได้รับ EIR ออกท่า → ส่งรูปเอกสาร EIR + ซีลตะกั่ว → ยืนยันส่งงาน = จบงานทันที (ไม่ต้องรอตรวจ)
+ * ต้องเข้า Fast Scan แล้ว และชิปปิ้งบันทึกผล X-Ray ของตู้นี้ว่าผ่านแล้ว (ได้ EIR = ผ่านแล้วจริง)
+ * กดยืนยันส่งงาน = ได้รับ EIR แล้ว (ไม่มีปุ่ม "ได้รับ EIR" แยก)
+ */
 export async function driverComplete(body: ApiBody): Promise<ApiResult> {
   const driver = await driverFromSession(body);
   if (!driver) return { ok: false, error: 'session_expired' };
   const s = await ownStep(driver.id, text(body.itemId, 60));
   if (!s) return { ok: false, error: 'forbidden' };
   if (s.completedAt) return { ok: true, at: s.completedAt };
-  if (!s.eirReceivedAt) return { ok: false, error: 'eir_first' };
+  if (!s.pickedUpAt || s.xrayStatus === 'pending') return { ok: false, error: 'scan_first' };
+  if (s.xrayStatus !== 'passed') {
+    // ชิปปิ้งส่ง EIR แล้วแต่ลืมบันทึกผล — แจ้งชิปปิ้งครั้งเดียว ให้บันทึกผลก่อน
+    await notifyStaff({ username: String(s.username), level: 'important', ref: `xray-missing:${s.itemId}`, title: `⚠️ ${await containerOf(s.itemId)} รอบันทึกผล X-Ray`,
+      lines: [`คนขับ ${driver.name} จะส่งรูป EIR แต่ตู้นี้ยังไม่ได้บันทึกผล X-Ray ว่าผ่าน`, 'บันทึกผล X-Ray แล้วให้คนขับกดยืนยันส่งงานอีกครั้ง'],
+      url: staffUrl(String(body._origin || ''), `date=${s.inspectDate}`), button: 'บันทึกผล X-Ray' });
+    return { ok: false, error: 'xray_result_pending' };
+  }
   const files = await db.select({ kind: evidenceFiles.kind }).from(evidenceFiles).where(eq(evidenceFiles.itemId, s.itemId));
   const missing = CLOSE_KINDS.filter((k) => !files.some((f) => f.kind === k));
   if (missing.length) return { ok: false, error: 'photos_required', missing };
   const at = nowIso();
-  await db.update(jobSteps).set({ completedAt: at, updatedAt: at, version: s.version + 1 }).where(eq(jobSteps.itemId, s.itemId));
+  await db.update(jobSteps).set({ completedAt: at, eirReceivedAt: s.eirReceivedAt || at, updatedAt: at, version: s.version + 1 }).where(eq(jobSteps.itemId, s.itemId));
   await logEvents([{ itemId: s.itemId, inspectDate: s.inspectDate, username: String(s.username) }], 'driver', driver.id,
     'DRIVER_RELEASE_COMPLETION_SUBMITTED', { photos: files.length });
   const p = await batchProgress(s.inspectDate, String(s.username));
@@ -906,7 +917,7 @@ export async function driverComplete(body: ApiBody): Promise<ApiResult> {
   const cn = await containerOf(s.itemId);
   if (p.completed === p.total) {
     await notifyStaff({ username: String(s.username), level: 'important', ref: `done-all:${s.inspectDate}`, title: `🎉 จบงานครบ ${p.total}/${p.total} ตู้`,
-      lines: [`งานวันที่ ${thShortDate(s.inspectDate)}`, 'คนขับส่งรูปการ์ด EIR + Seal ครบทุกตู้แล้ว'], url });
+      lines: [`งานวันที่ ${thShortDate(s.inspectDate)}`, 'คนขับส่งรูปเอกสาร EIR + ซีลตะกั่วครบทุกตู้แล้ว'], url });
   } else {
     await notifyStaff({ username: String(s.username), level: 'all', ref: `done:${s.itemId}`, title: `📷 ${cn} ส่งรูปจบงานแล้ว`,
       lines: [`คนขับ ${driver.name}`, `จบงานแล้ว ${p.completed}/${p.total} ตู้`], url });

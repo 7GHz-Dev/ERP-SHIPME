@@ -222,6 +222,13 @@ export async function staffLineRedeem(body: ApiBody): Promise<ApiResult> {
 }
 
 export async function coordStaffNotify(body: ApiBody, user: Staff): Promise<ApiResult> {
+  // เบอร์มือถือของชิปปิ้ง (คนขับกดโทรจากหน้า /driver)
+  if (body.phone !== undefined) {
+    const phone = String(body.phone || '').replace(/[^\d+]/g, '').slice(0, 20);
+    if (phone && phone.replace(/\D/g, '').length < 9) return { ok: false, error: 'bad_phone' };
+    await db.update(users).set({ phone, updatedAt: nowIso() }).where(eq(users.username, user.username));
+    return { ok: true, phone };
+  }
   const level = ['important', 'all', 'off'].includes(String(body.level)) ? String(body.level) : 'important';
   if (body.unlink === true) {
     await db.update(users).set({ lineUserId: '', lineName: '', updatedAt: nowIso() }).where(eq(users.username, user.username));
@@ -232,9 +239,9 @@ export async function coordStaffNotify(body: ApiBody, user: Staff): Promise<ApiR
 }
 
 export async function staffLineStatus(username: string) {
-  const [u] = await db.select({ lineUserId: users.lineUserId, lineName: users.lineName, lineNotify: users.lineNotify }).from(users)
+  const [u] = await db.select({ lineUserId: users.lineUserId, lineName: users.lineName, lineNotify: users.lineNotify, phone: users.phone }).from(users)
     .where(eq(users.username, username)).limit(1);
-  return { linked: Boolean(u?.lineUserId), lineName: u?.lineName || '', notify: u?.lineNotify || 'important' };
+  return { linked: Boolean(u?.lineUserId), lineName: u?.lineName || '', notify: u?.lineNotify || 'important', phone: u?.phone || '' };
 }
 
 // ---------------- Rich Menu ----------------
@@ -482,6 +489,6 @@ export async function driverHelp(driverId: string) {
     .innerJoin(sql`job_steps`, sql`job_steps.item_id = ${jobPlanItems.id}`)
     .where(sql`job_steps.driver_id = ${driverId} and ${jobPlanItems.inspectDate} >= to_char(now() at time zone 'Asia/Bangkok' - interval '2 day', 'YYYY-MM-DD')`);
   const names = [...new Set(rows.map((r) => String(r.username)))];
-  const staff = names.length ? await db.select({ username: users.username, name: users.name }).from(users).where(inArray(users.username, names)) : [];
-  return staff.map((s) => ({ name: s.name }));
+  const staff = names.length ? await db.select({ username: users.username, name: users.name, phone: users.phone }).from(users).where(inArray(users.username, names)) : [];
+  return staff.map((s) => ({ username: String(s.username), name: s.name, phone: s.phone }));
 }

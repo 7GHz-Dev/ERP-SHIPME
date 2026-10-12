@@ -166,6 +166,19 @@ Per-container steps on the driver page (6 steps):
 - Answers do not change any container status. The system progress is shown next to the answer.
 - Tested 2026-10-11: 21 checks against the real DB in DEMO mode with temporary 2099 data (all deleted).
 
+## Driver page: 3 main steps (2026-10-12, owner request; supersedes the 6-step list above)
+
+| # | Step | Shown to the driver / rules |
+|---|---|---|
+| 1 | รับการ์ดรับตู้ (get the pickup card) | "รอนัดหมายรับการ์ดจากชิปปิ้ง หากไม่สะดวกให้โทรหาชิปปิ้ง" (wait for shipping to schedule the card handover; if inconvenient, call shipping) + a call button (shipping user's `users.phone`) + "ได้รับการ์ดรับตู้แล้ว" (card received) |
+| 2 | รับตู้ + Fast Scan (X-Ray) (pick up the container + Fast Scan) | + photos: 1. truck front, 2. truck rear, 3. container seal → "ยืนยันส่งงาน" (confirm submission) → **must enter Fast Scan within 30 minutes** and press "เข้า Fast Scan แล้ว" (entered Fast Scan). After that, LINE reminders every 5 minutes until pressed, and staff get notified once. |
+| 3 | รับ EIR (receive the EIR) | "รอนัดหมายรับ EIR ออกท่า จากชิปปิ้ง หากไม่สะดวกให้โทรหาชิปปิ้ง" (wait for shipping to schedule the outbound EIR handover; if inconvenient, call shipping) + call button → + photos: 1. EIR document, 2. lead seal → "ยืนยันส่งงาน" (confirm submission) = "งานของคุณเสร็จสิ้นแล้ว" (your job is complete) |
+
+- **Confirming step 3** counts as EIR received, so there is no separate button.
+  - The container must have Fast Scan pressed and staff must have recorded the X-Ray result as passed. Otherwise the driver gets `xray_result_pending` and staff are notified once.
+- **Shipping phone:** admins set it on the employee page; staff set their own under /staff → เพิ่มเติม (More) → เบอร์มือถือของฉัน (my mobile number).
+- **Tested:** 16 checks against the real DB with temporary data (all deleted), including reminders every 5 minutes / no duplicates within the same round / none inside the 30 minutes. Screenshots of every step.
+
 ## Not built yet
 
 - Reports / CSV for this flow.
