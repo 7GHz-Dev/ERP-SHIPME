@@ -115,18 +115,137 @@ function renderDates(){
 // ---------------- ขั้นถัดไป (ปุ่มเด่น) ----------------
 function hasRequests(phase){ return S.data.drivers.some(function(d){ return d.phases[phase].request; }); }
 function filterTo(f){ S.filter=f; renderPlan(); var el=$('bls'); if(el) el.scrollIntoView({ behavior:'smooth', block:'start' }); }
+/** ตู้ที่ยังต้องนัดหมายรอบนี้ (ยังไม่ส่งมอบ และยังไม่มีนัดที่เปิดอยู่) */
+function needMeeting(phase){
+  var d=S.data, open={};
+  (d.meetings||[]).forEach(function(m){ if(m.phase===phase && ['PROPOSED','ACCEPTED','RESCHEDULE_REQUESTED','MET'].indexOf(m.status)>=0) m.itemIds.forEach(function(i){ open[i]=1; }); });
+  return d.items.filter(function(i){ var s=i.step||{};
+    if(open[i.id] || !i.driverId) return false;
+    return phase==='CARD_PICKUP' ? !(s.cardHandedAt||s.cardAckAt) : (s.xrayStatus==='passed' && !s.eirHandedAt); });
+}
 function nextAction(){
   var d=S.data, c=d.counts;
   if(!c.jobs) return null;
-  if(!hasRequests('CARD_PICKUP') && c.cardHanded<c.jobs) return { label:'📍 ขอตำแหน่งคนขับ (นัดแจกการ์ด)', fn:function(){ S.phase='CARD_PICKUP'; go('map'); } };
-  if(c.cardHanded<c.jobs) return { label:'🎫 แจกการ์ดรับตู้ ('+c.cardHanded+'/'+c.jobs+')', fn:function(){ filterTo('card'); } };
-  if(c.pickedUp<c.jobs) return { label:'🚚 รอคนขับส่งงานรับตู้ ('+c.pickedUp+'/'+c.jobs+')', fn:function(){ filterTo('pickup'); }, ghost:true };
-  if(!d.gate.ready && c.xrayScanned<c.jobs) return { label:'🛃 รอคนขับเข้าเครื่อง X-Ray ('+c.xrayScanned+'/'+c.jobs+')', fn:function(){ filterTo('xray'); }, ghost:true };
+  var unNotified=d.drivers.filter(function(x){ return x.itemIds.length && !x.notified; });
+  if(unNotified.length) return { label:'📨 แจ้งงานให้คนขับ ('+unNotified.length+' คน)', fn:function(){ notifyJobs(); } };
+  var nc=needMeeting('CARD_PICKUP');
+  if(nc.length) return { label:'📅 ส่งนัดหมายรับการ์ดรับตู้ ('+nc.length+' ตู้)', fn:function(){ meetSheet('CARD_PICKUP'); } };
+  if(c.cardHanded<c.jobs) return { label:'🎫 บันทึกแจกการ์ดรับตู้ ('+c.cardHanded+'/'+c.jobs+')', fn:function(){ filterTo('card'); } };
+  if(c.pickedUp<c.jobs) return { label:'🚚 รอคนขับส่งรูปรับตู้ ('+c.pickedUp+'/'+c.jobs+')', fn:function(){ filterTo('pickup'); }, ghost:true };
+  if(!d.gate.ready && c.xrayScanned<c.jobs) return { label:'🛃 รอคนขับเข้า Fast Scan ('+c.xrayScanned+'/'+c.jobs+')', fn:function(){ filterTo('xray'); }, ghost:true };
   if(!d.gate.ready) return { label:'✅ บันทึกผล X-Ray ('+d.gate.passed+'/'+d.gate.total+' ผ่าน)', fn:function(){ filterTo('result'); } };
-  if(!hasRequests('EIR_HANDOVER') && c.eirHanded<c.jobs) return { label:'📍 ขอตำแหน่งรอบสอง / นัดส่งมอบ EIR', fn:function(){ S.phase='EIR_HANDOVER'; go('map'); } };
-  if(c.eirHanded<c.jobs) return { label:'📄 ส่งมอบ EIR ออกท่า ('+c.eirHanded+'/'+c.jobs+')', fn:function(){ filterTo('eir'); } };
-  if(c.completed<c.jobs) return { label:'📷 รอคนขับส่งรูปจบงาน ('+c.completed+'/'+c.jobs+')', fn:function(){ filterTo('photo'); }, ghost:true };
+  var ne=needMeeting('EIR_HANDOVER');
+  if(ne.length) return { label:'📅 ส่งนัดหมายรับ EIR ออกท่า ('+ne.length+' ตู้)', fn:function(){ meetSheet('EIR_HANDOVER'); } };
+  if(c.eirHanded<c.jobs) return { label:'📄 บันทึกส่งมอบ EIR ('+c.eirHanded+'/'+c.jobs+')', fn:function(){ filterTo('eir'); } };
+  if(c.completed<c.jobs) return { label:'📷 รอคนขับส่งรูป EIR ('+c.completed+'/'+c.jobs+')', fn:function(){ filterTo('photo'); }, ghost:true };
   return { label:'✅ จบงานครบทุกตู้แล้ว', fn:function(){ filterTo('all'); }, done:true };
+}
+
+// ---------------- แจ้งงานให้คนขับ (ข้อความแรก: "คุณได้รับงาน") ----------------
+function notifyJobs(driverIds, resend){
+  var d=S.data, targets=d.drivers.filter(function(x){ return x.itemIds.length && (driverIds ? driverIds.indexOf(x.id)>=0 : !x.notified); });
+  if(!targets.length){ toast('แจ้งงานคนขับครบทุกคนแล้ว'); return; }
+  var noLine=targets.filter(function(x){ return !x.linked; });
+  if(!confirm('ส่งข้อความ "คุณได้รับงาน" ให้คนขับ '+targets.length+' คน?'+(noLine.length?'\n\nยังไม่ผูก LINE: '+noLine.map(function(x){ return x.name; }).join(', ')+(d.smsReady?' (ส่งทาง SMS)':' (ส่งไม่ได้ — ผูก LINE ก่อน)'):''))) return;
+  api({ action:'coordNotifyJobs', date:d.date, staff:S.staff, driverIds:driverIds||undefined, resend:!!resend }).then(function(r){
+    if(!r.ok){ toast(errText(r)); return; }
+    toast('แจ้งงานแล้ว '+r.sent+' คน'+(r.failed?' • ส่งไม่ได้ '+r.failed+' คน (ยังไม่ผูก LINE)':''), 4000); load(true);
+  });
+}
+
+// ---------------- ส่งนัดหมาย (เลือกจุดในระบบ หรือสร้างจุดใหม่) ----------------
+function roundTime(min){ var t=new Date(Date.now()+min*60000); t.setMinutes(Math.ceil(t.getMinutes()/5)*5, 0, 0); return t; }
+/**
+ * ชิปปิ้งเลือกจุดนัดหมาย (จุดที่บันทึกไว้ / สร้างใหม่บนแผนที่) + เวลา + คนขับ → ส่งขอนัดหมายทาง LINE ทีละคน
+ * คนขับกด "รับนัดหมาย" หรือไม่สะดวกก็โทรหาชิปปิ้ง
+ */
+function meetSheet(phase, onlyDriver){
+  var d=S.data, eir=phase==='EIR_HANDOVER';
+  if(eir && !d.gate.ready){ toast('ต้องบันทึกผล X-Ray ผ่านครบทุกตู้ก่อน', 3500); return; }
+  var pending=needMeeting(phase), mps=(d.meetingPoints||[]).slice();
+  var active={};
+  (d.meetings||[]).forEach(function(m){ if(m.phase===phase && ['PROPOSED','ACCEPTED','RESCHEDULE_REQUESTED'].indexOf(m.status)>=0) active[m.driverId]=m; });
+  var rows=d.drivers.filter(function(x){ return x.itemIds.length && (!onlyDriver || x.id===onlyDriver); }).map(function(x){
+    var items=d.items.filter(function(i){ return x.itemIds.indexOf(i.id)>=0 && (eir ? !(i.step&&i.step.eirHandedAt) : !(i.step&&(i.step.cardHandedAt||i.step.cardAckAt))); });
+    return { x:x, items:items, m:active[x.id], pre: onlyDriver ? true : pending.some(function(p){ return x.itemIds.indexOf(p.id)>=0; }) };
+  }).filter(function(r){ return r.items.length; });
+  if(!rows.length){ toast(eir?'ส่งมอบ EIR ครบทุกตู้แล้ว':'แจกการ์ดครบทุกตู้แล้ว'); return; }
+  var t=roundTime(30);
+  var bg=sheet('<h3>📅 ส่งนัดหมาย'+(eir?'รับ EIR ออกท่า':'รับการ์ดรับตู้')+'</h3>'+
+    '<label class="muted">จุดนัดหมาย</label><select id="ms-point" class="search">'+
+      mps.map(function(p){ return '<option value="'+esc(p.id)+'">'+esc(p.name)+(p.port?' ('+esc(p.port)+')':'')+'</option>'; }).join('')+
+      '<option value="__new">➕ สร้างจุดนัดหมายใหม่…</option></select>'+
+    '<div id="ms-new" class="hidden" style="border:1px dashed var(--line);border-radius:12px;padding:10px;margin-bottom:10px">'+
+      '<input id="ms-name" class="search" placeholder="ชื่อจุด เช่น ลานจอดหน้า Gate 3">'+
+      '<div id="ms-map" style="height:220px;border-radius:12px;background:#dfe6ee;margin-bottom:8px;display:flex;align-items:center;justify-content:center;color:#64748b;font-size:13px;text-align:center;padding:10px">แตะบนแผนที่เพื่อปักหมุด</div>'+
+      '<div class="row" style="gap:6px"><button class="btn btn-ghost btn-sm" id="ms-here" type="button">📍 ใช้ตำแหน่งของฉัน</button><span class="muted grow" id="ms-ll"></span></div>'+
+      '<div class="muted" style="margin-top:6px">จุดใหม่จะถูกบันทึกไว้ในระบบ ใช้ซ้ำได้ครั้งหน้า</div></div>'+
+    '<label class="muted">เวลานัด</label><input id="ms-time" type="datetime-local" class="search" value="'+fmtLocal(t)+'">'+
+    '<label class="muted">ส่งให้คนขับ</label>'+rows.map(function(r, i){
+      var st=r.m?MEET_ST[r.m.status]||[r.m.status,'']:null;
+      return '<label class="pick"><input type="checkbox" class="ms-drv" data-i="'+i+'"'+(r.pre?' checked':'')+'><div class="grow"><b>'+esc(r.x.name)+'</b>'+(r.x.linked?'':' <span class="stage bad">ยังไม่ผูก LINE</span>')+
+        '<div class="muted">'+esc(r.items.map(function(i){ return i.containerNo||i.bl; }).join(', '))+'</div>'+
+        (st?'<div class="muted" style="color:var(--warn)">มีนัดอยู่แล้ว ('+esc(st[0])+' '+hm(r.m.scheduledAt)+') — ส่งใหม่จะแทนนัดเดิม</div>':'')+'</div></label>';
+    }).join('')+
+    '<label class="muted">หมายเหตุถึงคนขับ (ไม่บังคับ)</label><input id="ms-note" class="search" placeholder="เช่น จอดหน้าป้อม รปภ.">'+
+    '<button class="btn btn-green" id="ms-send">ส่งขอนัดหมายทาง LINE</button>');
+  var draft=null, pin=null, gm=null;
+  var setDraft=function(lat, lng, pan){
+    draft={ lat:lat, lng:lng }; bg.querySelector('#ms-ll').textContent=lat.toFixed(5)+', '+lng.toFixed(5);
+    if(gm){ if(!pin) pin=new google.maps.Marker({ map:gm }); pin.setPosition(draft); if(pan){ gm.panTo(draft); gm.setZoom(17); } }
+  };
+  var showNew=function(){
+    var on=bg.querySelector('#ms-point').value==='__new';
+    bg.querySelector('#ms-new').classList.toggle('hidden', !on);
+    if(on && !gm && d.mapsKey) loadMaps(function(){
+      var box=bg.querySelector('#ms-map'); if(!box) return;
+      box.innerHTML=''; box.style.display='block';
+      var c=mps[0]?{ lat:mps[0].latitude, lng:mps[0].longitude }:{ lat:13.08, lng:100.91 };
+      gm=new google.maps.Map(box, { center:c, zoom:15, mapTypeId:'hybrid', streetViewControl:false, mapTypeControl:false, fullscreenControl:false, gestureHandling:'greedy' });
+      mps.forEach(function(p){ new google.maps.Marker({ map:gm, position:{ lat:p.latitude, lng:p.longitude }, title:p.name, opacity:.6 }); });
+      gm.addListener('click', function(e){ setDraft(e.latLng.lat(), e.latLng.lng(), false); });
+      if(draft) setDraft(draft.lat, draft.lng, true);
+    });
+    if(on && !d.mapsKey) bg.querySelector('#ms-map').textContent='ยังไม่ได้ตั้งค่า Google Maps — กด "ใช้ตำแหน่งของฉัน" ที่จุดนัดหมาย';
+  };
+  bg.querySelector('#ms-point').addEventListener('change', showNew);
+  if(!mps.length){ bg.querySelector('#ms-point').value='__new'; showNew(); }
+  bg.querySelector('#ms-here').addEventListener('click', function(){
+    if(!navigator.geolocation){ toast('มือถือไม่รองรับตำแหน่ง'); return; }
+    navigator.geolocation.getCurrentPosition(function(p){ setDraft(p.coords.latitude, p.coords.longitude, true); },
+      function(){ toast('หาตำแหน่งไม่ได้ — แตะบนแผนที่แทน'); }, { enableHighAccuracy:true, timeout:15000 });
+  });
+  bg.querySelector('#ms-send').addEventListener('click', function(){
+    var btn=this, picked=Array.prototype.filter.call(bg.querySelectorAll('.ms-drv'), function(c){ return c.checked; }).map(function(c){ return rows[+c.getAttribute('data-i')]; });
+    if(!picked.length){ toast('เลือกคนขับอย่างน้อย 1 คน'); return; }
+    var when=new Date(bg.querySelector('#ms-time').value);
+    if(isNaN(when)){ toast('เลือกเวลานัด'); return; }
+    var pointSel=bg.querySelector('#ms-point').value, note=bg.querySelector('#ms-note').value;
+    var getPoint = pointSel!=='__new' ? Promise.resolve(pointSel) : (function(){
+      var name=bg.querySelector('#ms-name').value.trim();
+      if(!name){ toast('ตั้งชื่อจุดนัดหมาย'); return null; }
+      if(!draft){ toast('ปักหมุดบนแผนที่ หรือกด "ใช้ตำแหน่งของฉัน"'); return null; }
+      return api({ action:'coordMeetingPointCreate', name:name, lat:draft.lat, lng:draft.lng }).then(function(r){
+        if(!r.ok){ toast(r.error==='bad_location'?'พิกัดไม่ถูกต้อง':errText(r)); return ''; }
+        d.meetingPoints=(d.meetingPoints||[]).concat([r.point]); return r.point.id; });
+    })();
+    if(!getPoint) return;
+    btn.disabled=true; btn.textContent='กำลังส่ง…';
+    getPoint.then(function(pointId){
+      if(!pointId){ btn.disabled=false; btn.textContent='ส่งขอนัดหมายทาง LINE'; return; }
+      var ok=0, fails=[], chain=Promise.resolve();
+      picked.forEach(function(r){ chain=chain.then(function(){
+        return api({ action:'coordMeetingCreate', date:d.date, staff:S.staff, phase:phase, driverId:r.x.id, mode:'DRIVER_TO_STAFF', meetingPointId:pointId,
+          scheduledAt:when.toISOString(), itemIds:r.items.map(function(i){ return i.id; }), note:note, replace:true }).then(function(res){
+          if(res.ok && res.sent!=='failed') ok++; else fails.push(r.x.name+': '+(res.ok?(res.sent==='none'?'ยังไม่ผูก LINE':'ส่งไม่สำเร็จ'):(MEET_ERR[res.error]||errText(res))));
+        });
+      }); });
+      chain.then(function(){
+        bg.remove(); load(true);
+        toast('ส่งนัดหมายแล้ว '+ok+' คน'+(fails.length?' • '+fails.join(' • '):''), fails.length?6000:3500);
+      });
+    });
+  });
 }
 
 // ---------------- แผนงาน (ภาพรวม รายงาน BL) ----------------
@@ -146,6 +265,9 @@ function renderPlan(){
       return '<button class="pt'+(cnt[b[0]]?'':' zero')+(S.filter===b[0]?' on':'')+(b[0]==='done'?' ok':'')+'" data-filter="'+b[0]+'"><span class="i">'+b[1]+'</span><b>'+cnt[b[0]]+'</b><small>'+b[2]+'</small></button>';
     }).join('')+'</div></div>';
   if(na) html+='<button class="btn cta '+(na.done?'btn-green':(na.ghost?'btn-navy':'btn-amber'))+'" id="cta">'+esc(na.label)+'</button>';
+  var notifiedN=d.drivers.filter(function(x){ return x.itemIds.length && x.notified; }).length;
+  html+='<div class="row" style="gap:8px;margin-bottom:12px"><button class="btn btn-ghost btn-sm grow" id="qa-notify">📨 แจ้งงานคนขับ ('+notifiedN+'/'+c.drivers+')</button>'+
+    '<button class="btn btn-ghost btn-sm grow" id="qa-meet">📅 ส่งนัดหมาย'+(d.gate.ready?' (EIR)':'')+'</button></div>';
   if(unlinked.length){
     html+='<div class="card warnbox"><b>⚠️ ยังไม่ผูก LINE '+unlinked.length+' คน</b><div class="muted" style="margin-top:4px">'+
       esc(unlinked.map(function(x){ return x.name; }).join(', '))+' — ส่งข้อความทาง LINE ไม่ได้ '+(d.smsReady?'(จะส่งทาง SMS แทน)':'')+
@@ -158,6 +280,11 @@ function renderPlan(){
     '<input class="search" id="q" placeholder="ค้นหา BL / เลขตู้ / คนขับ / ท่า" value="'+esc(S.q||'')+'"><div id="jobs"></div></div>';
   $('plan-body').innerHTML=html;
   if(na) $('cta').addEventListener('click', na.fn);
+  $('qa-notify').addEventListener('click', function(){
+    var left=d.drivers.filter(function(x){ return x.itemIds.length && !x.notified; });
+    if(left.length) notifyJobs(); else if(confirm('แจ้งงานคนขับครบแล้ว — ส่งข้อความ "คุณได้รับงาน" ซ้ำให้ทุกคน?')) notifyJobs(d.drivers.filter(function(x){ return x.itemIds.length; }).map(function(x){ return x.id; }), true);
+  });
+  $('qa-meet').addEventListener('click', function(){ meetSheet(d.gate.ready && !needMeeting('CARD_PICKUP').length ? 'EIR_HANDOVER' : 'CARD_PICKUP'); });
   if($('go-link')) $('go-link').addEventListener('click', function(){ go('more'); });
   Array.prototype.forEach.call($('plan-body').querySelectorAll('[data-filter]'), function(b){ b.addEventListener('click', function(){
     var v=b.getAttribute('data-filter'); S.filter=(S.filter===v && v!=='all')?'all':v; renderPlan(); }); });
@@ -295,6 +422,18 @@ function requestLocations(driverIds){
 }
 
 /** Google Maps — ไม่มี key = แสดงรายชื่อแทน ไม่วาดแผนที่ปลอม */
+/** โหลด Google Maps ครั้งเดียว ใช้ร่วมกันทั้งแผนที่หลักและแผนที่เลือกจุดนัดหมาย */
+function loadMaps(cb, onErr){
+  if(window.google && google.maps) return cb();
+  (S.mapsCbs=S.mapsCbs||[]).push(cb);
+  if(S.mapsLoading) return;
+  S.mapsLoading=true;
+  window.__gmReady=function(){ (S.mapsCbs||[]).splice(0).forEach(function(f){ try{ f(); }catch(e){} }); };
+  var s=document.createElement('script');
+  s.src='https://maps.googleapis.com/maps/api/js?key='+encodeURIComponent(S.data.mapsKey)+'&callback=__gmReady&loading=async&libraries=geometry&language=th&region=TH';
+  s.async=true; s.onerror=function(){ S.mapsLoading=false; if(onErr) onErr(); };
+  document.head.appendChild(s);
+}
 function drawMap(){
   var d=S.data, box=$('map');
   if(!d.mapsKey){
@@ -302,14 +441,7 @@ function drawMap(){
     return;
   }
   if(!window.google || !google.maps){
-    if(!S.mapsLoading){
-      S.mapsLoading=true;
-      window.__gmReady=function(){ drawMap(); };
-      var s=document.createElement('script');
-      s.src='https://maps.googleapis.com/maps/api/js?key='+encodeURIComponent(d.mapsKey)+'&callback=__gmReady&loading=async&libraries=geometry&language=th&region=TH';
-      s.async=true; s.onerror=function(){ box.innerHTML='<div class="map-empty">โหลด Google Maps ไม่สำเร็จ</div>'; };
-      document.head.appendChild(s);
-    }
+    loadMaps(drawMap, function(){ box.innerHTML='<div class="map-empty">โหลด Google Maps ไม่สำเร็จ</div>'; });
     return;
   }
   if(!S.gmap){
@@ -414,6 +546,7 @@ function openDriver(id){
   var html='<h3>👤 '+esc(x.name)+'</h3>'+
     '<div class="kv"><span>โทร</span><b><a href="tel:'+esc(x.phone)+'">'+esc(x.phone)+'</a></b></div>'+
     '<div class="kv"><span>ทะเบียน</span><b>'+esc(x.plate||'-')+'</b></div>'+
+    '<div class="kv"><span>แจ้งงาน</span><b>'+(x.notified?'แจ้ง "คุณได้รับงาน" แล้ว':'ยังไม่แจ้ง')+'</b></div>'+
     '<div class="kv"><span>LINE</span><b>'+(x.linked?(x.demoLinked?'ผูกแล้ว (DEMO)':'ผูกแล้ว'+(x.friend?'':' • ยังไม่ได้เพิ่มเพื่อน OA')):'ยังไม่ผูก')+'</b></div>';
   ['CARD_PICKUP','EIR_HANDOVER'].forEach(function(ph){
     var l=x.phases[ph].location, r=x.phases[ph].request;
@@ -427,7 +560,7 @@ function openDriver(id){
     '<button class="btn btn-navy" id="sh-meet" style="margin-top:8px">📅 นัดหมาย'+(S.phase==='EIR_HANDOVER'?'ส่งมอบ EIR':'แจกการ์ด')+'</button>';
   var bg=sheet(html);
   bg.querySelector('#sh-req').addEventListener('click', function(){ bg.remove(); requestLocations([x.id]); });
-  bg.querySelector('#sh-meet').addEventListener('click', function(){ bg.remove(); meetingForm(x.id); });
+  bg.querySelector('#sh-meet').addEventListener('click', function(){ bg.remove(); meetSheet(S.phase, x.id); });
 }
 var EVENT_TH={
   LOCATION_CARD_PICKUP_REQUESTED:'ขอตำแหน่ง (แจกการ์ด)', LOCATION_CARD_PICKUP_RECEIVED:'คนขับส่งตำแหน่ง (แจกการ์ด)',

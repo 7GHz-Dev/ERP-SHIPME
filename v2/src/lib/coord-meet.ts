@@ -110,22 +110,27 @@ async function createMeeting(m: MeetingInput, user: Staff, username: string, bat
   await logEvents(ids.map((i) => ({ itemId: i.id, inspectDate: m.date, username })), 'staff', user.username,
     m.phase === 'CARD_PICKUP' ? 'CARD_MEETING_PROPOSED' : 'EIR_MEETING_PROPOSED', { meetingId: row.id, mode: m.mode, at: row.scheduledAt, label });
 
-  // ส่งการ์ดนัดหาคนขับ — LINE เป็นหลัก ยังไม่ผูก LINE ใช้ SMS สำรอง
+  // ส่งการ์ดขอนัดหมายหาคนขับ — LINE เป็นหลัก ยังไม่ผูก LINE ใช้ SMS สำรอง
+  // คนขับมีแค่ 2 ทาง: กด "รับนัดหมาย" หรือ ไม่สะดวก → โทรหาชิปปิ้ง (เบอร์ใน users.phone)
   const cnt = ids.map((i) => i.containerNo || i.bl).join(', ');
-  const title = m.phase === 'CARD_PICKUP' ? '🎫 นัดรับการ์ดรับตู้' : '📄 นัดรับ EIR ขาออก';
-  const how = m.mode === 'STAFF_TO_DRIVER' ? 'ชิปปิ้งจะไปหาคุณที่ตำแหน่งนี้' : 'กรุณาไปที่จุดนัด';
+  const title = m.phase === 'CARD_PICKUP' ? '🎫 นัดหมายรับการ์ดรับตู้' : '📄 นัดหมายรับ EIR ออกท่า';
+  const how = m.mode === 'STAFF_TO_DRIVER' ? 'ชิปปิ้งจะไปหาคุณที่ตำแหน่งนี้' : 'กรุณาไปที่จุดนัดหมาย';
+  const [staffRow] = await db.select({ name: users.name, phone: users.phone }).from(users).where(eq(users.username, username)).limit(1);
+  const staffPhone = staffRow?.phone || '';
   const live = lineMode() === 'live' && driver.lineUserId && !driver.lineUserId.startsWith('DEMO-');
   const link = driverUrl(m.origin, `m=${row.id}`, Boolean(live));
   let sent = 'none';
   if (driver.lineUserId) {
     const r = await pushToDriver({ lineUserId: driver.lineUserId, driverId: driver.id, kind: `MEETING_${m.phase}`, ref: row.id,
       messages: [flexMessage(`${title} ${hm(row.scheduledAt)} น.`, title, [
-        `เวลา ${hm(row.scheduledAt)} น. • ${thShortDate(m.date)}`, `จุดนัด: ${label}`, how, `ตู้: ${cnt}`,
-        ...(row.note ? [`หมายเหตุ: ${row.note}`] : [])],
-      [{ label: 'รับทราบนัด', uri: link, primary: true }, { label: 'เปิดแผนที่นำทาง', uri: mapsLink(lat, lng) }])] });
+        `เวลา ${hm(row.scheduledAt)} น. • ${thShortDate(m.date)}`, `จุดนัดหมาย: ${label}`, how, `ตู้: ${cnt}`,
+        ...(row.note ? [`หมายเหตุ: ${row.note}`] : []), 'สะดวกกด "รับนัดหมาย" • ไม่สะดวกโทรหาชิปปิ้ง'],
+      [{ label: 'รับนัดหมาย', uri: link, primary: true },
+        ...(staffPhone ? [{ label: `ไม่สะดวก โทรหาชิปปิ้ง`, uri: `tel:${staffPhone}` }] : []),
+        { label: 'เปิดแผนที่นำทาง', uri: mapsLink(lat, lng) }])] });
     sent = r.state;
   } else if (smsConfig().ready) {
-    const r = await sendPlainSms(driver.phone, `SHIPME ${title.replace(/^\S+\s/, '')} ${hm(row.scheduledAt)} น. ที่ ${label} ${how} ${mapsLink(lat, lng)}`);
+    const r = await sendPlainSms(driver.phone, `SHIPME ${title.replace(/^\S+\s/, '')} ${hm(row.scheduledAt)} น. ที่ ${label} ${how} ${mapsLink(lat, lng)}${staffPhone ? ` ไม่สะดวกโทร ${staffPhone}` : ''}`);
     sent = r.ok ? 'sms' : 'failed';
   }
   return { ok: true, meeting: row, sent };
@@ -141,6 +146,18 @@ export async function coordMeetingCreate(body: ApiBody, user: Staff): Promise<Ap
     itemIds: Array.isArray(body.itemIds) ? body.itemIds.map(String) : undefined, note: body.note, replace: body.replace === true,
     origin: String(body._origin || '')
   }, user, staffScope(body, user));
+}
+
+/** ชิปปิ้งสร้างจุดนัดหมายใหม่เอง (ตอนส่งนัด) — เก็บเป็นจุดนัดพบในระบบ ใช้ซ้ำได้ ผู้จัดการแก้/ปิดได้ที่ตั้งค่า */
+export async function coordMeetingPointCreate(body: ApiBody, user: Staff): Promise<ApiResult> {
+  const name = text(body.name, 100), lat = Number(body.lat), lng = Number(body.lng);
+  if (!name) return { ok: false, error: 'missing_name' };
+  if (!(Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) || (!lat && !lng)) return { ok: false, error: 'bad_location' };
+  const at = nowIso();
+  const row = { id: id('mp_'), name, port: text(body.port, 40), kind: 'MEETING', latitude: lat, longitude: lng, note: text(body.note, 300),
+    active: true, createdBy: user.username, createdAt: at, updatedAt: at };
+  await db.insert(meetingPoints).values(row);
+  return { ok: true, point: row };
 }
 
 export async function coordMeetingCancel(body: ApiBody, user: Staff): Promise<ApiResult> {

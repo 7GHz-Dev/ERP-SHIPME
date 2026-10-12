@@ -62,7 +62,7 @@ export async function runCoordReminders(origin: string, opts: { date?: string; i
     const due = Date.parse(m.scheduledAt) - Date.now() < min(20) || Date.now() - Date.parse(m.createdAt) > min(10);
     if (!due || Date.parse(m.scheduledAt) < Date.now() - min(30)) continue;
     const t = new Date(m.scheduledAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' });
-    if (await push(m.driverId, `remind-meet:${m.id}`, '⏰ เตือน: นัดหมายกับชิปปิ้ง', [`เวลา ${t} น. ที่ ${m.label}`, 'กด "รับทราบนัด" ให้ชิปปิ้งรู้ว่าคุณได้รับแล้ว'],
+    if (await push(m.driverId, `remind-meet:${m.id}`, '⏰ เตือน: นัดหมายกับชิปปิ้ง', [`เวลา ${t} น. ที่ ${m.label}`, 'กด "รับนัดหมาย" ถ้าไม่สะดวกโทรหาชิปปิ้ง'],
       'ดูนัดหมาย', `m=${m.id}`)) counts.meeting++;
   }
 

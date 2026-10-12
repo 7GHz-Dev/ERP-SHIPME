@@ -179,6 +179,37 @@ Per-container steps on the driver page (6 steps):
 - **Shipping phone:** admins set it on the employee page; staff set their own under /staff → เพิ่มเติม (More) → เบอร์มือถือของฉัน (my mobile number).
 - **Tested:** 16 checks against the real DB with temporary data (all deleted), including reminders every 5 minutes / no duplicates within the same round / none inside the 30 minutes. Screenshots of every step.
 
+## Simplified flow (2026-10-12, owner request; supersedes the 3-step table above)
+
+**What the driver does (5 steps):**
+1. Gets the "📦 คุณได้รับงาน" (you've got a job) message, then taps "ดูงาน" (view job).
+2. Accepts the card-pickup meeting ("รับนัดหมาย", accept meeting), or calls shipping if it doesn't suit them.
+3. Photographs the truck front, truck rear and container seal, then taps "ยืนยันส่งงาน" (confirm submission).
+4. Taps "เข้า Fast Scan แล้ว" (entered Fast Scan) within 30 minutes. After that, a reminder every 5 minutes.
+5. Photographs the EIR document and the lead seal, then taps "ยืนยันส่งงาน" → done.
+
+**Staff side:**
+- "📨 แจ้งงานคนขับ" (notify drivers) → `coordNotifyJobs`.
+  - Sends the first message, 1 per driver, by LINE (SMS as fallback).
+  - Records `JOB_ASSIGNED_NOTIFIED`, and the dashboard shows `drivers[].notified`.
+  - The same set is not re-sent unless `resend` is set.
+- "📅 ส่งนัดหมาย" (send a meeting):
+  - Pick a saved meeting point, or "➕ สร้างจุดนัดหมายใหม่" (create a new point) by pinning it on the map or using "ใช้ตำแหน่งของฉัน" (my location). New points are saved through `coordMeetingPointCreate` and can be reused.
+  - Choose the time and the drivers (they are pre-ticked when they still need a meeting).
+  - The request is sent to each driver (mode DRIVER_TO_STAFF, `replace`).
+- The LINE meeting card has 3 buttons: "รับนัดหมาย" (accept), "ไม่สะดวก โทรหาชิปปิ้ง" (can't make it, call shipping; uses `tel:` with the shipping user's number), and the map.
+- The driver can no longer ask to reschedule; they call instead.
+- The staff page's next-step button order:
+  1. Notify drivers.
+  2. Card-pickup meeting.
+  3. Record card handover.
+  4. Wait for pickup photos / Fast Scan.
+  5. Record the X-Ray result.
+  6. EIR meeting.
+  7. Record the EIR handover.
+- Location requests are no longer part of the main flow. They're still in the Map tab as optional.
+- **Tested:** 14 checks against the real DB with temporary data (all deleted), plus screenshots of the driver page (waiting / meeting received / accepted) and the meeting sheet (creating a new point and sending it to 2 drivers).
+
 ## Not built yet
 
 - Reports / CSV for this flow.

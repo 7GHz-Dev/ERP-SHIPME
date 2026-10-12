@@ -230,6 +230,9 @@ export async function coordDashboard(body: ApiBody, user: Staff): Promise<ApiRes
     .orderBy(desc(locationReports.receivedAt)) : [];
 
   const now = Date.now();
+  // ตู้ที่แจ้ง "คุณได้รับงาน" ให้คนขับแล้ว
+  const notifiedItems = new Set(itemIds.length ? (await db.select({ itemId: jobEvents.itemId }).from(jobEvents)
+    .where(and(inArray(jobEvents.itemId, itemIds), eq(jobEvents.event, 'JOB_ASSIGNED_NOTIFIED')))).map((e) => e.itemId) : []);
   const driverList = [...driverMap.values()].map((d) => {
     const mine = items.filter((i) => steps.get(i.id)?.driverId === d.id).map((i) => i.id);
     const perPhase: Record<string, any> = {};
@@ -244,6 +247,7 @@ export async function coordDashboard(body: ApiBody, user: Staff): Promise<ApiRes
       };
     }
     return { id: d.id, name: d.name, phone: d.phone, plate: d.plate, linked: Boolean(d.lineUserId),
+      notified: mine.length > 0 && mine.every((i) => notifiedItems.has(i)),
       demoLinked: d.lineUserId.startsWith('DEMO-'), friend: d.lineFriend, lineName: d.lineName, itemIds: mine, phases: perPhase };
   });
 
@@ -377,6 +381,58 @@ export async function coordRequestLocations(body: ApiBody, user: Staff): Promise
     failed: results.filter((r) => r.state === 'failed').length,
     cooldown: results.filter((r) => r.state === 'cooldown').length, results
   };
+}
+
+// ---------------- ชิปปิ้ง: แจ้งคนขับ "คุณได้รับงาน" (ข้อความแรกที่คนขับได้) ----------------
+
+/**
+ * ส่ง 1 ข้อความต่อคนขับ: คุณได้รับงาน + ตู้ + ปุ่ม "ดูงาน" — LINE เป็นหลัก ยังไม่ผูก LINE ใช้ SMS สำรอง (ถ้าพร้อม)
+ * driverIds ไม่ส่งมา = เฉพาะคนที่ยังไม่ได้แจ้ง • ตู้ชุดเดิมของคนขับคนเดิมส่งซ้ำไม่ได้ (กันกดรัว) เว้นแต่ resend
+ */
+export async function coordNotifyJobs(body: ApiBody, user: Staff): Promise<ApiResult> {
+  const date = String(body.date || '');
+  if (!validYmd(date)) return { ok: false, error: 'bad_date' };
+  const username = staffScope(body, user);
+  const { confirmed, items, steps, drivers: driverMap } = await loadBatch(date, username);
+  if (!confirmed || !items.length) return { ok: false, error: 'plan_not_confirmed' };
+  const done = new Set((await db.select({ itemId: jobEvents.itemId }).from(jobEvents)
+    .where(and(inArray(jobEvents.itemId, items.map((i) => i.id)), eq(jobEvents.event, 'JOB_ASSIGNED_NOTIFIED')))).map((e) => e.itemId));
+  const only = Array.isArray(body.driverIds) ? new Set(body.driverIds.map(String)) : null;
+  const byDriver = new Map<string, ItemRow[]>();
+  for (const item of items) {
+    const d = steps.get(item.id)?.driverId;
+    if (!d || (only && !only.has(d))) continue;
+    byDriver.set(d, [...(byDriver.get(d) || []), item]);
+  }
+  const origin = String(body._origin || '');
+  const results: { driverId: string; name: string; state: string }[] = [];
+  for (const [driverId, jobs] of byDriver) {
+    const d = driverMap.get(driverId)!;
+    if (!only && body.resend !== true && jobs.every((j) => done.has(j.id))) continue;
+    const ports = [...new Set(jobs.map((j) => j.port).filter(Boolean))].join(', ');
+    const cns = jobs.map((j) => j.containerNo || j.bl).join(', ');
+    const live = lineMode() === 'live' && d.lineUserId && !d.lineUserId.startsWith('DEMO-');
+    let state = 'none';
+    if (d.lineUserId) {
+      const r = await pushToDriver({ lineUserId: d.lineUserId, driverId, kind: 'JOB_ASSIGNED',
+        ref: `${date}:${jobs.map((j) => j.id).sort().join(',')}${body.resend === true ? `:${nowIso()}` : ''}`,
+        messages: [flexMessage(`SHIPME: คุณได้รับงาน ${jobs.length} ตู้`, '📦 คุณได้รับงาน', [
+          `งานวันที่ ${thShortDate(date)} : ${jobs.length} ตู้${ports ? ` | ท่า ${ports}` : ''}`, `ตู้: ${cns}`,
+          'กด "ดูงาน" เพื่อดูขั้นตอน และรอชิปปิ้งส่งนัดหมายรับการ์ดรับตู้'],
+        [{ label: 'ดูงาน', uri: driverUrl(origin, 'home=1', Boolean(live)), primary: true }])] });
+      state = r.state === 'duplicate' ? 'already' : r.state;
+    } else if (smsConfig().ready) {
+      const r = await sendPlainSms(d.phone, `SHIPME: คุณได้รับงาน ${jobs.length} ตู้ วันที่ ${thShortDate(date)} (${cns}) รอชิปปิ้งส่งนัดหมายรับการ์ดรับตู้`);
+      state = r.ok ? 'sms' : 'failed';
+    }
+    if (['sent', 'demo', 'sms', 'already'].includes(state)) {
+      await logEvents(jobs.filter((j) => !done.has(j.id)).map((j) => ({ itemId: j.id, inspectDate: date, username })), 'staff', user.username,
+        'JOB_ASSIGNED_NOTIFIED', { state });
+    }
+    results.push({ driverId, name: d.name, state });
+  }
+  return { ok: true, results, sent: results.filter((r) => ['sent', 'demo', 'sms'].includes(r.state)).length,
+    failed: results.filter((r) => r.state === 'failed' || r.state === 'none').length };
 }
 
 // ---------------- ชิปปิ้ง: แจกการ์ด / ส่งมอบ EIR (บันทึกแยกทีละตู้) ----------------

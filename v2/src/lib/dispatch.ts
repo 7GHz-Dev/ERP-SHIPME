@@ -8,12 +8,12 @@ import {
 } from './docscan-cloud';
 import { serviceInvoiceData } from './service-invoices';
 import {
-  coordCardHanded, coordDashboard, coordXrayResult, coordDemo, coordDriverInvite, coordEirHanded, coordOutbox, coordRequestLocations,
+  coordCardHanded, coordDashboard, coordNotifyJobs, coordXrayResult, coordDemo, coordDriverInvite, coordEirHanded, coordOutbox, coordRequestLocations,
   coordTimeline, driverAuth, driverComplete, driverEvidenceCommit, driverEvidenceDelete, driverEvidenceSign,
   driverHome, driverMeeting, driverReportLocation, driverStep, meetingPointList, meetingPointSave
 } from './coord';
 import {
-  coordMeetingCancel, coordMeetingCreate, coordRouteConfirm, coordRoutePlan, coordStaffLineLink, coordStaffNotify,
+  coordMeetingCancel, coordMeetingCreate, coordMeetingPointCreate, coordRouteConfirm, coordRoutePlan, coordStaffLineLink, coordStaffNotify,
   lineRichMenuInstall, staffLineRedeem
 } from './coord-meet';
 import {
@@ -580,6 +580,14 @@ const handlers: Record<string, Handler> = {
   coordMeetingCreate: async (body) => {
     const session = await guard(body, COORD_STAFF);
     return session.error || coordMeetingCreate(body, session.user);
+  },
+  coordMeetingPointCreate: async (body) => {
+    const session = await guard(body, COORD_STAFF);
+    return session.error || coordMeetingPointCreate(body, session.user);
+  },
+  coordNotifyJobs: async (body) => {
+    const session = await guard(body, COORD_STAFF);
+    return session.error || coordNotifyJobs(body, session.user);
   },
   coordMeetingCancel: async (body) => {
     const session = await guard(body, COORD_STAFF);
