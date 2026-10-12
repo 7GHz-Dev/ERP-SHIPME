@@ -114,6 +114,28 @@ export function validateImageFile(f: File) {
   if (f.size > MAX_FILE_BYTES) throw new ImageError(`"${f.name}" ใหญ่เกิน ${MAX_FILE_BYTES / 1024 / 1024}MB`);
 }
 
+/**
+ * รับรูปที่ผู้ใช้เลือก — คัดลอกข้อมูลเข้าหน่วยความจำทันที ก่อนล้างช่องเลือกไฟล์ / ก่อนเริ่มประมวลผล
+ *
+ * iPhone (Safari/Chrome) ให้ File ที่ชี้ไฟล์ชั่วคราวของคลังภาพ แล้วลบทิ้งเร็วมาก (หรือเมื่อล้าง input)
+ * ถ้าเก็บแค่ File แล้วค่อยอ่านทีละรูป รูปหลัง ๆ จะอ่านไม่ได้: "NotFoundError: The object can not be found here."
+ * จึงอ่านครบทุกรูปตอนเลือกเลย (ทีละรูป ไม่อ่านพร้อมกันให้เปลืองหน่วยความจำ)
+ */
+export async function takeImageFiles(list: FileList | null | undefined) {
+  const picked = Array.from(list || []);   // คัดลอกรายการก่อน await แรก
+  const files: File[] = [], errors: string[] = [];
+  for (const f of picked) {
+    try {
+      validateImageFile(f);
+      const data = await f.arrayBuffer();
+      files.push(new File([data], f.name, { type: f.type, lastModified: f.lastModified }));
+    } catch (e) {
+      errors.push(e instanceof ImageError ? e.message : `อ่านรูป "${f.name}" ไม่ได้ — เลือกรูปนี้ใหม่อีกครั้ง`);
+    }
+  }
+  return { files, errors };
+}
+
 /** ชื่อไฟล์/ชื่อเอกสารที่ปลอดภัย — ตัดอักขระที่ใช้ในชื่อไฟล์ไม่ได้ และจำกัดความยาว */
 export function safeName(name: string, fallback = 'เอกสาร') {
   const v = String(name || '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);

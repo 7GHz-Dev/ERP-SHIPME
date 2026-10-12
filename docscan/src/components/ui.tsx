@@ -138,6 +138,8 @@ export function friendlyError(e: unknown) {
   if (/QuotaExceeded|quota/i.test(m)) return 'ที่เก็บที่เบราว์เซอร์แบ่งให้ DocScan เต็ม (ไม่ใช่พื้นที่ว่างของเครื่อง) — ล้างถังขยะ หรือเปลี่ยนเป็น "ให้ระบบเก็บ" ที่ ตั้งค่า → ที่เก็บเอกสาร';
   // ลองเก็บแบบสำรองแล้วยังไม่ได้ (ดู db.ts writeWithFallback)
   if (/preparing Blob/i.test(m)) return 'Safari บันทึกรูปลงเครื่องไม่ได้ — ถ้าเปิดแบบส่วนตัว (Private) หรือเปิดจากในแอป LINE ให้เปิด DocScan ด้วย Safari ปกติ หรือเปลี่ยนเป็น "ให้ระบบเก็บ" ที่ ตั้งค่า → ที่เก็บเอกสาร';
+  // iPhone ลบไฟล์ชั่วคราวของรูปที่เลือกจากคลังภาพไปแล้ว
+  if (/can ?not be found here|NotReadableError/i.test(m)) return 'อ่านรูปจากคลังภาพไม่ได้ (เครื่องลบไฟล์ชั่วคราวไปแล้ว) — เลือกรูปใหม่อีกครั้ง';
   if (/NotAllowedError|Permission/i.test(m)) return 'ไม่ได้รับอนุญาตให้ใช้กล้อง — เปิดสิทธิ์กล้องในการตั้งค่าเบราว์เซอร์';
   if (/NotFoundError|DevicesNotFound/i.test(m)) return 'ไม่พบกล้องในอุปกรณ์นี้ — ใช้ "นำเข้ารูป" แทน';
   if (/^[A-Za-z]+Error:|at .*\(/.test(m) || m.length > 200) return 'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง';

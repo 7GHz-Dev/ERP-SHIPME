@@ -5,7 +5,7 @@ import { pinDoc } from '@/lib/cloud';
 import { warmUp } from '@/lib/cv';
 import { getSetting, setSetting } from '@/lib/db';
 import { detectDoc, sigCorrelation, warmDetector, type DetectResult, type Signature } from '@/lib/detect';
-import { ctx2d, makeCanvas, validateImageFile } from '@/lib/image';
+import { ctx2d, makeCanvas, takeImageFiles } from '@/lib/image';
 import { buildPageFromCanvas, insetQuad, refineOnCanvas } from '@/lib/process';
 import { addPage } from '@/lib/repo';
 import type { Point, Quad } from '@/lib/types';
@@ -314,11 +314,10 @@ export default function Scanner({ getDocumentId, onDone, onClose }: {
   const finish = () => setFinishing(true);
   const close = () => { if (captured > 0) finish(); else { stop(); onClose(); } };
 
-  const pickFiles = (files: FileList | null) => {
-    const ok: Blob[] = [];
-    for (const f of Array.from(files || [])) {
-      try { validateImageFile(f); ok.push(f); } catch (e) { ui.toast(friendlyError(e), 'error'); }
-    }
+  const pickFiles = async (list: FileList | null) => {
+    // อ่านรูปเข้าหน่วยความจำก่อน (iPhone ลบไฟล์ชั่วคราวของคลังภาพเร็ว) — ดู takeImageFiles
+    const { files: ok, errors } = await takeImageFiles(list);
+    for (const m of errors) ui.toast(m, 'error');
     if (ok.length) setImports(ok);
   };
 
@@ -426,7 +425,7 @@ export default function Scanner({ getDocumentId, onDone, onClose }: {
           )}
         </div>
       </div>
-      <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => { pickFiles(e.target.files); e.target.value = ''; }} />
+      <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => { const el = e.target; pickFiles(el.files).finally(() => { el.value = ''; }); }} />
       {overlay && <div className="fixed inset-0 z-50">{overlay}</div>}
     </div>
   );

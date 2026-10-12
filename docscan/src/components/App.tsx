@@ -6,7 +6,7 @@ import { warmUp } from '@/lib/cv';
 import { db, getSetting, setSetting } from '@/lib/db';
 import { warmDetector } from '@/lib/detect';
 import { loadTicket, thaiDate, type ErpTicket } from '@/lib/erp';
-import { canvasToBlob, ctx2d, validateImageFile } from '@/lib/image';
+import { canvasToBlob, ctx2d, takeImageFiles } from '@/lib/image';
 import { pdfToImages } from '@/lib/pdf';
 import { blankCanvas, buildPageImages } from '@/lib/process';
 import { addPage, createDocument, purgeExpiredTrash } from '@/lib/repo';
@@ -95,11 +95,10 @@ function Shell() {
     (kind === 'image' ? imgInput : pdfInput).current?.click();
   };
 
-  const onImages = async (files: FileList | null) => {
-    const ok: Blob[] = [];
-    for (const f of Array.from(files || [])) {
-      try { validateImageFile(f); ok.push(f); } catch (e) { ui.toast(friendlyError(e), 'error'); }
-    }
+  const onImages = async (list: FileList | null) => {
+    // อ่านรูปเข้าหน่วยความจำก่อน (iPhone ลบไฟล์ชั่วคราวของคลังภาพเร็ว) — ดู takeImageFiles
+    const { files: ok, errors } = await takeImageFiles(list);
+    for (const m of errors) ui.toast(m, 'error');
     if (!ok.length) return;
     const docId = importTarget.current || (await createDocument(ticket ? newDocName() : `นำเข้า ${stamp()}`, currentFolder)).id;
     setImportQ({ docId, items: ok, confirm: await getSetting<boolean>('scanConfirm', false) });
@@ -128,7 +127,7 @@ function Shell() {
 
   const inputs = (
     <>
-      <input ref={imgInput} type="file" accept="image/*" multiple hidden onChange={(e) => { onImages(e.target.files); e.target.value = ''; }} />
+      <input ref={imgInput} type="file" accept="image/*" multiple hidden onChange={(e) => { const el = e.target; onImages(el.files).finally(() => { el.value = ''; }); }} />
       <input ref={pdfInput} type="file" accept="application/pdf,.pdf" hidden onChange={(e) => { onPdf(e.target.files?.[0]); e.target.value = ''; }} />
     </>
   );
