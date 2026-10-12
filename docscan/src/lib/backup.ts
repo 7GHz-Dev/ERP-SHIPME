@@ -1,6 +1,6 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import { CLOUD_SETTINGS, refsOf } from './cloud';
-import { db } from './db';
+import { db, packAll, packBlobs } from './db';
 import type { CloudRefs, DocRecord, Folder, PageRecord, SignatureRecord } from './types';
 
 /**
@@ -72,18 +72,20 @@ export async function restoreBackup(file: File) {
   });
   const signatures: SignatureRecord[] = (m.signatures || []).map((s: Record<string, unknown>) =>
     ({ ...s, image: blob(String(s.image), 'image/png') }) as SignatureRecord);
+  // รูปเก็บเป็นข้อมูลดิบ (ดู db.ts) — แปลงก่อนเปิด transaction
+  const storedPages = await packAll(pages), storedSigs = await packAll(signatures);
   await db.transaction('rw', [db.documents, db.pages, db.folders, db.signatures, db.settings, db.cloudRefs], async () => {
     if (refRows.length) await db.cloudRefs.bulkPut(refRows);
     await db.folders.bulkPut(m.folders as Folder[]);
     await db.documents.bulkPut((m.documents as DocRecord[]).map((d) => ({ ...d, thumbnail: null })));
-    await db.pages.bulkPut(pages);
-    await db.signatures.bulkPut(signatures);
+    await db.pages.bulkPut(storedPages);
+    await db.signatures.bulkPut(storedSigs);
     if (Array.isArray(m.settings)) await db.settings.bulkPut(m.settings);
   });
   // รูปปกคำนวณใหม่จากหน้าแรก (ไม่ได้เก็บซ้ำในแบ็กอัป)
   for (const d of m.documents as DocRecord[]) {
     const first = pages.filter((p) => p.documentId === d.id).sort((a, b) => a.order - b.order)[0];
-    await db.documents.update(d.id, { thumbnail: first?.thumbnail || null });
+    await db.documents.update(d.id, await packBlobs({ thumbnail: first?.thumbnail || null }));
   }
   return { documents: m.documents.length, pages: pages.length };
 }

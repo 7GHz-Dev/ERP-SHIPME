@@ -1,5 +1,5 @@
 import { FIELD, KINDS, filesOf, forgetFiles, getMode, hasBlob, isStorageFull, pageBlob, refsOf, requestSync, storeRemotely } from './cloud';
-import { db, getPages, isBlobWriteError, packBlobs, uid, writeWithFallback } from './db';
+import { db, getPages, packAll, packBlobs, uid } from './db';
 import { safeName } from './image';
 import { rebuildProcessed } from './process';
 import type { BlobKind, CloudRefs, DocRecord, Folder, PageRecord, StorageMode } from './types';
@@ -31,13 +31,13 @@ export async function refreshDocument(documentId: string) {
   const pages = await getPages(documentId);
   const refs = await refsOf(pages.map((p) => p.id));
   const cover = pages[0]?.thumbnail;
-  await writeWithFallback({
+  await db.documents.update(documentId, await packBlobs({
     pageCount: pages.length, size: pages.reduce((s, p) => s + pageBytes(p, refs.get(p.id)), 0),
     // ภาพย่อหน้าแรกยังไม่ได้ดึงจากระบบ (เพิ่งดึงรายการมา) = ใช้ปกเดิมไปก่อน
     ...(hasBlob(cover) || !pages.length ? { thumbnail: cover || null } : {}),
     ocrText: pages.map((p) => p.ocrText).filter(Boolean).join('\n\n'),
     updatedAt: Date.now()
-  } as Partial<DocRecord>, (changes) => db.documents.update(documentId, changes));
+  } as Partial<DocRecord>));
   requestSync();
 }
 
@@ -52,7 +52,7 @@ export async function addPage(documentId: string, img: NewPage, atOrder?: number
     adjustments: { ...DEFAULT_ADJUST }, markup: [], ocrText: ''
   };
   try {
-    await writeWithFallback(page, (r) => db.pages.add(r));
+    await db.pages.add(await packBlobs(page));
   } catch (e) {
     // เครื่องเต็ม + เอกสารให้ระบบเก็บ = อัปขึ้นระบบเลย ไม่ต้องเก็บรูปในเครื่อง
     if (!isStorageFull(e) || (await db.documents.get(documentId))?.storage !== 'cloud') throw e;
@@ -74,12 +74,13 @@ export async function updatePage(id: string, patch: Partial<PageRecord>, rebuild
   const changed: BlobKind[] = KINDS.filter((k) => FIELD[k] in patch || (rebuild && (k === 'p' || k === 't')));
   let next: PageRecord | undefined;
   const dropped: (string | undefined)[] = [];
-  // Safari เขียนรูปเป็นไฟล์ไม่ได้ (โหมดส่วนตัว / ในแอปอื่น) = เตรียมทั้งแถวเป็นข้อมูลดิบไว้ก่อนเปิด transaction แล้วเขียนใหม่
-  let packed: PageRecord | null = null;
-  const write = () => db.transaction('rw', db.pages, db.cloudRefs, async () => {
+  // แปลงรูปเป็นข้อมูลดิบก่อนเปิด transaction (await อย่างอื่นใน transaction ไม่ได้) แล้วเขียนเฉพาะช่องที่เปลี่ยนด้วย update
+  // ไม่ put ทั้งแถว เพราะแถวที่อ่านมามีรูปเป็น Blob (จาก hook) — เขียนกลับไปจะเป็น Blob ที่ iPhone อ่านไม่ได้
+  const changes = await packBlobs({ ...patch, ...rebuilt } as Partial<PageRecord>);
+  await db.transaction('rw', db.pages, db.cloudRefs, async () => {
     const cur = await db.pages.get(id);
     if (!cur) return;
-    next = packed ?? { ...cur, ...patch, ...rebuilt };
+    next = { ...cur, ...patch, ...rebuilt };
     delete next.cloud;   // ที่เก็บแบบเก่า (ย้ายไป cloudRefs แล้ว)
     if (changed.length) {
       next.rev = (cur.rev ?? 0) + 1;
@@ -90,21 +91,8 @@ export async function updatePage(id: string, patch: Partial<PageRecord>, rebuild
         await db.cloudRefs.put({ ...row, refs });
       }
     }
-    await db.pages.put(next);
+    await db.pages.update(id, { ...changes, cloud: undefined, ...(next.rev !== cur.rev ? { rev: next.rev } : {}) });
   });
-  try {
-    await write();
-  } catch (e) {
-    if (!isBlobWriteError(e)) throw e;
-    const cur = await db.pages.get(id);
-    if (!cur) return;
-    const full: PageRecord = { ...cur, ...patch, ...rebuilt };
-    delete full.cloud;
-    packed = await packBlobs(full);
-    dropped.length = 0;
-    await write();
-    next = { ...full, rev: next?.rev ?? full.rev };
-  }
   await forgetFiles(dropped);
   await refreshDocument(page.documentId);
   return next;
@@ -135,10 +123,11 @@ export async function duplicatePage(id: string) {
   if (!page) return;
   const pages = await getPages(page.documentId);
   const newId = uid();
+  const copy = await packBlobs({ ...page, id: newId, order: page.order + 1 });
   // แทรกต่อจากหน้าเดิม — ขยับลำดับหน้าหลัง ๆ ลงไปหนึ่ง
   await db.transaction('rw', db.pages, async () => {
     for (const p of pages) if (p.order > page.order) await db.pages.update(p.id, { order: p.order + 1 });
-    await db.pages.add({ ...page, id: newId, order: page.order + 1 });
+    await db.pages.add(copy);
   });
   await copyRefs([{ from: id, to: newId, docId: page.documentId }]);
   await refreshDocument(page.documentId);
@@ -168,7 +157,7 @@ export async function duplicateDocument(id: string) {
   const copy = await createDocument(`${doc.name} (สำเนา)`, doc.folderId, doc.storage ?? 'local');
   const pages = await getPages(id);
   const copies = pages.map((p) => ({ ...p, id: uid(), documentId: copy.id }));
-  await db.pages.bulkAdd(copies);
+  await db.pages.bulkAdd(await packAll(copies));
   await copyRefs(pages.map((p, i) => ({ from: p.id, to: copies[i].id, docId: copy.id })));
   await refreshDocument(copy.id);
   return copy;

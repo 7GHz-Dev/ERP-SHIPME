@@ -4,7 +4,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useRef, useState, type PointerEvent as RPE } from 'react';
 import { pageBlob } from '@/lib/cloud';
-import { db, uid, writeWithFallback } from '@/lib/db';
+import { db, packBlobs, uid } from '@/lib/db';
 import { blobToCanvas, canvasToBlob, ctx2d, makeCanvas } from '@/lib/image';
 import { drawMarkup, sampleBackground } from '@/lib/markup';
 import { renderPage } from '@/lib/process';
@@ -303,7 +303,7 @@ function SignatureSheet({ open, onClose, onPick }: { open: boolean; onClose: () 
 
   const p = (e: RPE<HTMLCanvasElement>) => { const r = e.currentTarget.getBoundingClientRect(); return { x: (e.clientX - r.left) * (e.currentTarget.width / r.width), y: (e.clientY - r.top) * (e.currentTarget.height / r.height) }; };
   const ctx = () => { const c = ctx2d(pad.current!); c.lineWidth = 4; c.lineCap = 'round'; c.lineJoin = 'round'; c.strokeStyle = '#111827'; return c; };
-  const store = async (b: Blob) => { await writeWithFallback({ id: uid(), image: b, createdAt: Date.now() }, (r) => db.signatures.add(r)); await load(); };
+  const store = async (b: Blob) => { await db.signatures.add(await packBlobs({ id: uid(), image: b, createdAt: Date.now() })); await load(); };
 
   const useDrawn = async () => {
     const t = trimCanvas(pad.current!);

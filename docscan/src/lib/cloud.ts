@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { db, getPages, getSetting, isBlobWriteError, packBlobs, setSetting, uid } from './db';
+import { db, getPages, getSetting, packBlobs, setSetting, uid } from './db';
 import { post } from './erp';
 import type { BlobKind, CloudRefs, DocRecord, Folder, PageRecord, StorageMode } from './types';
 
@@ -244,18 +244,13 @@ export function hydrate(docId: string, kinds: BlobKind[], opts: { pageIds?: stri
         if (!url) throw new Error('ไม่พบไฟล์ของเอกสารนี้บนระบบ');
         const blob = await download(url);
         if (!full) {
-          const save = (value: Blob) => db.transaction('rw', db.pages, db.cloudRefs, async () => {
-            const [cur, ref] = await Promise.all([db.pages.get(x.id), db.cloudRefs.get(x.id)]);
-            if (!cur || ref?.refs[x.k]?.f !== x.f || hasBlob(stored(cur, x.k))) return;
-            const patch: Partial<PageRecord> = {};
-            patch[FIELD[x.k]] = value;
-            await db.pages.update(x.id, patch);
-          });
+          // เก็บเป็นข้อมูลดิบ (ดู db.ts) — แปลงก่อนเปิด transaction
+          const patch = await packBlobs({ [FIELD[x.k]]: blob } as Partial<PageRecord>);
           try {
-            // Safari เขียนรูปเป็นไฟล์ไม่ได้ = ลองแบบข้อมูลดิบ (ดู db.ts)
-            await save(blob).catch(async (e) => {
-              if (!isBlobWriteError(e)) throw e;
-              await save((await packBlobs({ b: blob })).b);
+            await db.transaction('rw', db.pages, db.cloudRefs, async () => {
+              const [cur, ref] = await Promise.all([db.pages.get(x.id), db.cloudRefs.get(x.id)]);
+              if (!cur || ref?.refs[x.k]?.f !== x.f || hasBlob(stored(cur, x.k))) return;
+              await db.pages.update(x.id, patch);
             });
           } catch (e) {
             if (!isStorageFull(e)) throw e;
@@ -400,7 +395,7 @@ export async function storeRemotely(page: PageRecord) {
   }
   // ภาพย่อเล็กมาก ลองเก็บลงเครื่อง (ใช้แสดงรายการ) — ไม่ได้ก็ไม่เป็นไร ดึงจากระบบตอนเปิด
   const t = mem.get(memKey(page.id, 't'));
-  if (t) await db.pages.update(page.id, { thumbnail: t }).catch(() => undefined);
+  if (t) await db.pages.update(page.id, await packBlobs({ thumbnail: t })).catch(() => undefined);
 }
 
 async function syncFolders() {
@@ -590,8 +585,9 @@ export async function pullFromCloud(onProgress?: (done: number, total: number) =
       const url = urls.get(c.f);
       if (!url) return;
       const blob = await download(url);
-      await db.pages.update(c.pageId, { thumbnail: blob });
-      await db.documents.update(c.docId, { thumbnail: blob });
+      const thumb = await packBlobs({ thumbnail: blob });
+      await db.pages.update(c.pageId, thumb);
+      await db.documents.update(c.docId, thumb);
     });
   }
   return { added: done, total: r.docs.length };

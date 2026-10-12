@@ -8,10 +8,12 @@ import type { CloudRefRecord, DocRecord, Folder, PageRecord, SignatureRecord } f
  * ระวัง: Safari คัดลอกทุก Blob ในแถวเป็นไฟล์ชั่วคราวทุกครั้งที่เขียนแถวนั้น (แม้แก้แค่ช่องเดียว)
  * เครื่องที่พื้นที่เต็มจึงเขียนแถวที่มีรูปใหญ่ไม่ได้ — ข้อมูลที่ต้องจดบ่อย (เช่น cloudRefs) ต้องอยู่ตารางที่ไม่มีรูป
  *
- * "Error preparing Blob/File data to be stored in object store" ไม่ได้แปลว่าเครื่องเต็มเสมอ —
- * เกิดได้ทั้งตอนเปิดแบบส่วนตัว (Private) / เปิดในแอปอื่น (LINE ฯลฯ) ที่เขียนไฟล์ชั่วคราวไม่ได้ แม้เครื่องเหลือหลาย GB
- * ทางแก้: เจอ error นี้ = เขียนใหม่โดยเก็บรูปเป็นข้อมูลดิบ (ArrayBuffer) ในแถวแทน Blob (ไม่ต้องสร้างไฟล์ชั่วคราว)
+ * iPhone (WebKit) กับ Blob ใน IndexedDB มีปัญหาหลายแบบ แม้เครื่องเหลือหลาย GB:
+ *   - เขียนไม่ได้: "Error preparing Blob/File data to be stored in object store" (โหมดส่วนตัว / ในแอป LINE ฯลฯ)
+ *   - เขียนได้แต่อ่านกลับไม่ได้: รูปขึ้น "?" + "The object can not be found here." (เบราว์เซอร์ในแอป LINE)
+ * ทางแก้: ทุกครั้งที่เขียนรูปลงฐานข้อมูล แปลงเป็นข้อมูลดิบ (ArrayBuffer) ด้วย packBlobs ก่อนเสมอ — ไม่มีไฟล์ Blob ให้พัง
  * ตอนอ่าน hook 'reading' แปลงกลับเป็น Blob ให้เอง — โค้ดส่วนอื่นเห็นเป็น Blob เหมือนเดิม
+ * ห้าม put/add แถวที่อ่านมา (มี Blob จาก hook) ตรง ๆ — ต้องผ่าน packBlobs ก่อน / แก้บางช่องใช้ update (Dexie แก้บนข้อมูลดิบ)
  */
 class DocScanDB extends Dexie {
   documents!: Table<DocRecord, string>;
@@ -60,7 +62,7 @@ function unpackRow<T>(row: T): T {
   return row;
 }
 
-/** แปลงทุก Blob ในแถวเป็น ArrayBuffer (ใช้เฉพาะตอนเขียนแบบปกติไม่ได้) */
+/** แปลงทุก Blob ในแถวเป็น ArrayBuffer — เรียกก่อนเขียนแถว/ช่องที่มีรูปทุกครั้ง */
 export async function packBlobs<T extends object>(row: T): Promise<T> {
   const out = { ...row } as Record<string, unknown>;
   for (const k of Object.keys(out)) {
@@ -70,21 +72,7 @@ export async function packBlobs<T extends object>(row: T): Promise<T> {
   return out as T;
 }
 
-export const isBlobWriteError = (e: unknown) =>
-  /preparing Blob/i.test(`${(e as Error)?.name} ${(e as Error)?.message ?? e}`);
-
-/**
- * เขียนแถวที่มีรูป — แบบปกติก่อน ถ้า Safari สร้างไฟล์ชั่วคราวของรูปไม่ได้ ลองใหม่แบบเก็บข้อมูลดิบ
- * ยังไม่ได้อีก = พื้นที่ที่เบราว์เซอร์ให้เต็มจริง (โยน error เดิมต่อ)
- */
-export async function writeWithFallback<T extends object, R>(row: T, write: (r: T) => Promise<R>): Promise<R> {
-  try {
-    return await write(row);
-  } catch (e) {
-    if (!isBlobWriteError(e)) throw e;
-    return write(await packBlobs(row));
-  }
-}
+export const packAll = <T extends object>(rows: T[]) => Promise.all(rows.map((r) => packBlobs(r)));
 
 export const db = new DocScanDB();
 
