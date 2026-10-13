@@ -744,7 +744,9 @@ function loadOutbox(){
     var names={}; S.data.drivers.forEach(function(x){ names[x.id]=x.name; });
     $('outbox').innerHTML=res.rows.length ? '<div class="chat">'+res.rows.map(function(r){
       var m=(r.payload||[])[0]||{}, b=(m.contents||{}), h=(b.header&&b.header.contents||[]), bd=(b.body&&b.body.contents||[]), ft=(b.footer&&b.footer.contents||[]);
-      return '<div class="msg"><div class="h"><small>ถึง '+esc(names[r.driverId]||r.driverId)+'</small>'+esc((h[1]||{}).text||m.altText||'')+'</div>'+
+      var facts=((h[2]||{}).contents||[]).map(function(t, k){ return '<div style="font-size:'+(k===0&&/งานวันที่/.test(t.text)?'14px;color:#D4A044':'19px;letter-spacing:.5px')+';font-weight:800;margin-top:2px">'+esc(t.text)+'</div>'; }).join('');
+      return '<div class="msg"><div class="h"><small>ถึง '+esc(names[r.driverId]||r.driverId)+'</small>'+esc((h[1]||{}).text||m.altText||'')+
+        (facts?'<div style="background:#16365F;border-radius:8px;padding:8px 10px;margin-top:6px">'+facts+'</div>':'')+'</div>'+
         '<div class="b">'+bd.map(function(t){ return esc(t.text); }).join('<br>')+'</div>'+
         '<div class="f">'+ft.map(function(x){ var a=x.action||{}; return '<a class="'+(x.style==='primary'?'p':'')+'" href="'+esc(a.uri)+'" target="_blank" rel="noopener">'+esc(a.label)+'</a>'; }).join('')+'</div>'+
         '<div class="meta">'+hm(r.createdAt)+' • '+(r.state==='demo'?'DEMO (ไม่ได้ส่งจริง)':(r.state==='sent'?'ส่งถึง LINE แล้ว':(r.state==='failed'?'ส่งไม่สำเร็จ: '+esc(r.error):r.state)))+'</div></div>';

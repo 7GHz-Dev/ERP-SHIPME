@@ -127,11 +127,10 @@ async function createMeeting(m: MeetingInput, user: Staff, username: string, bat
   let sent = 'none';
   if (driver.lineUserId) {
     const r = await pushToDriver({ lineUserId: driver.lineUserId, driverId: driver.id, kind: `MEETING_${m.phase}`, ref: row.id,
-      messages: [flexMessage(`${title}: ${label}`, title, [
-        `งานวันที่ ${thShortDate(m.date)}`, `จุดนัดหมาย: ${label}`, `ตู้: ${cnt}`,
-        ...(row.note ? [`หมายเหตุ: ${row.note}`] : []),
-        `กด "นำทาง" แล้วไปที่จุดนัดหมาย ถึงแล้วกด "ถึงจุดรับ${m.phase === 'CARD_PICKUP' ? 'การ์ด' : ' ER'}แล้ว"`],
-      [{ label: 'นำทางไปจุดนัดหมาย', uri: link, primary: true }])] });
+      messages: [flexMessage(`${title}: ${thShortDate(m.date)} ${cnt} • ${label}`, title, [
+        `จุดนัดหมาย: ${label}`, ...(row.note ? [`หมายเหตุ: ${row.note}`] : []),
+        `กด "นำทาง" แล้วไปที่จุดนัดหมาย ถึงแล้วกด "ถึงจุดรับ${m.phase === 'CARD_PICKUP' ? 'การ์ด' : ' ER '}แล้ว"`],
+      [{ label: 'นำทางไปจุดนัดหมาย', uri: link, primary: true }], { date: thShortDate(m.date), containers: cnt })] });
     sent = r.state;
   } else if (smsConfig().ready) {
     const r = await sendPlainSms(driver.phone, `SHIPME ${title.replace(/^\S+\s/, '')} ที่ ${label} ${how} ${mapsLink(lat, lng)}${staffPhone ? ` สอบถาม ${staffPhone}` : ''}`);
@@ -164,6 +163,12 @@ export async function coordMeetingPointCreate(body: ApiBody, user: Staff): Promi
   return { ok: true, point: row };
 }
 
+async function containersOf(itemIds: string[]) {
+  if (!itemIds.length) return '';
+  const rows = await db.select({ c: jobPlanItems.containerNo, bl: jobPlanItems.bl }).from(jobPlanItems).where(inArray(jobPlanItems.id, itemIds));
+  return rows.map((r) => r.c || r.bl).join(', ');
+}
+
 export async function coordMeetingCancel(body: ApiBody, user: Staff): Promise<ApiResult> {
   const [m] = await db.select().from(meetings).where(eq(meetings.id, text(body.id, 60))).limit(1);
   if (!m) return { ok: false, error: 'not_found' };
@@ -173,8 +178,9 @@ export async function coordMeetingCancel(body: ApiBody, user: Staff): Promise<Ap
   const [d] = await db.select().from(drivers).where(eq(drivers.id, m.driverId)).limit(1);
   if (d?.lineUserId) {
     await pushToDriver({ lineUserId: d.lineUserId, driverId: d.id, kind: 'MEETING_CANCELLED', ref: m.id, messages: [
-      flexMessage('ยกเลิกนัดหมาย', '❌ ยกเลิกนัดหมาย', [`นัดเวลา ${hm(m.scheduledAt)} น. ที่ ${m.label} ถูกยกเลิก`, 'รอชิปปิ้งนัดใหม่'],
-        [{ label: 'ดูงานของฉัน', uri: driverUrl(String(body._origin || ''), 'home=1', true), primary: true }])] });
+      flexMessage(`ยกเลิกนัดหมาย ${thShortDate(m.inspectDate)}`, '❌ ยกเลิกนัดหมาย', [`นัดที่ ${m.label} ถูกยกเลิก`, 'รอชิปปิ้งนัดใหม่'],
+        [{ label: 'ดูงานของฉัน', uri: driverUrl(String(body._origin || ''), 'home=1', true), primary: true }],
+        { date: thShortDate(m.inspectDate), containers: await containersOf(JSON.parse(m.itemIdsJson || '[]')) })] });
   }
   return { ok: true };
 }

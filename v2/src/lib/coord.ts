@@ -294,14 +294,13 @@ function requestMessage(phase: Phase, date: string, jobs: ItemRow[], url: string
   const ports = [...new Set(jobs.map((j) => j.port).filter(Boolean))].join(', ');
   const cnt = jobs.map((j) => j.containerNo || j.bl).join(', ');
   if (phase === 'CARD_PICKUP') {
-    return flexMessage(`SHIPME ขอพิกัดเพื่อรับการ์ดรับตู้ (${jobs.length} ตู้)`, '📍 ขอพิกัดเพื่อรับการ์ดรับตู้',
-      [`งานวันที่ ${thShortDate(date)} : ${jobs.length} ตู้${ports ? ` | ท่า ${ports}` : ''}`, `ตู้: ${cnt}`,
-        'กรุณากด "ส่งตำแหน่งตอนนี้" เพื่อให้ชิปปิ้งนัดหมายแจกการ์ดรับตู้'],
-      [{ label: 'ส่งตำแหน่งตอนนี้', uri: url, primary: true }, { label: 'ดูงานของฉัน', uri: homeUrl }]);
+    return flexMessage(`SHIPME ขอพิกัดเพื่อรับการ์ดรับตู้ ${thShortDate(date)} ${cnt}`, '📍 ขอพิกัดเพื่อรับการ์ดรับตู้',
+      [`${jobs.length} ตู้${ports ? ` | ท่า ${ports}` : ''}`, 'กรุณากด "ส่งตำแหน่งตอนนี้" เพื่อให้ชิปปิ้งนัดหมายแจกการ์ดรับตู้'],
+      [{ label: 'ส่งตำแหน่งตอนนี้', uri: url, primary: true }, { label: 'ดูงานของฉัน', uri: homeUrl }], { date: thShortDate(date), containers: cnt });
   }
-  return flexMessage(`SHIPME นัดรับ EIR ขาออก (${jobs.length} ตู้)`, '📄 นัดรับ EIR ขาออก',
-    ['ตู้ในกลุ่มงานของคุณผ่าน X-Ray ครบแล้ว', `ตู้: ${cnt}`, 'กรุณาแชร์ตำแหน่งปัจจุบันอีกครั้ง เพื่อให้ชิปปิ้งนัดส่งมอบ EIR'],
-    [{ label: 'ส่งตำแหน่งเพื่อรับ EIR', uri: url, primary: true }, { label: 'ดูสถานะงาน', uri: homeUrl }]);
+  return flexMessage(`SHIPME ขอพิกัดเพื่อรับ ER ${thShortDate(date)} ${cnt}`, '📍 ขอพิกัดเพื่อรับ ER ออกท่า',
+    ['กรุณาแชร์ตำแหน่งปัจจุบัน เพื่อให้ชิปปิ้งนัดส่งมอบ ER'],
+    [{ label: 'ส่งตำแหน่งตอนนี้', uri: url, primary: true }, { label: 'ดูงานของฉัน', uri: homeUrl }], { date: thShortDate(date), containers: cnt });
 }
 
 export async function coordRequestLocations(body: ApiBody, user: Staff): Promise<ApiResult> {
@@ -418,10 +417,9 @@ export async function coordNotifyJobs(body: ApiBody, user: Staff): Promise<ApiRe
     if (d.lineUserId) {
       const r = await pushToDriver({ lineUserId: d.lineUserId, driverId, kind: 'JOB_ASSIGNED',
         ref: `${date}:${jobs.map((j) => j.id).sort().join(',')}${body.resend === true ? `:${nowIso()}` : ''}`,
-        messages: [flexMessage(`SHIPME: คุณได้รับงาน ${jobs.length} ตู้`, '📦 คุณได้รับงาน', [
-          `งานวันที่ ${thShortDate(date)} : ${jobs.length} ตู้${ports ? ` | ท่า ${ports}` : ''}`, `ตู้: ${cns}`,
-          'กด "ดูงาน" เพื่อดูขั้นตอน และรอชิปปิ้งส่งนัดหมายรับการ์ดรับตู้'],
-        [{ label: 'ดูงาน', uri: driverUrl(origin, 'home=1', Boolean(live)), primary: true }])] });
+        messages: [flexMessage(`SHIPME: คุณได้รับงาน ${thShortDate(date)} ${cns}`, '📦 คุณได้รับงาน', [
+          `${jobs.length} ตู้${ports ? ` | ท่า ${ports}` : ''}`, 'กด "ดูงาน" เพื่อดูขั้นตอน และรอชิปปิ้งส่งนัดหมายรับการ์ดรับตู้'],
+        [{ label: 'ดูงาน', uri: driverUrl(origin, 'home=1', Boolean(live)), primary: true }], { date: thShortDate(date), containers: cns })] });
       state = r.state === 'duplicate' ? 'already' : r.state;
     } else if (smsConfig().ready) {
       const r = await sendPlainSms(d.phone, `SHIPME: คุณได้รับงาน ${jobs.length} ตู้ วันที่ ${thShortDate(date)} (${cns}) รอชิปปิ้งส่งนัดหมายรับการ์ดรับตู้`);
@@ -483,14 +481,15 @@ async function staffMark(body: ApiBody, user: Staff, field: 'card' | 'eir'): Pro
       const card = field === 'card';
       const title = card ? '🎫 ได้รับการ์ดรับตู้แล้ว' : '📄 ได้รับ ER แล้ว';
       const lines = card
-        ? [`ตู้: ${cns}`, 'ไปรับตู้ แล้วถ่ายรูป 1.หน้ารถ 2.ท้ายรถ 3.ซีลตู้', 'กด "ยืนยันส่งงาน" แล้วเข้า Fast Scan ภายใน 30 นาที']
-        : [`ตู้: ${cns}`, 'ถ่ายรูป 1.เอกสาร ER 2.ซีลตะกั่ว', 'แล้วกด "ยืนยันส่งงาน"'];
+        ? ['ไปรับตู้ แล้วถ่ายรูป 1.หน้ารถ 2.ท้ายรถ 3.ซีลตู้', 'กด "ยืนยันส่งงาน" แล้วเข้า Fast Scan ภายใน 30 นาที']
+        : ['ถ่ายรูป 1.เอกสาร ER 2.ซีลตะกั่ว', 'แล้วกด "ยืนยันส่งงาน"'];
       if (d.lineUserId) {
         const live = lineMode() === 'live' && !d.lineUserId.startsWith('DEMO-');
         await pushToDriver({ lineUserId: d.lineUserId, driverId, kind: card ? 'CARD_HANDED' : 'EIR_HANDED', ref: `${field}:${list.map((i) => i.id).sort().join(',')}`,
-          messages: [flexMessage(`${title} — ${cns}`, title, lines, [{ label: card ? 'ถ่ายรูปรับตู้' : 'ถ่ายรูป ER', uri: driverUrl(origin, 'home=1', live), primary: true }])] });
+          messages: [flexMessage(`${title} — ${thShortDate(date)} ${cns}`, title, lines, [{ label: card ? 'ถ่ายรูปรับตู้' : 'ถ่ายรูป ER', uri: driverUrl(origin, 'home=1', live), primary: true }],
+            { date: thShortDate(date), containers: cns })] });
       } else if (smsConfig().ready) {
-        await sendPlainSms(d.phone, `SHIPME ${title.replace(/^\S+\s/, '')} ตู้ ${cns} — ${lines.slice(1).join(' ')}`);
+        await sendPlainSms(d.phone, `SHIPME ${title.replace(/^\S+\s/, '')} ตู้ ${cns} — ${lines.join(' ')}`);
       }
     }
     // ส่งมอบครบทุกตู้ของนัด = นัดนั้นจบ
@@ -547,10 +546,10 @@ export async function coordXrayResult(body: ApiBody, user: Staff): Promise<ApiRe
       if (!d?.lineUserId) continue;
       const cns = list.map((i) => i.containerNo || i.bl).join(', ');
       const msg = result === 'passed'
-        ? flexMessage(`ผล Fast Scan ผ่านแล้ว (${list.length} ตู้)`, '✅ ผล Fast Scan ผ่านแล้ว', [`ตู้: ${cns}`, 'รอชิปปิ้งนัดหมายรับ EIR ออกท่า — จะได้ข้อความนัดทาง LINE'],
-          [{ label: 'ดูงานของฉัน', uri: driverUrl(origin, 'home=1', true), primary: true }])
-        : flexMessage(`ผล Fast Scan ต้องตรวจเพิ่ม (${list.length} ตู้)`, '⚠️ ผล Fast Scan: ต้องตรวจเพิ่ม', [`ตู้: ${cns}`, note || 'กรุณารอคำแนะนำจากชิปปิ้ง'],
-          [{ label: 'ดูงานของฉัน', uri: driverUrl(origin, 'home=1', true), primary: true }]);
+        ? flexMessage(`ผล Fast Scan ผ่านแล้ว ${cns}`, '✅ ผล Fast Scan ผ่านแล้ว', ['รอชิปปิ้งนัดหมายรับ ER ออกท่า — จะได้ข้อความนัดทาง LINE'],
+          [{ label: 'ดูงานของฉัน', uri: driverUrl(origin, 'home=1', true), primary: true }], { date: thShortDate(date), containers: cns })
+        : flexMessage(`ผล Fast Scan ต้องตรวจเพิ่ม ${cns}`, '⚠️ ผล Fast Scan: ต้องตรวจเพิ่ม', [note || 'กรุณารอคำแนะนำจากชิปปิ้ง'],
+          [{ label: 'ดูงานของฉัน', uri: driverUrl(origin, 'home=1', true), primary: true }], { date: thShortDate(date), containers: cns });
       await pushToDriver({ lineUserId: d.lineUserId, driverId, kind: `XRAY_RESULT_${result.toUpperCase()}`, ref: `xray-${result}:${driverId}:${at}`, messages: [msg] });
     }
   }

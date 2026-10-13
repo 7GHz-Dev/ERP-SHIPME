@@ -2,6 +2,7 @@ import { and, eq, gt, inArray, lt, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { drivers, jobPlanItems, jobSteps, locationRequests, meetings } from '@/db/schema';
 import { driverUrl, flexMessage, notifyStaff, pushToDriver, staffUrl } from './coord-line';
+import { thShortDate } from './sms';
 import { nowIso, ymd } from './utils';
 
 /**
@@ -27,11 +28,11 @@ export async function runCoordReminders(origin: string, opts: { date?: string; i
     if (!driverCache.has(id)) { const [d] = await db.select().from(drivers).where(eq(drivers.id, id)).limit(1); driverCache.set(id, d || null); }
     return driverCache.get(id)!;
   };
-  const push = async (driverId: string, ref: string, title: string, lines: string[], label: string, query: string) => {
+  const push = async (driverId: string, ref: string, title: string, lines: string[], label: string, query: string, head?: { date?: string; containers?: string }) => {
     const d = await driverOf(driverId);
     if (!d?.lineUserId) return false;
     const r = await pushToDriver({ lineUserId: d.lineUserId, driverId: d.id, kind: 'REMINDER', ref,
-      messages: [flexMessage(title, title, lines, [{ label, uri: driverUrl(origin, query, true), primary: true }])] });
+      messages: [flexMessage(`${title}${head ? ` ${head.date || ''} ${head.containers || ''}` : ''}`, title, lines, [{ label, uri: driverUrl(origin, query, true), primary: true }], head)] });
     return r.state === 'sent' || r.state === 'demo';
   };
 
@@ -42,7 +43,8 @@ export async function runCoordReminders(origin: string, opts: { date?: string; i
     const age = (Date.now() - Date.parse(r.requestedAt)) / 60000;
     const round = age >= 20 ? 2 : 1;
     const title = r.phase === 'CARD_PICKUP' ? '⏰ เตือน: ส่งตำแหน่งเพื่อรับการ์ดรับตู้' : '⏰ เตือน: ส่งตำแหน่งเพื่อรับ EIR';
-    if (await push(r.driverId, `remind-loc${round}:${r.id}`, title, ['ชิปปิ้งยังรอตำแหน่งของคุณ', 'กดปุ่มด้านล่างแล้วอนุญาตตำแหน่ง'], 'ส่งตำแหน่งตอนนี้', `r=${r.code}`)) counts.location++;
+    if (await push(r.driverId, `remind-loc${round}:${r.id}`, title, ['ชิปปิ้งยังรอตำแหน่งของคุณ', 'กดปุ่มด้านล่างแล้วอนุญาตตำแหน่ง'], 'ส่งตำแหน่งตอนนี้', `r=${r.code}`,
+      { date: thShortDate(r.inspectDate) })) counts.location++;
   }
 
   // 2) คำขอหมดอายุแล้วคนขับไม่ตอบ — แจ้งชิปปิ้ง (สำคัญ) ให้โทรหา
@@ -68,14 +70,16 @@ export async function runCoordReminders(origin: string, opts: { date?: string; i
   for (const s of steps) {
     const card = s.cardHandedAt || s.cardAckAt;
     if (card && !s.pickedUpAt && card < agoIso(90)) {
-      if (await push(s.driverId, `remind-pickup:${s.itemId}`, `⏰ รับตู้ ${cn(s.itemId)}`, ['รับตู้แล้ว ถ่ายรูปหน้ารถ ท้ายรถ และซีลตู้', 'แล้วกด "ยืนยันส่งงาน"'], 'ส่งรูปรับตู้', 'home=1')) counts.pickup++;
+      if (await push(s.driverId, `remind-pickup:${s.itemId}`, '⏰ เตือน: ถ่ายรูปรับตู้', ['รับตู้แล้ว ถ่ายรูปหน้ารถ ท้ายรถ และซีลตู้', 'แล้วกด "ยืนยันส่งงาน"'], 'ส่งรูปรับตู้', 'home=1',
+        { date: thShortDate(s.inspectDate), containers: cn(s.itemId) })) counts.pickup++;
     }
     if (s.pickedUpAt && s.xrayStatus === 'pending' && s.pickedUpAt < agoIso(SCAN_DEADLINE_MIN)) {
       // รอบเตือนที่ 1, 2, 3… (ทุก 5 นาทีหลังเลยกำหนด) — ref ต่างกันทุกรอบ จึงส่งได้ทุกรอบ แต่ไม่ซ้ำในรอบเดียวกัน
       const late = Math.floor((Date.now() - Date.parse(s.pickedUpAt)) / 60000) - SCAN_DEADLINE_MIN;
       const round = Math.floor(late / 5);
-      if (await push(s.driverId, `remind-scan:${s.itemId}:${round}`, `⏰ ตู้ ${cn(s.itemId)} ต้องเข้า Fast Scan`,
-        [`เลยกำหนด 30 นาทีหลังยืนยันส่งงานรับตู้มาแล้ว ${late} นาที`, 'เข้า Fast Scan แล้วกด "เข้า Fast Scan แล้ว"'], 'เข้า Fast Scan แล้ว', 'home=1')) counts.xray++;
+      if (await push(s.driverId, `remind-scan:${s.itemId}:${round}`, '⏰ เตือน: ต้องเข้า Fast Scan',
+        [`เลยกำหนด 30 นาทีหลังยืนยันส่งงานรับตู้มาแล้ว ${late} นาที`, 'เข้า Fast Scan แล้วกด "เข้า Fast Scan แล้ว"'], 'เข้า Fast Scan แล้ว', 'home=1',
+        { date: thShortDate(s.inspectDate), containers: cn(s.itemId) })) counts.xray++;
       if (round === 0) {
         const d = await driverOf(s.driverId);
         await notifyStaff({ username: String(s.username), level: 'important', ref: `scan-late:${s.itemId}`, title: `⏰ ${cn(s.itemId)} ยังไม่เข้า Fast Scan`,
@@ -84,7 +88,8 @@ export async function runCoordReminders(origin: string, opts: { date?: string; i
       }
     }
     if (s.eirHandedAt && !s.completedAt && s.eirHandedAt < agoIso(15)) {
-      if (await push(s.driverId, `remind-eir:${s.itemId}`, `⏰ ส่งรูป ER ตู้ ${cn(s.itemId)}`, ['ชิปปิ้งบันทึกว่าส่งมอบ ER ออกท่าให้คุณแล้ว', 'ถ่ายรูปเอกสาร ER + ซีลตะกั่ว แล้วกด "ยืนยันส่งงาน"'], 'ส่งรูป ER', 'home=1')) counts.eirReceipt++;
+      if (await push(s.driverId, `remind-eir:${s.itemId}`, '⏰ เตือน: ส่งรูป ER', ['ชิปปิ้งบันทึกว่าส่งมอบ ER ออกท่าให้คุณแล้ว', 'ถ่ายรูปเอกสาร ER + ซีลตะกั่ว แล้วกด "ยืนยันส่งงาน"'], 'ส่งรูป ER', 'home=1',
+        { date: thShortDate(s.inspectDate), containers: cn(s.itemId) })) counts.eirReceipt++;
     }
   }
   return { ok: true, at: now, counts };

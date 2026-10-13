@@ -130,14 +130,27 @@ const NAVY = '#0B2A52', AMBER = '#D4A044', GREEN = '#06C755';
 /** ปุ่มเปิดลิงก์ (uri) หรือปุ่มตอบในแชท (data = postback ส่งเข้า webhook, displayText = ข้อความที่ขึ้นในแชทแทนผู้กด) */
 export type FlexButton = { label: string; uri?: string; data?: string; displayText?: string; primary?: boolean };
 
-function bubble(title: string, lines: string[], buttons: FlexButton[]) {
+/** หัวการ์ดของคนขับ: เน้น "วันที่งาน" + "เลขตู้" ตัวใหญ่ในแถบสีน้ำเงิน (ข้อมูลที่คนขับใช้ยืนยันงาน) */
+export type FlexHead = { date?: string; containers?: string };
+
+function bubble(title: string, lines: string[], buttons: FlexButton[], head?: FlexHead) {
+  const cnt = head?.containers || '';
+  const big = cnt.length <= 14 ? 'xxl' : (cnt.length <= 30 ? 'xl' : 'lg');
+  const facts = head && (head.date || cnt) ? [{
+    type: 'box', layout: 'vertical', backgroundColor: '#16365F', cornerRadius: '10px', paddingAll: '12px', margin: 'md', spacing: 'xs',
+    contents: [
+      ...(head.date ? [{ type: 'text', text: `📅 งานวันที่ ${head.date}`, color: AMBER, weight: 'bold', size: 'lg', wrap: true }] : []),
+      ...(cnt ? [{ type: 'text', text: cnt, color: '#FFFFFF', weight: 'bold', size: big, wrap: true }] : [])
+    ]
+  }] : [];
   return {
     type: 'bubble',
     header: {
       type: 'box', layout: 'vertical', backgroundColor: NAVY, paddingAll: '16px',
       contents: [
         { type: 'text', text: 'SHIPME', color: AMBER, weight: 'bold', size: 'sm' },
-        { type: 'text', text: title, color: '#FFFFFF', weight: 'bold', size: 'lg', wrap: true }
+        { type: 'text', text: title, color: '#FFFFFF', weight: 'bold', size: 'lg', wrap: true },
+        ...facts
       ]
     },
     body: {
@@ -156,8 +169,8 @@ function bubble(title: string, lines: string[], buttons: FlexButton[]) {
   };
 }
 
-export function flexMessage(altText: string, title: string, lines: string[], buttons: FlexButton[]) {
-  return { type: 'flex', altText: altText.slice(0, 400), contents: bubble(title, lines, buttons) };
+export function flexMessage(altText: string, title: string, lines: string[], buttons: FlexButton[], head?: FlexHead) {
+  return { type: 'flex', altText: altText.slice(0, 400), contents: bubble(title, lines, buttons, head) };
 }
 
 /**
