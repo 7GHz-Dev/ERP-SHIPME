@@ -230,27 +230,45 @@ export async function driverMeetingArrive(body: ApiBody, driverId: string, drive
   return { ok: true, arrivedAt: at, distanceM: dist };
 }
 
-/** เส้นทางขับรถ (Google Routes) สำหรับแผนที่ในหน้าคนขับ — ไม่มี key / เรียกไม่ได้ = ไม่มีเส้น (หน้าจอวาดเส้นตรงแทน) */
+/**
+ * เส้นทางขับรถ + คำแนะนำทีละจุด (Google Routes, ภาษาไทย) สำหรับแผนที่ในหน้าคนขับ
+ * ไม่มี key / เรียกไม่ได้ = ไม่มีเส้นและคำแนะนำ (หน้าจอบอกทิศทาง + ระยะเส้นตรงแทน) — ส่งเหตุผลกลับไปด้วย
+ */
 export async function routeLine(body: ApiBody): Promise<ApiResult> {
   const p = (v: unknown) => Number(v);
   const from = { lat: p(body.fromLat), lng: p(body.fromLng) }, to = { lat: p(body.toLat), lng: p(body.toLng) };
   if (![from.lat, from.lng, to.lat, to.lng].every(Number.isFinite)) return { ok: false, error: 'bad_location' };
   const straight = Math.round(haversine(from, to));
-  if (!env.googleRoutesServerKey) return { ok: true, source: 'ESTIMATE', distanceM: straight, polyline: '' };
+  const estimate = (why: string) => ({ ok: true, source: 'ESTIMATE', distanceM: straight, polyline: '', steps: [], why });
+  if (!env.googleRoutesServerKey) return estimate('no_key');
   const wp = (x: { lat: number; lng: number }) => ({ location: { latLng: { latitude: x.lat, longitude: x.lng } } });
+  const ll = (x: any) => ({ lat: Number(x?.latLng?.latitude), lng: Number(x?.latLng?.longitude) });
+  const sec = (v: unknown) => Number(String(v || '0s').replace('s', '')) || 0;
   try {
     const res = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-goog-api-key': env.googleRoutesServerKey,
-        'x-goog-fieldmask': 'routes.polyline.encodedPolyline,routes.duration,routes.distanceMeters' },
-      body: JSON.stringify({ origin: wp(from), destination: wp(to), travelMode: 'DRIVE' }), signal: AbortSignal.timeout(10000)
+        'x-goog-fieldmask': ['routes.polyline.encodedPolyline', 'routes.duration', 'routes.distanceMeters',
+          'routes.legs.steps.navigationInstruction', 'routes.legs.steps.distanceMeters', 'routes.legs.steps.staticDuration',
+          'routes.legs.steps.startLocation', 'routes.legs.steps.endLocation', 'routes.legs.steps.polyline.encodedPolyline'].join(',') },
+      body: JSON.stringify({ origin: wp(from), destination: wp(to), travelMode: 'DRIVE', languageCode: 'th', units: 'METRIC' }),
+      signal: AbortSignal.timeout(10000)
     });
     const data = await res.json().catch(() => ({})) as any;
     const r = data?.routes?.[0];
-    if (!r) return { ok: true, source: 'ESTIMATE', distanceM: straight, polyline: '' };
+    if (!r) {
+      console.error('[routeLine]', res.status, JSON.stringify(data?.error || data).slice(0, 300));
+      return estimate(routesErrorText(data, res.status));
+    }
+    const steps = (r.legs || []).flatMap((leg: any) => leg.steps || []).slice(0, 80).map((st: any) => ({
+      text: String(st.navigationInstruction?.instructions || '').replace(/\s+/g, ' ').trim(),
+      maneuver: String(st.navigationInstruction?.maneuver || ''),
+      distanceM: Number(st.distanceMeters) || 0, durationSec: sec(st.staticDuration),
+      start: ll(st.startLocation), end: ll(st.endLocation), polyline: String(st.polyline?.encodedPolyline || '')
+    }));
     return { ok: true, source: 'GOOGLE_ROUTES_API', polyline: String(r.polyline?.encodedPolyline || ''), distanceM: Number(r.distanceMeters) || straight,
-      durationSec: Number(String(r.duration || '0s').replace('s', '')) || 0 };
-  } catch { return { ok: true, source: 'ESTIMATE', distanceM: straight, polyline: '' }; }
+      durationSec: sec(r.duration), steps };
+  } catch (e) { return estimate(String((e as Error).message || e).slice(0, 120)); }
 }
 
 /** ส่งมอบครบทุกตู้ของนัด = นัดนั้นจบ (MET) — เรียกหลังชิปปิ้งบันทึกแจกการ์ด / EIR */

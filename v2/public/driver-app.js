@@ -371,23 +371,104 @@ function loadMaps(cb){
   sc.async=true; sc.onerror=function(){ D.mapsLoading=false; var n=$('nav-msg'); if(n) n.textContent='โหลดแผนที่ไม่สำเร็จ — เช็กอินเทอร์เน็ต'; };
   document.head.appendChild(sc);
 }
+var MANEUVER={ TURN_LEFT:'⬅️', TURN_RIGHT:'➡️', TURN_SLIGHT_LEFT:'↖️', TURN_SLIGHT_RIGHT:'↗️', TURN_SHARP_LEFT:'↙️', TURN_SHARP_RIGHT:'↘️',
+  UTURN_LEFT:'↩️', UTURN_RIGHT:'↪️', STRAIGHT:'⬆️', NAME_CHANGE:'⬆️', RAMP_LEFT:'↖️', RAMP_RIGHT:'↗️', MERGE:'⤴️', FORK_LEFT:'↖️', FORK_RIGHT:'↗️',
+  ROUNDABOUT_LEFT:'🔄', ROUNDABOUT_RIGHT:'🔄', ROUNDABOUT_CLOCKWISE:'🔄', ROUNDABOUT_COUNTERCLOCKWISE:'🔄', DEPART:'🚗', FERRY:'⛴️', FERRY_TRAIN:'⛴️' };
+var DIRS=['ทิศเหนือ','ทิศตะวันออกเฉียงเหนือ','ทิศตะวันออก','ทิศตะวันออกเฉียงใต้','ทิศใต้','ทิศตะวันตกเฉียงใต้','ทิศตะวันตก','ทิศตะวันตกเฉียงเหนือ'];
+function bearing(a, b){
+  var r=Math.PI/180, y=Math.sin((b.lng-a.lng)*r)*Math.cos(b.lat*r);
+  var x=Math.cos(a.lat*r)*Math.sin(b.lat*r)-Math.sin(a.lat*r)*Math.cos(b.lat*r)*Math.cos((b.lng-a.lng)*r);
+  return (Math.atan2(y, x)/r+360)%360;
+}
+/** ระยะจากจุดถึงเส้นทางของขั้นนั้น (ใช้จุดบนเส้น — พอสำหรับหาว่ากำลังอยู่ช่วงไหน) */
+function distToPath(p, path){
+  var best=Infinity;
+  for(var i=0;i<path.length;i++){ var d=distM(p, path[i]); if(d<best) best=d; }
+  return best;
+}
 /**
  * o = { lat, lng, label, meetingId?, what? } — meetingId = นัดหมาย (มีปุ่ม "ถึงจุด…แล้ว" เมื่อเข้าใกล้)
- * ติดตามตำแหน่งเฉพาะตอนเปิดหน้านี้ ปิดแล้วหยุดทันที
+ * แสดงคำแนะนำทีละจุดจาก Google Routes (ภาษาไทย): เลี้ยวถัดไป + ระยะ / ดูทุกขั้น / ออกนอกเส้นทาง = คำนวณใหม่
+ * ไม่มีข้อมูลถนน = บอกทิศ + ระยะเส้นตรง • ติดตามตำแหน่งเฉพาะตอนเปิดหน้านี้ ปิดแล้วหยุดทันที
  */
 function openNav(o){
   closeNav();
   var v=document.createElement('div'); v.id='nav'; v.className='nav-view';
   v.innerHTML='<div class="nav-top"><button id="nav-x" aria-label="ปิด">✕</button><div class="grow"><b>'+esc(o.label||'จุดหมาย')+'</b><span id="nav-eta"></span></div></div>'+
-    '<div id="nav-map" class="nav-map"><div class="center" style="color:#475569">กำลังโหลดแผนที่…</div></div>'+
+    '<div id="nav-step" class="nav-step"><div class="ic">🧭</div><div class="grow"><div class="dist" id="nav-sd">กำลังหาเส้นทาง…</div><div class="tx" id="nav-st"></div></div></div>'+
+    '<div class="nav-mapwrap"><div id="nav-map" class="nav-map"><div class="center" style="color:#475569">กำลังโหลดแผนที่…</div></div>'+
+      '<div class="nav-fab"><button id="nav-follow" class="hidden">📍 ตามตำแหน่งฉัน</button><button id="nav-all">🗺️ ภาพรวม</button></div></div>'+
     '<div class="nav-panel"><div id="nav-msg" class="nav-msg">กำลังหาตำแหน่งของคุณ…</div>'+
+    '<div id="nav-list" class="nav-list hidden"></div><button class="link" id="nav-more" style="display:block;margin:-4px auto 8px" hidden>ดูเส้นทางทั้งหมด</button>'+
     (o.meetingId?'<button class="btn btn-green hidden" id="nav-arrive">📍 '+esc(arriveLabel(o.what))+'</button>':'')+'</div>';
   document.body.appendChild(v); document.body.style.overflow='hidden';
   $('nav-x').addEventListener('click', function(){ closeNav(); render(); });
-  var dest={ lat:o.lat, lng:o.lng }, st={ me:null, acc:null, line:null, routeAt:0, routeFrom:null, map:null, fitted:false, pos:null };
+  var dest={ lat:o.lat, lng:o.lng };
+  var st={ me:null, acc:null, line:null, routeAt:0, map:null, pos:null, route:null, idx:0, follow:true, firstFix:true, offSince:0, asking:false };
   D.nav=st;
   if(o.meetingId) $('nav-arrive').addEventListener('click', function(){ arrive(o.meetingId, st.pos, this); });
+  $('nav-more').addEventListener('click', function(){ var l=$('nav-list'); l.classList.toggle('hidden'); this.textContent=l.classList.contains('hidden')?'ดูเส้นทางทั้งหมด':'ซ่อนเส้นทาง'; });
+  $('nav-follow').addEventListener('click', function(){ st.follow=true; this.classList.add('hidden'); if(st.map&&st.pos){ st.map.panTo(st.pos); st.map.setZoom(17); } });
+  $('nav-all').addEventListener('click', function(){ if(!st.map) return; st.follow=false; $('nav-follow').classList.remove('hidden'); fitAll(); });
   var msg=function(t){ var n=$('nav-msg'); if(n) n.textContent=t; };
+  var fitAll=function(){
+    var b=new google.maps.LatLngBounds(); b.extend(dest); if(st.pos) b.extend(st.pos);
+    if(st.line) st.line.getPath().forEach(function(p){ b.extend(p); });
+    st.map.fitBounds(b, 50);
+  };
+  var showStep=function(icon, dist, text){ var e=$('nav-step'); if(!e) return; e.querySelector('.ic').textContent=icon; $('nav-sd').textContent=dist; $('nav-st').textContent=text||''; };
+  /** คำแนะนำตอนนี้: หาว่าอยู่ช่วงไหนของเส้นทาง แล้วบอกการเลี้ยวถัดไป + ระยะ */
+  var guide=function(){
+    if(!st.pos) return;
+    var p=st.pos, steps=(st.route&&st.route.steps)||[];
+    if(!steps.length){
+      var dd=distM(p, dest);
+      showStep('🧭', 'อีก '+fmtDist(dd)+' (เส้นตรง)', 'มุ่งหน้าไปทาง'+DIRS[Math.round(bearing(p, dest)/45)%8]+(st.route&&st.route.why&&st.route.why!=='no_key'?' — ไม่มีข้อมูลถนนตอนนี้':''));
+      return;
+    }
+    // หาช่วงที่ใกล้ที่สุด (ค้นจากช่วงก่อนหน้า 1 ช่วงขึ้นไป ไม่ย้อนกลับไปต้นทาง)
+    var best=st.idx, bestD=Infinity;
+    for(var i=Math.max(0, st.idx-1); i<steps.length; i++){ var dd2=distToPath(p, steps[i].path); if(dd2<bestD){ bestD=dd2; best=i; } }
+    st.idx=best;
+    // ออกนอกเส้นทางเกิน 80 ม. นาน 15 วินาที = ขอเส้นทางใหม่
+    if(bestD>80){ if(!st.offSince) st.offSince=Date.now(); else if(Date.now()-st.offSince>15000 && Date.now()-st.routeAt>20000) askRoute(); }
+    else st.offSince=0;
+    var next=steps[best+1];
+    if(!next){ showStep('🏁', 'อีก '+fmtDist(distM(p, dest)), 'ตรงไปจนถึงจุดหมาย'); }
+    else showStep(MANEUVER[next.maneuver]||'⬆️', 'อีก '+fmtDist(distM(p, next.start)), next.text||'ไปต่อตามเส้นทาง');
+    Array.prototype.forEach.call(document.querySelectorAll('#nav-list li'), function(li, k){ li.classList.toggle('on', k===best+1); li.classList.toggle('past', k<=best); });
+  };
+  var askRoute=function(){
+    if(!st.pos || st.asking) return;
+    st.asking=true; st.routeAt=Date.now(); st.offSince=0;
+    var p={ lat:st.pos.lat, lng:st.pos.lng };
+    api({ action:'driverRoute', fromLat:p.lat, fromLng:p.lng, toLat:dest.lat, toLng:dest.lng }).then(function(r){
+      st.asking=false;
+      if(D.nav!==st || !r || !r.ok) return;
+      st.route=r; st.idx=0;
+      var eta=$('nav-eta'); if(eta) eta.textContent=r.durationSec ? ' • ขับรถ ~'+Math.max(1, Math.round(r.durationSec/60))+' นาที ('+fmtDist(r.distanceM)+')' : ' • เส้นตรง '+fmtDist(r.distanceM);
+      var list=$('nav-list'), more=$('nav-more');
+      if(list && r.steps && r.steps.length){
+        list.innerHTML='<ol>'+r.steps.map(function(s){ return '<li><span class="ic">'+(MANEUVER[s.maneuver]||'⬆️')+'</span><span class="grow">'+esc(s.text||'ไปต่อตามเส้นทาง')+'</span><small>'+fmtDist(s.distanceM)+'</small></li>'; }).join('')+'</ol>';
+        more.hidden=false; more.textContent=list.classList.contains('hidden')?'ดูเส้นทางทั้งหมด ('+r.steps.length+' จุด)':'ซ่อนเส้นทาง';
+      } else if(more) more.hidden=true;
+      prepRoute(p);
+      guide();
+    }).catch(function(){ st.asking=false; });
+  };
+  /** แปลงเส้นของแต่ละขั้น + วาดเส้นทาง — เรียกได้ทั้งตอนได้เส้นทางและตอนแผนที่โหลดเสร็จ (อันไหนมาทีหลังก็ได้) */
+  var prepRoute=function(from){
+    var r=st.route; if(!r) return;
+    var geo=window.google && google.maps && google.maps.geometry;
+    (r.steps||[]).forEach(function(s){
+      if(s.path && s.path.length>2) return;
+      s.path = s.polyline && geo ? google.maps.geometry.encoding.decodePath(s.polyline).map(function(x){ return { lat:x.lat(), lng:x.lng() }; }) : [s.start, s.end];
+    });
+    if(!st.map || !geo) return;
+    if(st.line) st.line.setMap(null);
+    var path=r.polyline ? google.maps.geometry.encoding.decodePath(r.polyline) : [from || st.pos || dest, dest];
+    st.line=new google.maps.Polyline({ map:st.map, path:path, strokeColor:r.polyline?'#1a73e8':'#64748b', strokeOpacity:r.polyline?.9:.6, strokeWeight:r.polyline?6:3 });
+  };
   var draw=function(){
     if(!st.map || !st.pos) return;
     var p={ lat:st.pos.lat, lng:st.pos.lng };
@@ -395,18 +476,8 @@ function openNav(o){
       st.me=new google.maps.Marker({ map:st.map, position:p, zIndex:9, icon:{ path:google.maps.SymbolPath.CIRCLE, scale:9, fillColor:'#1a73e8', fillOpacity:1, strokeColor:'#fff', strokeWeight:3 } });
       st.acc=new google.maps.Circle({ map:st.map, center:p, radius:st.pos.acc||0, fillColor:'#1a73e8', fillOpacity:.12, strokeWeight:0, clickable:false });
     } else { st.me.setPosition(p); st.acc.setCenter(p); st.acc.setRadius(st.pos.acc||0); }
-    if(!st.fitted){ var b=new google.maps.LatLngBounds(); b.extend(p); b.extend(dest); st.map.fitBounds(b, 60); st.fitted=true; }
-    // เส้นทางจริงจาก Google Routes — ขอใหม่เมื่อขยับไกลกว่า 300 ม. และห่างครั้งก่อน 1 นาที
-    if(!st.routeFrom || (distM(st.routeFrom, p)>300 && Date.now()-st.routeAt>60000)){
-      st.routeFrom=p; st.routeAt=Date.now();
-      api({ action:'driverRoute', fromLat:p.lat, fromLng:p.lng, toLat:dest.lat, toLng:dest.lng }).then(function(r){
-        if(!st.map || !r || !r.ok) return;
-        if(st.line) st.line.setMap(null);
-        var path=r.polyline ? google.maps.geometry.encoding.decodePath(r.polyline) : [p, dest];
-        st.line=new google.maps.Polyline({ map:st.map, path:path, strokeColor:r.polyline?'#1a73e8':'#64748b', strokeOpacity:r.polyline?.9:.6, strokeWeight:r.polyline?6:3 });
-        var eta=$('nav-eta'); if(eta) eta.textContent=r.durationSec ? ' • ขับรถ ~'+Math.max(1, Math.round(r.durationSec/60))+' นาที ('+fmtDist(r.distanceM)+')' : '';
-      }).catch(function(){});
-    }
+    if(st.firstFix){ st.firstFix=false; st.map.setCenter(p); st.map.setZoom(16); }
+    else if(st.follow) st.map.panTo(p);
   };
   var onPos=function(g){
     st.pos={ lat:g.coords.latitude, lng:g.coords.longitude, acc:Math.round(g.coords.accuracy||0) };
@@ -414,22 +485,25 @@ function openNav(o){
     var d=distM(st.pos, dest), near=d<=ARRIVE_M+Math.min(st.pos.acc||0, 100);
     msg(near ? 'ถึงจุดหมายแล้ว'+(o.meetingId?' — กดปุ่มด้านล่าง':'') : 'อีก '+fmtDist(d)+' ถึงจุดหมาย');
     var btn=$('nav-arrive'); if(btn) btn.classList.toggle('hidden', !near);
-    draw();
+    if(!st.routeAt) askRoute();
+    draw(); guide();
   };
   var onErr=function(e){
     msg(e && e.code===1 ? 'ไม่ได้อนุญาตให้ใช้ตำแหน่ง — เปิดสิทธิ์ตำแหน่งของ LINE แล้วลองใหม่' : 'หาตำแหน่งไม่ได้ — เปิด GPS แล้วลองใหม่');
+    showStep('📍', 'หาตำแหน่งไม่ได้', 'เปิด GPS เพื่อดูคำแนะนำเส้นทาง');
     // หาตำแหน่งไม่ได้จริง ๆ ก็ยังกดถึงจุดได้ (บันทึกเวลา ไม่มีตำแหน่ง) จะได้ไม่ติดอยู่ขั้นนี้
     var btn=$('nav-arrive'); if(btn) btn.classList.remove('hidden');
   };
   if(navigator.geolocation) st.watch=navigator.geolocation.watchPosition(onPos, onErr, { enableHighAccuracy:true, maximumAge:5000, timeout:20000 });
   else onErr();
-  if(!(D.cfg&&D.cfg.mapsKey)){ $('nav-map').innerHTML='<div class="center">ยังไม่ได้ตั้งค่าแผนที่ — เดินทางไปที่ '+esc(o.label||'')+'</div>'; return; }
+  if(!(D.cfg&&D.cfg.mapsKey)){ $('nav-map').innerHTML='<div class="center">ยังไม่ได้ตั้งค่าแผนที่ — ทำตามคำแนะนำด้านบน</div>'; return; }
   loadMaps(function(){
     if(D.nav!==st) return;
     var box=$('nav-map'); box.innerHTML='';
     st.map=new google.maps.Map(box, { center:dest, zoom:15, disableDefaultUI:true, zoomControl:true, gestureHandling:'greedy', clickableIcons:false });
     new google.maps.Marker({ map:st.map, position:dest, title:o.label });
-    draw();
+    st.map.addListener('dragstart', function(){ st.follow=false; $('nav-follow').classList.remove('hidden'); });
+    prepRoute(); draw(); guide();
   });
 }
 function closeNav(){
