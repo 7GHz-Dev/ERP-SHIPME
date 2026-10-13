@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0B2A52">
+<meta name="robots" content="noindex">
+<title>SHIPME — จัดการคนขับ</title>
+<link rel="icon" type="image/svg+xml" href="/brand/mark.svg?v=4">
+<style>
+  :root { --navy:#0B2A52; --amber:#D4A044; --green:#06C755; --bg:#eef1f5; --line:#e3e8ef; --muted:#6b7686; --red:#dc2626; --redbg:#fee2e2;
+          --ok:#15803d; --okbg:#dcfce7; --warn:#92400e; --warnbg:#fef3c7; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; background:var(--bg); color:#111827; font-family:-apple-system,'Segoe UI',Roboto,'Noto Sans Thai',sans-serif; font-size:15px; }
+  header { position:sticky; top:0; z-index:30; background:linear-gradient(120deg,#001D46,var(--navy) 55%,#163F7E); box-shadow:inset 0 -3px 0 var(--amber);
+           color:#fff; padding:10px 16px; display:flex; align-items:center; gap:10px; }
+  header img { width:34px; height:34px; border-radius:9px; }
+  header .t { flex:1; } header .t b { color:var(--amber); } header .t span { display:block; font-size:12px; opacity:.85; }
+  header button { background:rgba(255,255,255,.14); color:#fff; border:0; border-radius:10px; padding:8px 12px; font-family:inherit; font-weight:700; }
+  .wrap { max-width:1100px; margin:0 auto; padding:12px 12px 40px; }
+  .tabs { display:flex; gap:6px; margin-bottom:12px; overflow-x:auto; }
+  .tabs button { flex:0 0 auto; border:1px solid var(--line); background:#fff; border-radius:999px; padding:9px 16px; font-weight:800; font-family:inherit; color:#334155; font-size:14px; }
+  .tabs button.on { background:var(--navy); color:#fff; border-color:var(--navy); }
+  .card { background:#fff; border-radius:16px; padding:14px; margin-bottom:12px; box-shadow:0 1px 2px rgba(0,0,0,.06); }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; } .grow { flex:1; min-width:0; }
+  .muted { color:var(--muted); font-size:13px; }
+  .hidden { display:none !important; }
+  .btn { border:0; border-radius:12px; padding:11px 14px; font-size:14.5px; font-weight:800; cursor:pointer; font-family:inherit; }
+  .btn:disabled { opacity:.45; }
+  .btn-navy { background:var(--navy); color:#fff; } .btn-green { background:var(--green); color:#fff; } .btn-amber { background:var(--amber); color:#2b1b00; }
+  .btn-ghost { background:#e9edf2; color:#1f2937; } .btn-red { background:var(--redbg); color:var(--red); }
+  .btn-sm { padding:7px 10px; font-size:13px; border-radius:9px; }
+  input, select, textarea { border:1px solid var(--line); border-radius:12px; padding:10px 12px; font-size:15px; font-family:inherit; background:#fff; }
+  .full { width:100%; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:9px 8px; border-bottom:1px solid #f0f2f5; font-size:14px; vertical-align:middle; }
+  th { color:var(--muted); font-size:12.5px; font-weight:700; }
+  .chip { display:inline-block; font-size:11.5px; font-weight:800; border-radius:999px; padding:3px 9px; background:#eef2f7; color:#334155; white-space:nowrap; }
+  .chip.ok { background:var(--okbg); color:var(--ok); } .chip.warn { background:var(--warnbg); color:var(--warn); } .chip.blue { background:#e0ecff; color:#1d4ed8; }
+  .pic { width:34px; height:34px; border-radius:50%; object-fit:cover; background:#e5e7eb; vertical-align:middle; }
+  .qrbox { display:flex; flex-direction:column; align-items:center; gap:10px; padding:10px; }
+  .qrbox #qr, .qrbox .qr { background:#fff; padding:12px; border-radius:14px; border:1px solid var(--line); }
+  .qrbox img, .qrbox canvas { display:block; }
+  .sheet-bg { position:fixed; inset:0; background:rgba(15,23,42,.5); z-index:60; display:flex; align-items:flex-end; justify-content:center; }
+  .sheet { background:#fff; width:100%; max-width:560px; border-radius:18px 18px 0 0; padding:16px 16px calc(18px + env(safe-area-inset-bottom)); max-height:90vh; overflow:auto; }
+  @media (min-width:700px){ .sheet-bg { align-items:center; } .sheet { border-radius:18px; } }
+  .sheet h3 { margin:0 0 10px; color:var(--navy); }
+  .sheet label { display:block; font-size:13px; color:var(--muted); margin:8px 0 3px; }
+  .toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:#0f172a; color:#fff; padding:11px 16px; border-radius:12px; z-index:90; max-width:90%; text-align:center; }
+  .center { text-align:center; padding:30px 10px; color:var(--muted); }
+  .date-h { font-weight:800; color:var(--navy); margin:14px 4px 8px; }
+  .ctr { border:1px solid var(--line); border-radius:14px; padding:12px; margin-bottom:10px; background:#fff; }
+  .ctr .cn { font-size:18px; font-weight:900; letter-spacing:.5px; color:var(--navy); }
+  .kinds { display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:8px; margin-top:10px; }
+  @media (max-width:700px){ .kinds { grid-template-columns:repeat(2, minmax(0,1fr)); } }
+  .kind { background:#f8fafc; border-radius:12px; padding:8px; min-height:96px; }
+  .kind b { font-size:12.5px; color:#334155; display:block; margin-bottom:6px; }
+  .kind .ph { display:flex; gap:6px; flex-wrap:wrap; }
+  .kind img { width:64px; height:64px; object-fit:cover; border-radius:8px; cursor:pointer; background:#e5e7eb; }
+  .kind .none { font-size:12px; color:#9ca3af; }
+  .lb { position:fixed; inset:0; background:rgba(0,0,0,.88); z-index:80; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:14px; }
+  .lb img { max-width:100%; max-height:78vh; border-radius:10px; }
+  .lb .bar { display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; justify-content:center; }
+  .lb .cap { color:#fff; margin-bottom:8px; text-align:center; font-weight:700; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+<body>
+<header>
+  <img src="/brand/mark.svg?v=4" alt="SHIPME">
+  <div class="t"><b>SHIPME</b> จัดการคนขับ<span id="who">กำลังโหลด…</span></div>
+  <button id="btn-logout">ออกจากระบบ</button>
+</header>
+<div class="wrap">
+  <div class="tabs">
+    <button data-tab="drivers" class="on">🚚 คนขับ</button>
+    <button data-tab="signup">📱 QR รับสมัคร</button>
+    <button data-tab="photos">📷 รูปงาน</button>
+  </div>
+  <section id="v-drivers"></section>
+  <section id="v-signup" class="hidden"></section>
+  <section id="v-photos" class="hidden"></section>
+</div>
+<div id="toast" class="toast hidden"></div>
+<script src="/partner-app.js"></script>
+</body>
+</html>

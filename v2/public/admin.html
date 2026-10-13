@@ -1205,6 +1205,7 @@
       <option value="manager-account">ผู้จัดการบัญชี — ออก/อนุมัติใบแจ้งหนี้</option>
       <option value="employee-account">พนักงานบัญชี — ออกใบแจ้งหนี้</option>
       <option value="admin">ผู้ดูแล (admin) — ไม่ต้องเช็คชื่อ</option>
+      <option value="ttn-admin-driver">พาร์ทเนอร์คนขับ (TTN) — หน้า /partner: หาคนขับ, QR ผูก LINE, รูปงาน</option>
     </select>
     <label>สถานะ</label>
     <select id="emp-active"><option value="yes">ใช้งาน</option><option value="no">ปิดบัญชี</option></select>
@@ -1826,10 +1827,11 @@ var ROLE_LABEL = {
   'employee-office':'พนักงานสำนักงาน',
   'employee-shipping':'พนักงานจัดส่ง',
   'manager-account':'<span class="pill pending">ผู้จัดการบัญชี</span>',
-  'employee-account':'พนักงานบัญชี'
+  'employee-account':'พนักงานบัญชี',
+  'ttn-admin-driver':'<span class="pill">พาร์ทเนอร์คนขับ (TTN)</span>'
 };
 var ROLE_VALID = { admin:1, manager:1, 'employee-office':1, 'employee-shipping':1,
-                   'manager-account':1, 'employee-account':1 };
+                   'manager-account':1, 'employee-account':1, 'ttn-admin-driver':1 };
 
 $('emp-refresh').addEventListener('click', loadEmployees);
 $('emp-search').addEventListener('input', renderEmployees);

@@ -767,7 +767,7 @@ var $ = function(id){ return document.getElementById(id); };
 // employee-shipping          : เข้างานจากคอมพิวเตอร์ Windows ไม่ได้ ต้องเปิดกล้องเห็นภาพก่อนกดเข้างาน
 var ROLE_TH = {
   admin:'ผู้ดูแลระบบ', manager:'ผู้จัดการ',
-  'employee-office':'พนักงานสำนักงาน', 'employee-shipping':'พนักงานจัดส่ง'
+  'employee-office':'พนักงานสำนักงาน', 'employee-shipping':'พนักงานจัดส่ง', 'ttn-admin-driver':'พาร์ทเนอร์คนขับ (TTN)'
 };
 
 // เซิร์ฟเวอร์ส่ง policy มากับข้อมูลผู้ใช้ — เผื่อ backend ยังไม่ได้ deploy เวอร์ชันใหม่ ให้เดาจาก role แทน
@@ -923,6 +923,8 @@ function doLogin(){
     btn.disabled=false; btn.textContent='เข้าสู่ระบบ';
     if(!res.ok){ st.textContent=errTH(res.error); st.classList.remove('hidden'); return; }
     state.token=res.token; state.user=res.user;
+    // พาร์ทเนอร์หาคนขับ — ใช้หน้า /partner อย่างเดียว
+    if(state.user.role==='ttn-admin-driver'){ saveSession(); location.href='/partner'; return; }
     if(ADMIN_PAGE_ROLES[state.user.role]){
       try { localStorage.setItem('admin_sess', JSON.stringify({token:state.token, user:state.user})); } catch(e){}
       window.location.href = 'admin.html';
@@ -940,6 +942,7 @@ function doLogin(){
 function enterApp(){
   // มาจากหน้าประสานงานคนขับ (/staff) ที่ยังไม่ได้ล็อกอิน → ล็อกอินเสร็จกลับไปหน้านั้น
   if(/[?&]next=staff\b/.test(location.search) && state.user.role==='employee-shipping'){ location.href='/staff'; return; }
+  if(state.user.role==='ttn-admin-driver'){ location.href='/partner'; return; }
   state.policy = policyOf(state.user);
   // เคลียร์สถานะหน้าจอของผู้ใช้คนก่อน (เผื่อออกจากระบบแล้วเข้าใหม่ด้วยสิทธิ์คนละแบบ)
   state.blocked=false; state.checkedInToday=false; state.lastRecord=null; state.photo=null;

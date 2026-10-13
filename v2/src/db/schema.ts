@@ -552,6 +552,9 @@ export const drivers = pgTable('drivers', {
   linePicture: text('line_picture').notNull().default(''),
   lineLinkedAt: text('line_linked_at').notNull().default(''),
   lineFriend: boolean('line_friend').notNull().default(false),   // follow/unfollow จาก webhook
+  source: text('source').notNull().default('plan'),   // plan = จากไฟล์คนขับในแพลน | partner = พาร์ทเนอร์เพิ่มเอง | signup = สมัครเองผ่าน QR
+  createdBy: citext('created_by').notNull().default(''),
+  note: text('note').notNull().default(''),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull()
 }, (t) => [
@@ -656,6 +659,16 @@ export const meetingPoints = pgTable('meeting_points', {
   createdBy: citext('created_by').notNull().default(''),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull()
+});
+
+/** ลิงก์ / QR รับสมัครคนขับ (พาร์ทเนอร์ ttn-admin-driver) — สแกนใน LINE กรอกชื่อ เบอร์ ทะเบียน แล้วผูก LINE ทันที */
+export const driverSignupLinks = pgTable('driver_signup_links', {
+  code: text('code').primaryKey(),
+  label: text('label').notNull().default(''),
+  active: boolean('active').notNull().default(true),
+  uses: integer('uses').notNull().default(0),
+  createdBy: citext('created_by').notNull().default(''),
+  createdAt: text('created_at').notNull()
 });
 
 /** รูปของคนขับ — ส่งงานรับตู้: หน้ารถ + หลังรถ + ซีลตู้ / ปิดงาน: การ์ด EIR + Seal (อย่างน้อยชนิดละ 1 ต่อตู้) */

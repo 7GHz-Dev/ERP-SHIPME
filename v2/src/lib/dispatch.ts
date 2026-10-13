@@ -12,6 +12,7 @@ import {
   coordTimeline, driverAuth, driverComplete, driverEvidenceCommit, driverEvidenceDelete, driverEvidenceSign,
   driverArrive, driverHome, driverMeeting, driverReportLocation, driverRoute, driverStep, meetingPointList, meetingPointSave
 } from './coord';
+import { driverJoin, partnerDriverInvite, partnerDriverSave, partnerDriverUnlink, partnerDrivers, partnerPhotoDelete, partnerPhotos, partnerSignupLink } from './partner';
 import {
   coordMeetingCancel, coordMeetingCreate, coordMeetingPointCreate, coordRouteConfirm, coordRoutePlan, coordStaffLineLink, coordStaffNotify,
   lineRichMenuInstall, staffLineRedeem
@@ -71,6 +72,8 @@ export type { ApiBody, ApiResult };
 const PLAN_ROLES = ['admin', 'manager'];
 /** ประสานงานคนขับ — ชิปปิ้งเห็นเฉพาะชุดของตัวเอง ผู้จัดการ/admin ดูของทุกคน */
 const COORD_STAFF = ['employee-shipping', 'admin', 'manager'];
+// พาร์ทเนอร์หาคนขับ (หน้า /partner) — ผู้ดูแล/ผู้จัดการเข้าได้ด้วย
+const PARTNER_ROLES = ['ttn-admin-driver', 'admin', 'manager'];
 
 /**
  * หน้าเว็บทั้งระบบยิงมาที่ POST /api ปลายทางเดียว แล้วแยกด้วยฟิลด์ "action"
@@ -585,6 +588,13 @@ const handlers: Record<string, Handler> = {
     const session = await guard(body, COORD_STAFF);
     return session.error || coordMeetingPointCreate(body, session.user);
   },
+  partnerDrivers: async (body) => { const s2 = await guard(body, PARTNER_ROLES); return s2.error || partnerDrivers(body); },
+  partnerDriverSave: async (body) => { const s2 = await guard(body, PARTNER_ROLES); return s2.error || partnerDriverSave(body, s2.user); },
+  partnerDriverInvite: async (body) => { const s2 = await guard(body, PARTNER_ROLES); return s2.error || partnerDriverInvite(body, s2.user); },
+  partnerDriverUnlink: async (body) => { const s2 = await guard(body, PARTNER_ROLES); return s2.error || partnerDriverUnlink(body); },
+  partnerSignupLink: async (body) => { const s2 = await guard(body, PARTNER_ROLES); return s2.error || partnerSignupLink(body, s2.user); },
+  partnerPhotos: async (body) => { const s2 = await guard(body, PARTNER_ROLES); return s2.error || partnerPhotos(body); },
+  partnerPhotoDelete: async (body) => { const s2 = await guard(body, PARTNER_ROLES); return s2.error || partnerPhotoDelete(body, s2.user); },
   coordNotifyJobs: async (body) => {
     const session = await guard(body, COORD_STAFF);
     return session.error || coordNotifyJobs(body, session.user);
@@ -644,6 +654,7 @@ const handlers: Record<string, Handler> = {
   driverReportLocation,
   driverStep,
   driverMeeting,
+  driverJoin,
   driverArrive,
   driverRoute,
   driverEvidenceSign,

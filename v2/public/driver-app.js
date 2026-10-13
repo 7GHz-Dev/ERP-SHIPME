@@ -24,6 +24,8 @@ function read(k){ try{ return localStorage.getItem(k)||''; }catch(e){ return '';
 
 var ERR = {
   server_busy:'ระบบไม่ว่างชั่วคราว กรุณาลองใหม่อีกครั้ง',
+  join_invalid:'QR สมัครนี้ใช้ไม่ได้แล้ว — ขอ QR ใหม่จากผู้ดูแลคนขับ', phone_linked_other:'เบอร์นี้ผูกกับ LINE บัญชีอื่นแล้ว — ติดต่อผู้ดูแลคนขับ',
+  bad_phone:'เบอร์มือถือไม่ถูกต้อง', missing_name:'กรอกชื่อ',
   invite_invalid:'โค้ดผูก LINE ใช้ไม่ได้หรือหมดอายุ — ขอโค้ดใหม่จากชิปปิ้ง', open_in_line:'กรุณาเปิดลิงก์นี้ในแอป LINE',
   line_already_linked:'บัญชี LINE นี้ผูกกับคนขับคนอื่นแล้ว — ติดต่อชิปปิ้ง', not_linked:'บัญชี LINE นี้ยังไม่ได้ผูกกับงาน — ขอโค้ดผูก LINE จากชิปปิ้ง',
   link_invalid:'ลิงก์ไม่ถูกต้อง', link_expired:'ลิงก์หมดอายุแล้ว', session_expired:'หมดเวลา กรุณาเปิดลิงก์จากข้อความอีกครั้ง',
@@ -86,6 +88,15 @@ function auth(extra){
         '<a class="btn btn-navy" href="/staff?openExternalBrowser=1">เปิดหน้างานชิปปิ้ง</a></div>';
     });
   }
+  // QR รับสมัครคนขับ (พาร์ทเนอร์) — ผูก LINE แล้ว = เข้าใช้งานเลย / ยังไม่ผูก = กรอกชื่อ เบอร์ ทะเบียน
+  if(D.q.get('join')){
+    D.idToken=extra.idToken||'';
+    return api({ action:'driverJoin', join:D.q.get('join'), idToken:D.idToken }).then(function(r){
+      if(!r.ok) return fail(errText(r));
+      if(r.registered){ D.session=r.session; store('drv_sess', D.session); return home(); }
+      joinForm(r.lineName||'');
+    }).catch(function(){ fail('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้'); });
+  }
   var p={ action:'driverAuth', link:D.q.get('link')||'', r:D.q.get('r')||'' };
   for(var k in extra) p[k]=extra[k];
   if(!p.link && !p.r && !p.idToken){
@@ -102,6 +113,26 @@ function auth(extra){
     D.openRequest=res.requestId||'';
     home();
   }).catch(function(){ fail('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้'); });
+}
+function joinForm(lineName){
+  $('who').textContent='สมัครคนขับ SHIPME';
+  $('main').innerHTML='<div class="card"><h3 style="margin:0 0 6px">🚚 สมัครเป็นคนขับ SHIPME</h3>'+
+    '<div class="muted" style="margin-bottom:10px">กรอกข้อมูลครั้งเดียว ระบบจะผูกกับ LINE นี้ และส่งงานให้ทาง LINE</div>'+
+    '<label class="muted">ชื่อ-นามสกุล</label><input id="jn-name" class="inp" value="'+esc(lineName)+'" autocomplete="name">'+
+    '<label class="muted">เบอร์มือถือ</label><input id="jn-phone" class="inp" type="tel" inputmode="tel" placeholder="08xxxxxxxx" autocomplete="tel">'+
+    '<label class="muted">ทะเบียนรถ</label><input id="jn-plate" class="inp" placeholder="เช่น 70-1234">'+
+    '<button class="btn btn-green" id="jn-send" style="margin-top:12px">✅ สมัครและผูก LINE</button></div>';
+  $('jn-send').addEventListener('click', function(){
+    var b=this, name=$('jn-name').value.trim(), phone=$('jn-phone').value.trim(), plate=$('jn-plate').value.trim();
+    if(!name){ toast('กรอกชื่อ'); return; }
+    if(phone.replace(/\D/g,'').length<9){ toast('กรอกเบอร์มือถือให้ถูกต้อง'); return; }
+    b.disabled=true;
+    api({ action:'driverJoin', join:D.q.get('join'), idToken:D.idToken, name:name, phone:phone, plate:plate }).then(function(r){
+      b.disabled=false;
+      if(!r.ok){ toast(errText(r), 4000); return; }
+      D.session=r.session; store('drv_sess', D.session); toast('สมัครเรียบร้อย ✓ รอรับงานทาง LINE', 3500); home();
+    }).catch(function(){ b.disabled=false; toast('เชื่อมต่อไม่ได้ ลองใหม่'); });
+  });
 }
 function fail(msg, icon){ $('who').textContent=''; $('main').innerHTML='<div class="card center"><div class="big">'+(icon||'⚠️')+'</div><p>'+esc(msg)+'</p></div>'; }
 

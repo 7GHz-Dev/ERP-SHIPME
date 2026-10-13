@@ -66,7 +66,7 @@ const sign = (payload: string) => crypto.createHmac('sha256', sessionSecret()).u
 
 type DriverSession = { d: string; exp: number; via: 'line' | 'code' | 'demo' };
 
-function makeSession(driverId: string, via: DriverSession['via']) {
+export function makeSession(driverId: string, via: DriverSession["via"]) {
   const payload = Buffer.from(JSON.stringify({ d: driverId, exp: Date.now() + SESSION_HOURS * 3600_000, via })).toString('base64url');
   return `${payload}.${sign(payload)}`;
 }
