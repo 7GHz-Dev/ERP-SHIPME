@@ -1390,7 +1390,7 @@ function api(payload){
 }
 function toast(m,ms){ var t=$('toast'); t.textContent=m; t.classList.remove('hidden'); clearTimeout(toast._t); toast._t=setTimeout(function(){t.classList.add('hidden');},ms||2500); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
-var ERR_TH={ forbidden:'บัญชีนี้ไม่มีสิทธิ์ผู้ดูแล', session_expired:'หมดเวลา กรุณาเข้าสู่ระบบใหม่', invalid_token:'เซสชันไม่ถูกต้อง', username_exists:'มี username นี้อยู่แล้ว', missing_username:'กรุณากรอก username',
+var ERR_TH={ server_busy:'ระบบไม่ว่างชั่วคราว กรุณาลองใหม่อีกครั้ง', forbidden:'บัญชีนี้ไม่มีสิทธิ์ผู้ดูแล', session_expired:'หมดเวลา กรุณาเข้าสู่ระบบใหม่', invalid_token:'เซสชันไม่ถูกต้อง', username_exists:'มี username นี้อยู่แล้ว', missing_username:'กรุณากรอก username',
   no_location:'ยังไม่พบตำแหน่ง', location_inaccurate:'ตำแหน่งยังไม่แม่นพอ กรุณารอสักครู่แล้วลองใหม่', already_checked_in:'วันนี้คุณเช็คชื่อเข้างานไปแล้ว',
   windows_required:'เข้างานได้จากคอมพิวเตอร์ Windows เท่านั้น', mobile_required:'สิทธิ์ของคุณเข้างานผ่านคอมพิวเตอร์ Windows ไม่ได้', checkin_not_allowed:'บัญชีนี้ไม่มีสิทธิ์เช็คชื่อเข้างาน',
   missing_inspect_date:'กรุณาเลือกวันที่ตรวจปล่อย', invalid_containers:'จำนวนตู้ไม่ถูกต้อง', no_claim_items:'ยังไม่ได้เลือกค่าใช้จ่าย', claim_not_found:'ไม่พบใบเบิกนี้', bad_request:'ข้อมูลไม่ครบถ้วน',

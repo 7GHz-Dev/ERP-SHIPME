@@ -23,6 +23,7 @@ function store(k,v){ try{ if(v==null) localStorage.removeItem(k); else localStor
 function read(k){ try{ return localStorage.getItem(k)||''; }catch(e){ return ''; } }
 
 var ERR = {
+  server_busy:'ระบบไม่ว่างชั่วคราว กรุณาลองใหม่อีกครั้ง',
   invite_invalid:'โค้ดผูก LINE ใช้ไม่ได้หรือหมดอายุ — ขอโค้ดใหม่จากชิปปิ้ง', open_in_line:'กรุณาเปิดลิงก์นี้ในแอป LINE',
   line_already_linked:'บัญชี LINE นี้ผูกกับคนขับคนอื่นแล้ว — ติดต่อชิปปิ้ง', not_linked:'บัญชี LINE นี้ยังไม่ได้ผูกกับงาน — ขอโค้ดผูก LINE จากชิปปิ้ง',
   link_invalid:'ลิงก์ไม่ถูกต้อง', link_expired:'ลิงก์หมดอายุแล้ว', session_expired:'หมดเวลา กรุณาเปิดลิงก์จากข้อความอีกครั้ง',

@@ -18,6 +18,7 @@ function thd(ymd){ var p=String(ymd||'').split('-'); return p.length===3 ? (+p[2
 function ago(min){ return min<1?'เมื่อสักครู่':(min<60?min+' นาทีที่แล้ว':Math.floor(min/60)+' ชม. '+(min%60)+' นาทีที่แล้ว'); }
 
 var ERR = {
+  server_busy:'ระบบไม่ว่างชั่วคราว กรุณาลองใหม่อีกครั้ง',
   XRAY_BATCH_NOT_READY:'ยังมีตู้ที่ไม่ผ่าน X-Ray ครบทุกงาน', plan_not_confirmed:'แพลนวันนี้ยังไม่ได้ Confirm', no_recipients:'ไม่มีคนขับที่ส่งได้',
   forbidden:'ไม่มีสิทธิ์', bad_date:'วันที่ไม่ถูกต้อง', demo_only:'ใช้ได้เฉพาะ DEMO MODE', session_expired:'หมดเวลา กรุณาเข้าสู่ระบบใหม่',
   invalid_token:'กรุณาเข้าสู่ระบบใหม่', no_token:'กรุณาเข้าสู่ระบบ', not_scanned:'มีตู้ที่คนขับยังไม่กด "เข้า Fast Scan แล้ว"'
