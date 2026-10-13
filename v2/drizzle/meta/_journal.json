@@ -127,6 +127,13 @@
       "when": 1791793815184,
       "tag": "0017_vengeful_true_believers",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791865606525,
+      "tag": "0018_dark_virginia_dare",
+      "breakpoints": true
     }
   ]
 }

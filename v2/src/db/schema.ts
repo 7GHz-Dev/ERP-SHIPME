@@ -709,12 +709,18 @@ export const meetings = pgTable('meetings', {
   longitude: doublePrecision('longitude'),
   scheduledAt: text('scheduled_at').notNull(),
   seq: integer('seq').notNull().default(0),
-  status: text('status').notNull().default('PROPOSED'),  // PROPOSED | ACCEPTED | RESCHEDULE_REQUESTED | MET | CANCELLED
+  status: text('status').notNull().default('PROPOSED'),  // PROPOSED | ACCEPTED | RESCHEDULE_REQUESTED | ARRIVED | MET | CANCELLED
   itemIdsJson: text('item_ids_json').notNull().default('[]'),
   note: text('note').notNull().default(''),
   responseNote: text('response_note').notNull().default(''),
   respondedAt: text('responded_at').notNull().default(''),
   routeRunId: text('route_run_id').notNull().default(''),
+  // คนขับกด "ถึงจุดรับการ์ด/รับ ER แล้ว" — เวลา + ตำแหน่งจริงตอนกด (ใช้ต่อยอดภายหลัง เช่น เวลารอ / ความแม่นของจุดนัด)
+  arrivedAt: text('arrived_at').notNull().default(''),
+  arrivedLat: doublePrecision('arrived_lat'),
+  arrivedLng: doublePrecision('arrived_lng'),
+  arrivedAccuracyM: doublePrecision('arrived_accuracy_m'),
+  arrivedDistanceM: doublePrecision('arrived_distance_m'),
   createdBy: citext('created_by').notNull().default(''),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull()

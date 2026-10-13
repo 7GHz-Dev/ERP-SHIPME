@@ -4,7 +4,7 @@ import { db } from '@/db';
 import {
   appOptions, drivers, jobPlanItems, locationReports, locationRequests, meetingPoints, meetings, routeRuns, users
 } from '@/db/schema';
-import { loadBatch, logEvents, staffScope, xrayGate, type Phase } from './coord';
+import { isFastScanned, loadBatch, logEvents, staffScope, xrayGate, type Phase } from './coord';
 import {
   driverUrl, flexMessage, installRichMenus, lineMode, linkUserRichMenu, notifyStaff, pushToDriver, staffUrl, verifyLineIdToken,
   routesErrorText
@@ -23,7 +23,7 @@ import { id, nowIso, validYmd } from './utils';
  */
 
 type Staff = { username: string; name: string; role: string };
-const ACTIVE = ['PROPOSED', 'ACCEPTED', 'RESCHEDULE_REQUESTED'];
+const ACTIVE = ['PROPOSED', 'ACCEPTED', 'RESCHEDULE_REQUESTED', 'ARRIVED'];
 const SERVICE_MIN: Record<Phase, number> = { CARD_PICKUP: 5, EIR_HANDOVER: 4 };
 const text = (v: unknown, max = 200) => String(v ?? '').trim().slice(0, max);
 const hm = (iso: string) => new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' });
@@ -61,13 +61,18 @@ type MeetingInput = {
 async function createMeeting(m: MeetingInput, user: Staff, username: string, batch?: Awaited<ReturnType<typeof loadBatch>>) {
   const b = batch || await loadBatch(m.date, username);
   if (!b.confirmed || !b.items.length) return { ok: false, error: 'plan_not_confirmed' };
-  if (m.phase === 'EIR_HANDOVER' && !xrayGate(b.items, b.steps, b.drivers).ready) return { ok: false, error: 'XRAY_BATCH_NOT_READY' };
   const driver = b.drivers.get(m.driverId);
   if (!driver) return { ok: false, error: 'not_found' };
   const own = b.items.filter((i) => b.steps.get(i.id)?.driverId === driver.id);
   const ids = (m.itemIds?.length ? own.filter((i) => m.itemIds!.includes(i.id)) : own.filter((i) => !handed(m.phase, b.steps.get(i.id))));
   if (!ids.length) return { ok: false, error: 'no_items' };
-  const when = Date.parse(m.scheduledAt);
+  // นัดรับ ER: เฉพาะตู้ที่คนขับกด "เข้า Fast Scan แล้ว" (ทีละตู้ ไม่ต้องรอทั้งชุด / ไม่ต้องรอผล X-Ray)
+  if (m.phase === 'EIR_HANDOVER') {
+    const notYet = ids.filter((i) => !isFastScanned(b.steps.get(i.id)?.xrayStatus));
+    if (notYet.length) return { ok: false, error: 'not_scanned', containers: notYet.map((i) => i.containerNo || i.bl) };
+  }
+  // ไม่มีเวลานัดแล้ว (เจ้าของงาน 2026-10-13) — ไม่ส่งมา = เวลาที่ส่งนัด
+  const when = m.scheduledAt ? Date.parse(m.scheduledAt) : Date.now();
   if (!Number.isFinite(when)) return { ok: false, error: 'bad_time' };
 
   // จุดนัด: จุดที่ผู้จัดการปักไว้ / ตำแหน่งคนขับ (ชิปปิ้งไปหา) / พิกัดที่ระบุ
@@ -113,7 +118,7 @@ async function createMeeting(m: MeetingInput, user: Staff, username: string, bat
   // ส่งการ์ดขอนัดหมายหาคนขับ — LINE เป็นหลัก ยังไม่ผูก LINE ใช้ SMS สำรอง
   // คนขับมีแค่ 2 ทาง: กด "รับนัดหมาย" หรือ ไม่สะดวก → โทรหาชิปปิ้ง (เบอร์ใน users.phone)
   const cnt = ids.map((i) => i.containerNo || i.bl).join(', ');
-  const title = m.phase === 'CARD_PICKUP' ? '🎫 นัดหมายรับการ์ดรับตู้' : '📄 นัดหมายรับ EIR ออกท่า';
+  const title = m.phase === 'CARD_PICKUP' ? '🎫 นัดหมายรับการ์ดรับตู้' : '📄 นัดหมายรับ ER ออกท่า';
   const how = m.mode === 'STAFF_TO_DRIVER' ? 'ชิปปิ้งจะไปหาคุณที่ตำแหน่งนี้' : 'กรุณาไปที่จุดนัดหมาย';
   const [staffRow] = await db.select({ name: users.name, phone: users.phone }).from(users).where(eq(users.username, username)).limit(1);
   const staffPhone = staffRow?.phone || '';
@@ -122,15 +127,14 @@ async function createMeeting(m: MeetingInput, user: Staff, username: string, bat
   let sent = 'none';
   if (driver.lineUserId) {
     const r = await pushToDriver({ lineUserId: driver.lineUserId, driverId: driver.id, kind: `MEETING_${m.phase}`, ref: row.id,
-      messages: [flexMessage(`${title} ${hm(row.scheduledAt)} น.`, title, [
-        `เวลา ${hm(row.scheduledAt)} น. • ${thShortDate(m.date)}`, `จุดนัดหมาย: ${label}`, how, `ตู้: ${cnt}`,
-        ...(row.note ? [`หมายเหตุ: ${row.note}`] : []), 'สะดวกกด "รับนัดหมาย" • ไม่สะดวกโทรหาชิปปิ้ง'],
-      [{ label: 'รับนัดหมาย', uri: link, primary: true },
-        ...(staffPhone ? [{ label: `ไม่สะดวก โทรหาชิปปิ้ง`, uri: `tel:${staffPhone}` }] : []),
-        { label: 'เปิดแผนที่นำทาง', uri: mapsLink(lat, lng) }])] });
+      messages: [flexMessage(`${title}: ${label}`, title, [
+        `งานวันที่ ${thShortDate(m.date)}`, `จุดนัดหมาย: ${label}`, `ตู้: ${cnt}`,
+        ...(row.note ? [`หมายเหตุ: ${row.note}`] : []),
+        `กด "นำทาง" แล้วไปที่จุดนัดหมาย ถึงแล้วกด "ถึงจุดรับ${m.phase === 'CARD_PICKUP' ? 'การ์ด' : ' ER'}แล้ว"`],
+      [{ label: 'นำทางไปจุดนัดหมาย', uri: link, primary: true }])] });
     sent = r.state;
   } else if (smsConfig().ready) {
-    const r = await sendPlainSms(driver.phone, `SHIPME ${title.replace(/^\S+\s/, '')} ${hm(row.scheduledAt)} น. ที่ ${label} ${how} ${mapsLink(lat, lng)}${staffPhone ? ` ไม่สะดวกโทร ${staffPhone}` : ''}`);
+    const r = await sendPlainSms(driver.phone, `SHIPME ${title.replace(/^\S+\s/, '')} ที่ ${label} ${how} ${mapsLink(lat, lng)}${staffPhone ? ` สอบถาม ${staffPhone}` : ''}`);
     sent = r.ok ? 'sms' : 'failed';
   }
   return { ok: true, meeting: row, sent };
@@ -193,6 +197,54 @@ export async function driverMeetingRespond(body: ApiBody, driverId: string, driv
     url: staffUrl(String(body._origin || ''), `date=${m.inspectDate}&tab=status`)
   });
   return { ok: true };
+}
+
+/** คนขับถึงจุดนัดหมาย — บันทึกเวลา + ตำแหน่ง + ระยะห่างจากจุดนัด แล้วแจ้งชิปปิ้ง (สำคัญ) ให้มาแจกการ์ด / ส่งมอบ ER */
+export async function driverMeetingArrive(body: ApiBody, driverId: string, driverName: string): Promise<ApiResult> {
+  const [m] = await db.select().from(meetings).where(eq(meetings.id, text(body.meetingId, 60))).limit(1);
+  if (!m || m.driverId !== driverId) return { ok: false, error: 'forbidden' };
+  if (m.arrivedAt) return { ok: true, arrivedAt: m.arrivedAt };
+  if (!ACTIVE.includes(m.status)) return { ok: false, error: 'meeting_closed' };
+  const lat = Number(body.lat), lng = Number(body.lng);
+  const hasLoc = Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && (lat !== 0 || lng !== 0);
+  const dist = hasLoc && m.latitude != null ? Math.round(haversine({ lat, lng }, { lat: m.latitude, lng: m.longitude! })) : null;
+  const at = nowIso();
+  await db.update(meetings).set({ status: 'ARRIVED', arrivedAt: at, arrivedLat: hasLoc ? lat : null, arrivedLng: hasLoc ? lng : null,
+    arrivedAccuracyM: hasLoc ? Math.max(0, Math.min(100000, Number(body.accuracy) || 0)) : null, arrivedDistanceM: dist, updatedAt: at })
+    .where(eq(meetings.id, m.id));
+  const ids: string[] = JSON.parse(m.itemIdsJson || '[]');
+  await logEvents(ids.map((itemId) => ({ itemId, inspectDate: m.inspectDate, username: String(m.username) })), 'driver', driverId,
+    m.phase === 'CARD_PICKUP' ? 'ARRIVED_CARD_POINT' : 'ARRIVED_EIR_POINT', { meetingId: m.id, lat: hasLoc ? lat : null, lng: hasLoc ? lng : null, distanceM: dist });
+  const what = m.phase === 'CARD_PICKUP' ? 'จุดรับการ์ด' : 'จุดรับ ER';
+  await notifyStaff({
+    username: String(m.username), level: 'important', ref: `arrive:${m.id}`, title: `📍 ${driverName} ถึง${what}แล้ว`,
+    lines: [`จุดนัดหมาย: ${m.label}`, dist != null ? `ห่างจากจุดนัด ~${dist} ม.` : 'ไม่ได้ส่งตำแหน่ง', m.phase === 'CARD_PICKUP' ? 'แจกการ์ดแล้วกดบันทึก "แจกการ์ดแล้ว"' : 'ส่งมอบ ER ให้คนขับ'],
+    url: staffUrl(String(body._origin || ''), `date=${m.inspectDate}`)
+  });
+  return { ok: true, arrivedAt: at, distanceM: dist };
+}
+
+/** เส้นทางขับรถ (Google Routes) สำหรับแผนที่ในหน้าคนขับ — ไม่มี key / เรียกไม่ได้ = ไม่มีเส้น (หน้าจอวาดเส้นตรงแทน) */
+export async function routeLine(body: ApiBody): Promise<ApiResult> {
+  const p = (v: unknown) => Number(v);
+  const from = { lat: p(body.fromLat), lng: p(body.fromLng) }, to = { lat: p(body.toLat), lng: p(body.toLng) };
+  if (![from.lat, from.lng, to.lat, to.lng].every(Number.isFinite)) return { ok: false, error: 'bad_location' };
+  const straight = Math.round(haversine(from, to));
+  if (!env.googleRoutesServerKey) return { ok: true, source: 'ESTIMATE', distanceM: straight, polyline: '' };
+  const wp = (x: { lat: number; lng: number }) => ({ location: { latLng: { latitude: x.lat, longitude: x.lng } } });
+  try {
+    const res = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': env.googleRoutesServerKey,
+        'x-goog-fieldmask': 'routes.polyline.encodedPolyline,routes.duration,routes.distanceMeters' },
+      body: JSON.stringify({ origin: wp(from), destination: wp(to), travelMode: 'DRIVE' }), signal: AbortSignal.timeout(10000)
+    });
+    const data = await res.json().catch(() => ({})) as any;
+    const r = data?.routes?.[0];
+    if (!r) return { ok: true, source: 'ESTIMATE', distanceM: straight, polyline: '' };
+    return { ok: true, source: 'GOOGLE_ROUTES_API', polyline: String(r.polyline?.encodedPolyline || ''), distanceM: Number(r.distanceMeters) || straight,
+      durationSec: Number(String(r.duration || '0s').replace('s', '')) || 0 };
+  } catch { return { ok: true, source: 'ESTIMATE', distanceM: straight, polyline: '' }; }
 }
 
 /** ส่งมอบครบทุกตู้ของนัด = นัดนั้นจบ (MET) — เรียกหลังชิปปิ้งบันทึกแจกการ์ด / EIR */

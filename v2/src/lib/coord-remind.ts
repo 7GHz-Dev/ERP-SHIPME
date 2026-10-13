@@ -56,15 +56,7 @@ export async function runCoordReminders(origin: string, opts: { date?: string; i
     counts.locationExpired++;
   }
 
-  // 3) นัดที่คนขับยังไม่กดรับ — เตือนเมื่อส่งไปเกิน 10 นาที หรือเหลือไม่ถึง 20 นาทีก่อนเวลานัด
-  const proposed = await db.select().from(meetings).where(and(eq(meetings.status, 'PROPOSED'), eq(meetings.inspectDate, today)));
-  for (const m of proposed) {
-    const due = Date.parse(m.scheduledAt) - Date.now() < min(20) || Date.now() - Date.parse(m.createdAt) > min(10);
-    if (!due || Date.parse(m.scheduledAt) < Date.now() - min(30)) continue;
-    const t = new Date(m.scheduledAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' });
-    if (await push(m.driverId, `remind-meet:${m.id}`, '⏰ เตือน: นัดหมายกับชิปปิ้ง', [`เวลา ${t} น. ที่ ${m.label}`, 'กด "รับนัดหมาย" ถ้าไม่สะดวกโทรหาชิปปิ้ง'],
-      'ดูนัดหมาย', `m=${m.id}`)) counts.meeting++;
-  }
+  // 3) (เลิกใช้ 2026-10-13) นัดหมายไม่มีเวลาและไม่ต้องกดรับนัดแล้ว — คนขับนำทางไปแล้วกด "ถึงจุด…แล้ว"
 
   // 4) รายตู้: ได้การ์ดแล้วยังไม่ส่งงานรับตู้ (90 นาที)
   //    / ยืนยันส่งงานรับตู้แล้ว ต้องเข้า Fast Scan ภายใน 30 นาที — เกินแล้วเตือนทุก 5 นาที (ทุกรอบของ cron) จนกว่าจะกด
@@ -92,7 +84,7 @@ export async function runCoordReminders(origin: string, opts: { date?: string; i
       }
     }
     if (s.eirHandedAt && !s.completedAt && s.eirHandedAt < agoIso(15)) {
-      if (await push(s.driverId, `remind-eir:${s.itemId}`, `⏰ ส่งรูป EIR ตู้ ${cn(s.itemId)}`, ['ชิปปิ้งบันทึกว่าส่งมอบ EIR ออกท่าให้คุณแล้ว', 'ถ่ายรูปเอกสาร EIR + ซีลตะกั่ว แล้วกด "ยืนยันส่งงาน"'], 'ส่งรูป EIR', 'home=1')) counts.eirReceipt++;
+      if (await push(s.driverId, `remind-eir:${s.itemId}`, `⏰ ส่งรูป ER ตู้ ${cn(s.itemId)}`, ['ชิปปิ้งบันทึกว่าส่งมอบ ER ออกท่าให้คุณแล้ว', 'ถ่ายรูปเอกสาร ER + ซีลตะกั่ว แล้วกด "ยืนยันส่งงาน"'], 'ส่งรูป ER', 'home=1')) counts.eirReceipt++;
     }
   }
   return { ok: true, at: now, counts };

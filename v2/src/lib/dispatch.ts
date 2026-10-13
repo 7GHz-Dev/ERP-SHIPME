@@ -10,7 +10,7 @@ import { serviceInvoiceData } from './service-invoices';
 import {
   coordCardHanded, coordDashboard, coordNotifyJobs, coordXrayResult, coordDemo, coordDriverInvite, coordEirHanded, coordOutbox, coordRequestLocations,
   coordTimeline, driverAuth, driverComplete, driverEvidenceCommit, driverEvidenceDelete, driverEvidenceSign,
-  driverHome, driverMeeting, driverReportLocation, driverStep, meetingPointList, meetingPointSave
+  driverArrive, driverHome, driverMeeting, driverReportLocation, driverRoute, driverStep, meetingPointList, meetingPointSave
 } from './coord';
 import {
   coordMeetingCancel, coordMeetingCreate, coordMeetingPointCreate, coordRouteConfirm, coordRoutePlan, coordStaffLineLink, coordStaffNotify,
@@ -644,6 +644,8 @@ const handlers: Record<string, Handler> = {
   driverReportLocation,
   driverStep,
   driverMeeting,
+  driverArrive,
+  driverRoute,
   driverEvidenceSign,
   driverEvidenceCommit,
   driverEvidenceDelete,

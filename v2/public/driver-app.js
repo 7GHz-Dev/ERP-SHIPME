@@ -4,11 +4,11 @@
  * เข้าใช้งาน: LIFF ID token (ตรวจฝั่งเซิร์ฟเวอร์) / ?link=โค้ดผูก LINE / ?r=รหัสคำขอพิกัด (SMS) / ?s=session (DEMO)
  * ขั้นตอนของคนขับ (ทีละตู้) — ทำแค่ไม่กี่อย่าง:
  *   1) ได้รับข้อความ "คุณได้รับงาน" (LINE) → กดดูงาน
- *   2) รับนัดหมายรับการ์ดรับตู้ (ชิปปิ้งเลือกจุด + เวลา) — ไม่สะดวกกดโทรหาชิปปิ้ง
+ *   2) รอชิปปิ้งนัดหมายรับการ์ด → นำทาง (แผนที่ในแอป) → "ถึงจุดรับการ์ดแล้ว" (บันทึกเวลา + ตำแหน่ง) → ชิปปิ้งกดแจกการ์ด
  *   3) ถ่ายรูปหน้ารถ / ท้ายรถ / ซีลตู้ → ยืนยันส่งงาน
- *   4) เข้า Fast Scan (X-Ray) ภายใน 30 นาที กด "เข้า Fast Scan แล้ว" (เลยกำหนดเตือนทุก 5 นาที)
- *   5) ถ่ายรูปเอกสาร EIR + ซีลตะกั่ว → ยืนยันส่งงาน = งานเสร็จสิ้น
- * ตำแหน่งส่งเฉพาะตอนคนขับกดปุ่มเอง (กดครั้งเดียวส่งเลย) ไม่มีการติดตามเบื้องหลัง
+ *   4) เข้า Fast Scan ภายใน 30 นาที กด "เข้า Fast Scan แล้ว" (ไม่ต้องรอผล X-Ray / เลยกำหนดเตือนทุก 5 นาที)
+ *   5) รอชิปปิ้งนัดหมายรับ ER → นำทาง → "ถึงจุดรับ ER แล้ว" → รูปเอกสาร ER + ซีลตะกั่ว → ยืนยันส่งงาน = เสร็จสิ้น
+ * ตำแหน่ง: ส่งเฉพาะตอนคนขับกดปุ่มเอง / ติดตามเฉพาะระหว่างเปิดแผนที่นำทางในแอป (ปิดแล้วหยุด) ไม่มีการติดตามเบื้องหลัง
  */
 var D = { session:'', data:null, cfg:null, q:new URLSearchParams(location.search), busy:{} };
 
@@ -27,11 +27,12 @@ var ERR = {
   line_already_linked:'บัญชี LINE นี้ผูกกับคนขับคนอื่นแล้ว — ติดต่อชิปปิ้ง', not_linked:'บัญชี LINE นี้ยังไม่ได้ผูกกับงาน — ขอโค้ดผูก LINE จากชิปปิ้ง',
   link_invalid:'ลิงก์ไม่ถูกต้อง', link_expired:'ลิงก์หมดอายุแล้ว', session_expired:'หมดเวลา กรุณาเปิดลิงก์จากข้อความอีกครั้ง',
   card_first:'ต้องได้รับการ์ดรับตู้ก่อน', pickup_first:'ต้องกด "ส่งงานรับตู้" ก่อน', xray_first:'ต้องผ่าน X-Ray ก่อน',
-  XRAY_BATCH_NOT_READY:'ยังรอตู้อื่นในกลุ่มผ่าน X-Ray', eir_first:'ต้องได้รับ EIR ก่อน', photos_required:'ต้องมีรูปการ์ด EIR และรูป Seal ตู้',
+  XRAY_BATCH_NOT_READY:'ยังรอตู้อื่นในกลุ่มผ่าน X-Ray', eir_first:'ต้องได้รับ EIR ก่อน', photos_required:'ต้องมีรูปเอกสาร ER และรูปซีลตะกั่ว',
   request_expired:'คำขอนี้หมดอายุแล้ว — รอชิปปิ้งส่งคำขอใหม่', forbidden:'ไม่ใช่งานของคุณ', already_completed:'ตู้นี้ส่งจบงานแล้ว',
   upload_missing:'อัปโหลดรูปไม่สำเร็จ ลองใหม่', file_too_large:'รูปใหญ่เกิน 10MB', line_not_configured:'ระบบ LINE ยังไม่พร้อม',
   invalid_id_token:'ยืนยันตัวตน LINE ไม่สำเร็จ ลองเปิดใหม่', no_credentials:'กรุณาเปิดจากลิงก์ในข้อความ',
   pickup_photos_required:'ต้องมีรูปหน้ารถ ท้ายรถ และซีลตู้ครบก่อน', scan_first:'ต้องกด "เข้า Fast Scan แล้ว" ก่อน',
+  arrive_first:'ต้องกด "ถึงจุดรับ ER แล้ว" ก่อน', card_by_staff:'ชิปปิ้งเป็นคนบันทึกแจกการ์ด', meeting_closed:'นัดหมายนี้ปิดแล้ว',
   xray_result_pending:'ชิปปิ้งยังไม่บันทึกผล Fast Scan ของตู้นี้ — ระบบแจ้งชิปปิ้งแล้ว รอสักครู่แล้วกดอีกครั้ง หรือโทรหาชิปปิ้ง', pickup_submitted:'ส่งงานรับตู้แล้ว แก้รูปไม่ได้',
   xray_result_by_staff:'ผล Fast Scan ชิปปิ้งเป็นคนบันทึก — กด "เข้า Fast Scan แล้ว" เมื่อเข้าเสร็จ', bad_location:'ตำแหน่งไม่ถูกต้อง ลองใหม่'
 };
@@ -125,20 +126,22 @@ function home(){
   });
 }
 
-// ---------------- ขั้นตอนงาน (5 ขั้น — คนขับทำแค่ 4 อย่าง) ----------------
-var STEPS=['ได้รับงาน','รับนัดหมายรับการ์ด','ถ่ายรูปรับตู้','เข้า Fast Scan','ถ่ายรูป EIR'];
-var SCAN_MIN=30;   // ยืนยันส่งงานรับตู้แล้ว ต้องเข้า Fast Scan ภายในกี่นาที (เลยแล้วระบบเตือนทุก 5 นาที)
+// ---------------- ขั้นตอนงาน (5 ขั้น — คนขับทำแค่ไม่กี่อย่าง) ----------------
+var STEPS=['ได้รับงาน','รอชิปปิ้งนัดหมายรับการ์ด','ถ่ายรูปรับตู้','เข้า Fast Scan','รอชิปปิ้งนัดหมายรับ ER'];
+var SCAN_MIN=30;     // ยืนยันส่งงานรับตู้แล้ว ต้องเข้า Fast Scan ภายในกี่นาที (เลยแล้วระบบเตือนทุก 5 นาที)
+var ARRIVE_M=200;    // ห่างจุดนัดไม่เกินกี่เมตร ถึงขึ้นปุ่ม "ถึงจุด…แล้ว"
 var GUIDE=[
   ['ได้รับข้อความรับงาน','SHIPME ส่งข้อความ "คุณได้รับงาน" ทาง LINE → กด "ดูงาน"'],
-  ['รับนัดหมายรับการ์ดรับตู้','ชิปปิ้งส่งนัดหมาย (เวลา + จุดนัด) → กด "รับนัดหมาย" ถ้าไม่สะดวกโทรหาชิปปิ้ง'],
+  ['รอชิปปิ้งนัดหมายรับการ์ด','ได้นัดแล้วกด "นำทางไปจุดนัดหมาย" ถึงแล้วกด "ถึงจุดรับการ์ดแล้ว"'],
   ['ถ่ายรูปรับตู้','รับตู้แล้วถ่ายรูปหน้ารถ ท้ายรถ ซีลตู้ → "ยืนยันส่งงาน"'],
-  ['อัปเดต เข้า Fast Scan แล้ว','เข้า Fast Scan ภายใน 30 นาทีหลังยืนยันส่งงาน แล้วกด "เข้า Fast Scan แล้ว"'],
-  ['ถ่ายรูป EIR และซีลตะกั่ว','ได้รับ EIR ออกท่าแล้ว ถ่ายรูปเอกสาร EIR + ซีลตะกั่ว → "ยืนยันส่งงาน"']
+  ['เข้า Fast Scan','เข้า Fast Scan ภายใน 30 นาทีหลังยืนยันส่งงาน แล้วกด "เข้า Fast Scan แล้ว"'],
+  ['รอชิปปิ้งนัดหมายรับ ER','ได้นัดแล้วนำทางไปจุดนัดหมาย ถึงแล้วกด "ถึงจุดรับ ER แล้ว" → ถ่ายรูป ER + ซีลตะกั่ว → "ยืนยันส่งงาน"']
 ];
-/** 1 = รับนัดหมาย / 2 = ถ่ายรูปรับตู้ / 3 = เข้า Fast Scan / 4 = ถ่ายรูป EIR / 5 = เสร็จสิ้น (ขั้น 0 "ได้รับงาน" เสร็จเสมอ) */
+var FAST=['scanned','waiting','passed'];
+/** 1 = รอนัดรับการ์ด / 2 = ถ่ายรูปรับตู้ / 3 = เข้า Fast Scan / 4 = รับ ER / 5 = เสร็จสิ้น (ขั้น 0 "ได้รับงาน" เสร็จเสมอ) */
 function stepIndex(j){
   if(j.completedAt) return 5;
-  if(j.pickedUpAt && j.xrayStatus!=='pending') return 4;
+  if(j.pickedUpAt && FAST.indexOf(j.xrayStatus)>=0) return 4;
   if(j.pickedUpAt) return 3;
   if(j.cardHandedAt||j.cardAckAt) return 2;
   return 1;
@@ -147,6 +150,12 @@ function stepIndex(j){
 function meetingOf(j, phase){
   return ((D.data&&D.data.meetings)||[]).filter(function(m){ return m.phase===phase && m.itemIds.indexOf(j.id)>=0; })[0] || null;
 }
+function distM(a, b){
+  var R=6371000, r=Math.PI/180, dLat=(b.lat-a.lat)*r, dLng=(b.lng-a.lng)*r;
+  var h=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(a.lat*r)*Math.cos(b.lat*r)*Math.sin(dLng/2)*Math.sin(dLng/2);
+  return 2*R*Math.asin(Math.sqrt(h));
+}
+function fmtDist(m){ return m>=1000 ? (m/1000).toFixed(1)+' กม.' : Math.round(m)+' ม.'; }
 function cnList(list){ return list.map(function(j){ return j.containerNo||j.bl; }).join(', '); }
 function xrayPointFor(j){
   var pts=(D.data&&D.data.xrayPoints)||[], port=String(j.port||'').toUpperCase();
@@ -168,32 +177,25 @@ function deadlineText(iso){
   return left>=0 ? 'เหลือเวลาอีก '+left+' นาที (ภายใน '+hm(iso)+')' : 'เลยกำหนดมาแล้ว '+(-left)+' นาที — ระบบจะเตือนทุก 5 นาทีจนกว่าจะกด';
 }
 
-/** สิ่งที่คนขับต้องทำตอนนี้ (แสดงบนสุด) — คำขอตำแหน่ง > นัดที่ยังไม่รับ > ขั้นของตู้ที่ช้าที่สุดในงานวันแรก */
+/** สิ่งที่คนขับต้องทำตอนนี้ (แสดงบนสุด) — ขั้นของตู้ที่ช้าที่สุดในงานวันแรก */
 function nextTodo(d){
-  if(d.requests.length){
-    var r=d.requests[0], card=r.phase==='CARD_PICKUP';
-    return { step:card?2:5, title:'ส่งตำแหน่งให้ชิปปิ้ง', text:'กดปุ่มสีเขียว "ส่งตำแหน่งตอนนี้" ครั้งเดียว', target:'[data-req]' };
-  }
+  if(d.requests.length) return { step:2, title:'ส่งตำแหน่งให้ชิปปิ้ง', text:'กดปุ่มสีเขียว "ส่งตำแหน่งตอนนี้" ครั้งเดียว', target:'[data-req]' };
   var open=d.jobs.filter(function(j){ return !j.completedAt; });
   if(!d.jobs.length) return { wait:true, title:'รอชิปปิ้งส่งงานให้คุณ', text:'เมื่อมีงาน SHIPME จะส่งข้อความ LINE มาให้' };
-  if(!open.length) return { done:true, title:'งานของคุณเสร็จสิ้นแล้ว', text:'ส่งงานครบทุกตู้แล้ว ขอบคุณครับ — งานใหม่จะแจ้งทาง LINE' };
-  var pm=(d.meetings||[]).filter(function(m){ return m.status!=='ACCEPTED'; })[0];
-  if(pm) return { step:pm.phase==='CARD_PICKUP'?2:5, title:'รับนัดหมาย', text:'ชิปปิ้งนัด'+(pm.phase==='CARD_PICKUP'?'รับการ์ดรับตู้':'รับ EIR ออกท่า')+' เวลา '+hm(pm.scheduledAt)+' ที่ '+pm.label+' — กด "รับนัดหมาย" ถ้าไม่สะดวกโทรหาชิปปิ้ง', target:'[data-meet="'+pm.id+'"]' };
+  if(!open.length) return { done:true, title:'งานของคุณเสร็จสิ้นแล้ว', text:'ส่งงานครบทุกตู้แล้ว ขอบคุณครับ' };
   var date=open[0].inspectDate, list=open.filter(function(j){ return j.inspectDate===date; });
   var idx=Math.min.apply(null, list.map(stepIndex)), on=list.filter(function(j){ return stepIndex(j)===idx; });
-  var t;
-  if(idx===1){
-    var am=meetingOf(on[0], 'CARD_PICKUP');
-    t = am ? { title:'ไปรับการ์ดตามนัด', text:'นัด '+hm(am.scheduledAt)+' ที่ '+am.label+' — ได้การ์ดแล้วไปรับตู้ แล้วถ่ายรูปในขั้นถัดไป' }
-           : { title:'รอนัดหมายรับการ์ดรับตู้', text:'ชิปปิ้งจะส่งนัดหมายมาทาง LINE หากไม่สะดวกให้โทรหาชิปปิ้ง', wait:true };
-  }
+  var t, m;
+  if(idx===1){ m=meetingOf(on[0], 'CARD_PICKUP');
+    t = !m ? { title:'รอชิปปิ้งนัดหมายรับการ์ด', text:'', wait:true }
+      : (m.arrivedAt ? { title:'ถึงจุดรับการ์ดแล้ว', text:'รอชิปปิ้งแจกการ์ด', wait:true } : { title:'ไปจุดรับการ์ด', text:'กด "นำทางไปจุดนัดหมาย" ถึงแล้วกด "ถึงจุดรับการ์ดแล้ว"' }); }
   else if(idx===2) t={ title:'ถ่ายรูปรับตู้', text:'ถ่ายรูปหน้ารถ ท้ายรถ และซีลตู้ แล้วกด "ยืนยันส่งงาน"' };
-  else if(idx===3){ var dl=scanDeadline(on[0]); t={ title:'เข้า Fast Scan', text:'เข้า Fast Scan แล้วกด "เข้า Fast Scan แล้ว" — '+deadlineText(dl.toISOString()), warn:Date.now()>dl.getTime() }; }
-  else t= on.some(function(j){ return j.xrayStatus==='hold'; })
-    ? { title:'Fast Scan ต้องตรวจเพิ่ม', text:'รอคำแนะนำจากชิปปิ้ง หรือโทรสอบถาม', warn:true }
-    : { title:'ถ่ายรูป EIR และซีลตะกั่ว', text:'ได้รับ EIR ออกท่าแล้ว ถ่ายรูปเอกสาร EIR + ซีลตะกั่ว แล้วกด "ยืนยันส่งงาน"' };
+  else if(idx===3){ var dl=scanDeadline(on[0]); t={ title:'เข้า Fast Scan', text:'เข้าแล้วกด "เข้า Fast Scan แล้ว" — '+deadlineText(dl.toISOString()), warn:Date.now()>dl.getTime() }; }
+  else { m=meetingOf(on[0], 'EIR_HANDOVER');
+    t = (m && m.arrivedAt) || on[0].eirHandedAt ? { title:'ถ่ายรูป ER และซีลตะกั่ว', text:'ถ่ายรูปแล้วกด "ยืนยันส่งงาน"' }
+      : (!m ? { title:'รอชิปปิ้งนัดหมายรับ ER', text:'', wait:true } : { title:'ไปจุดรับ ER', text:'กด "นำทางไปจุดนัดหมาย" ถึงแล้วกด "ถึงจุดรับ ER แล้ว"' }); }
   t.step=idx+1; t.cns=cnList(on); t.target='[data-job="'+on[0].id+'"]';
-  if(date!==d.today) t.date=date;
+  t.date=date;
   return t;
 }
 function todoCard(t){
@@ -201,8 +203,8 @@ function todoCard(t){
   return '<div class="todo '+cls+'"'+(t.target?' data-goto="'+esc(t.target)+'"':'')+'>'+
     (t.step?'<div class="todo-step">ขั้นตอนที่ '+t.step+' จาก 5 • '+esc(STEPS[t.step-1])+'</div>':'<div class="todo-step">สถานะงาน</div>')+
     '<div class="todo-title">'+(t.done?'✅ ':(t.wait?'⏳ ':(t.warn?'⚠️ ':'👉 ')))+esc(t.title)+'</div>'+
-    '<div class="todo-text">'+esc(t.text)+'</div>'+
-    (t.cns?'<div class="todo-cn">ตู้: '+esc(t.cns)+(t.date?' • งานวันที่ '+thd(t.date):'')+'</div>':'')+
+    (t.text?'<div class="todo-text">'+esc(t.text)+'</div>':'')+
+    (t.cns?'<div class="todo-cn"><span>📅 '+thd(t.date)+'</span><b>'+esc(t.cns)+'</b></div>':'')+
     (t.step?'<div class="todo-bar">'+STEPS.map(function(s,i){ return '<i class="'+(i<t.step-1?'d':(i===t.step-1?'n':''))+'"></i>'; }).join('')+'</div>':'')+'</div>';
 }
 function guideList(){
@@ -228,9 +230,7 @@ function render(){
       '<button class="btn btn-green" style="margin-top:10px" data-req="'+esc(r.id)+'">📍 ส่งตำแหน่งตอนนี้</button>'+
       '<div class="loc-st hidden"></div></div>';
   });
-  var lastDate='';
   d.jobs.forEach(function(j){
-    if(j.inspectDate!==lastDate){ lastDate=j.inspectDate; html+='<div class="date">งานวันที่ '+thd(j.inspectDate)+(j.inspectDate===d.today?' (วันนี้)':'')+'</div>'; }
     html+=jobCard(j);
   });
   html+='<button class="link" id="go-help" style="display:block;margin:6px auto 0">ดูขั้นตอนงานทั้งหมด / ช่วยเหลือ</button>';
@@ -246,6 +246,15 @@ function render(){
       b.disabled=false; if(!r.ok){ toast(errText(r)); return; } toast('รับนัดหมายแล้ว ✓'); home();
     });
   }); });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-nav]'), function(b){ b.addEventListener('click', function(){
+    var m=(d.meetings||[]).filter(function(x){ return x.id===b.getAttribute('data-nav'); })[0]; if(!m) return;
+    openNav({ lat:m.lat, lng:m.lng, label:m.label, meetingId:m.id, what:m.phase==='CARD_PICKUP'?'จุดรับการ์ด':'จุดรับ ER' });
+  }); });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-navpt]'), function(b){ b.addEventListener('click', function(){
+    var p=(d.xrayPoints||[]).filter(function(x){ return x.id===b.getAttribute('data-navpt'); })[0]; if(!p) return;
+    openNav({ lat:p.lat, lng:p.lng, label:'Fast Scan'+(p.name?' • '+p.name:'') });
+  }); });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-arrive]'), function(b){ b.addEventListener('click', function(){ arrive(b.getAttribute('data-arrive'), D.lastPos, b); }); });
   Array.prototype.forEach.call(document.querySelectorAll('input[data-up]'), function(inp){ inp.addEventListener('change', function(){ upload(inp); }); });
   Array.prototype.forEach.call(document.querySelectorAll('[data-del]'), function(b){ b.addEventListener('click', function(){ delPhoto(b.getAttribute('data-del')); }); });
 }
@@ -254,6 +263,22 @@ function bindCommon(){
   if(t) t.addEventListener('click', function(){ var el=document.querySelector(t.getAttribute('data-goto')); if(el){ el.scrollIntoView({ behavior:'smooth', block:'start' }); el.classList.add('flash'); setTimeout(function(){ el.classList.remove('flash'); }, 1600); } });
   if($('go-help')) $('go-help').addEventListener('click', renderHelp);
 }
+// ชิปปิ้งบันทึกแจกการ์ด / ส่งนัดหมาย → หน้าคนขับเปลี่ยนขั้นเอง (เช็กทุก 30 วินาที วาดใหม่เฉพาะเมื่อสถานะเปลี่ยน
+// ไม่วาดระหว่างเปิดแผนที่ / อัปรูป จะได้ไม่ขัดจังหวะ)
+function stateKey(d){
+  return JSON.stringify([(d.jobs||[]).map(function(j){ return [j.id, stepIndex(j), (j.evidence||[]).length]; }),
+    (d.meetings||[]).map(function(m){ return [m.id, m.status, m.arrivedAt]; }), (d.requests||[]).map(function(r){ return r.id; })]);
+}
+function poll(){
+  if(document.hidden || D.nav || D.uploading || !D.session || !D.data) return;
+  api({ action:'driverHome' }).then(function(res){
+    if(!res.ok || D.nav || D.uploading) return;
+    if(stateKey(res)!==stateKey(D.data)){ D.data=res; render(); }
+  }).catch(function(){});
+}
+setInterval(poll, 30000);
+document.addEventListener('visibilitychange', function(){ if(!document.hidden) poll(); });
+
 // นับเวลาถอยหลัง Fast Scan บนหน้าจอ (อัปเดตเฉพาะตัวเลข ไม่วาดหน้าใหม่ — กันช่องเลือกรูปหลุดระหว่างถ่าย)
 setInterval(function(){
   Array.prototype.forEach.call(document.querySelectorAll('[data-deadline]'), function(el){
@@ -271,48 +296,39 @@ function photoSlot(j, kind, n, label){
 }
 function hasKinds(j, kinds){ return kinds.every(function(k){ return j.evidence.some(function(e){ return e.kind===k; }); }); }
 
-/** กล่องนัดหมาย: เวลา + จุดนัด + นำทาง / ยังไม่รับ = ปุ่ม "รับนัดหมาย" + ไม่สะดวกโทรหาชิปปิ้ง */
-function meetingBox(m, j){
-  var acc=m.status==='ACCEPTED';
-  return '<div class="meet'+(acc?' ok':'')+'" data-meet="'+esc(m.id)+'">'+
-    '<div class="kv"><span>เวลานัด</span><b>'+hm(m.scheduledAt)+' • '+thd(m.inspectDate)+'</b></div>'+
-    '<div class="kv"><span>จุดนัดหมาย</span><b>'+esc(m.label)+'</b></div>'+
+/** นัดหมาย: ปุ่มนำทาง (แผนที่ในแอป) → ใกล้จุดนัดแล้วขึ้นปุ่ม "ถึงจุด…แล้ว" (บันทึกเวลา + ตำแหน่ง) */
+function arriveLabel(what){ return 'ถึง'+what+(/[A-Za-z]$/.test(what)?' ':'')+'แล้ว'; }
+function meetingNav(m, what){
+  if(m.arrivedAt) return '<div class="note ok" data-meet="'+esc(m.id)+'">📍 '+arriveLabel(what)+' '+hm(m.arrivedAt)+'</div>';
+  var near=D.lastPos && m.lat!=null && distM(D.lastPos, { lat:m.lat, lng:m.lng })<=ARRIVE_M+Math.min(D.lastPos.acc||0, 100);
+  return '<div data-meet="'+esc(m.id)+'"><div class="kv"><span>จุดนัดหมาย</span><b>'+esc(m.label)+'</b></div>'+
     (m.note?'<div class="note wait">'+esc(m.note)+'</div>':'')+
-    (m.lat!=null?'<a class="btn btn-ghost" style="margin-top:8px" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination='+m.lat+','+m.lng+'">🧭 นำทางไปจุดนัดหมาย</a>':'')+
-    (acc ? '<div class="note ok">รับนัดหมายแล้ว ✓</div>'
-         : '<button class="btn btn-green" style="margin-top:8px" data-mres="'+esc(m.id)+'">✅ รับนัดหมาย</button><div class="muted" style="margin:8px 0 4px">ไม่สะดวก? โทรหาชิปปิ้ง</div>'+callBtn(j))+
-    '</div>';
+    '<button class="btn btn-navy" style="margin-top:8px" data-nav="'+esc(m.id)+'">🧭 นำทางไปจุดนัดหมาย</button>'+
+    (near?'<button class="btn btn-green" style="margin-top:8px" data-arrive="'+esc(m.id)+'">📍 '+arriveLabel(what)+'</button>':'')+'</div>';
 }
 function stepBody(j, idx){
-  var id=esc(j.id);
-  if(idx===1){
-    var m=meetingOf(j, 'CARD_PICKUP');
-    if(!m) return '<p class="desc">รอชิปปิ้งส่งนัดหมายรับการ์ดรับตู้มาทาง LINE หากไม่สะดวกให้โทรหาชิปปิ้ง (กดโทรได้เลย)</p>'+callBtn(j)+
-      '<button class="link" data-op="card-ack" data-id="'+id+'">ได้รับการ์ดรับตู้แล้ว</button>';
-    return (m.status==='ACCEPTED'?'<p class="desc">ไปรับการ์ดรับตู้ตามนัด</p>':'<p class="desc">ชิปปิ้งส่งนัดหมายรับการ์ดรับตู้มาแล้ว</p>')+meetingBox(m, j)+
-      (m.status==='ACCEPTED'?'<button class="btn btn-ghost" style="margin-top:8px" data-op="card-ack" data-id="'+id+'">ได้รับการ์ดรับตู้แล้ว</button>'+callBtn(j):'');
-  }
+  var id=esc(j.id), m;
+  if(idx===1){ m=meetingOf(j, 'CARD_PICKUP'); return m ? meetingNav(m, 'จุดรับการ์ด') : ''; }
   if(idx===2){
     var ready=hasKinds(j, ['TRUCK_FRONT_PHOTO','TRUCK_REAR_PHOTO','PICKUP_SEAL_PHOTO']);
-    return '<p class="desc">รับตู้แล้ว ถ่ายรูปโดยกด <b>+</b> ข้างล่างนี้<br>1. รูปหน้ารถ &nbsp;2. รูปท้ายรถ &nbsp;3. รูปซีลตู้</p>'+
-      '<div class="slots three">'+photoSlot(j,'TRUCK_FRONT_PHOTO',1,'หน้ารถ')+photoSlot(j,'TRUCK_REAR_PHOTO',2,'ท้ายรถ')+photoSlot(j,'PICKUP_SEAL_PHOTO',3,'ซีลตู้')+'</div>'+
+    return '<div class="slots three">'+photoSlot(j,'TRUCK_FRONT_PHOTO',1,'หน้ารถ')+photoSlot(j,'TRUCK_REAR_PHOTO',2,'ท้ายรถ')+photoSlot(j,'PICKUP_SEAL_PHOTO',3,'ซีลตู้')+'</div>'+
       (ready ? '<button class="btn btn-green" data-op="picked-up" data-id="'+id+'">✅ ยืนยันส่งงาน</button><div class="muted" style="margin-top:6px">หลังกดยืนยัน ต้องไปเข้า Fast Scan ภายใน 30 นาที</div>'
              : '<div class="muted">ส่งรูปครบ 3 รูปแล้วจะมีปุ่ม "ยืนยันส่งงาน"</div>');
   }
   if(idx===3){
     var p=xrayPointFor(j), dl=scanDeadline(j).toISOString(), late=Date.now()>Date.parse(dl);
     return '<div class="note '+(late?'err':'wait')+'">⏱️ ต้องเข้า Fast Scan ภายใน 30 นาที — <span data-deadline="'+dl+'">'+esc(deadlineText(dl))+'</span></div>'+
-      (p?'<a class="btn btn-navy" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&travelmode=driving&destination='+p.lat+','+p.lng+'">🧭 นำทางไป Fast Scan'+(p.name?' • '+esc(p.name):'')+'</a>':'')+
-      '<button class="btn btn-green" style="margin-top:8px" data-op="xray" data-status="scanned" data-id="'+id+'">🛃 เข้า Fast Scan แล้ว</button>'+
-      '<button class="link" data-op="xray" data-status="hold" data-id="'+id+'">ติดปัญหาที่ Fast Scan</button>';
+      (p?'<button class="btn btn-navy" data-navpt="'+esc(p.id)+'">🧭 นำทางไป Fast Scan</button>':'')+
+      '<button class="btn btn-green" style="margin-top:8px" data-op="xray" data-status="scanned" data-id="'+id+'">🛃 เข้า Fast Scan แล้ว</button>';
   }
   if(idx===4){
-    var ok=hasKinds(j, ['EIR_CARD_PHOTO','CONTAINER_SEAL_PHOTO']), em=meetingOf(j, 'EIR_HANDOVER');
-    return (j.xrayStatus==='hold'?'<div class="note err">⚠️ Fast Scan ต้องตรวจเพิ่ม — รอคำแนะนำจากชิปปิ้ง</div>':'')+
-      (em ? '<p class="desc">นัดหมายรับ EIR ออกท่า</p>'+meetingBox(em, j)
-          : '<p class="desc">รอชิปปิ้งนัดหมายรับ EIR ออกท่า หากไม่สะดวกให้โทรหาชิปปิ้ง</p>'+callBtn(j))+
-      '<p class="desc" style="margin-top:12px">ได้รับ EIR แล้ว ถ่ายรูปโดยกด <b>+</b> ข้างล่างนี้<br>1. เอกสาร EIR &nbsp;2. ซีลตะกั่ว</p>'+
-      '<div class="slots">'+photoSlot(j,'EIR_CARD_PHOTO',1,'เอกสาร EIR')+photoSlot(j,'CONTAINER_SEAL_PHOTO',2,'ซีลตะกั่ว')+'</div>'+
+    m=meetingOf(j, 'EIR_HANDOVER');
+    // ถ่ายรูปได้เมื่อกด "ถึงจุดรับ ER แล้ว" หรือชิปปิ้งบันทึกส่งมอบ ER แล้ว
+    var open=(m && m.arrivedAt) || j.eirHandedAt;
+    if(!open) return m ? meetingNav(m, 'จุดรับ ER') : '';
+    var ok=hasKinds(j, ['EIR_CARD_PHOTO','CONTAINER_SEAL_PHOTO']);
+    return (m && m.arrivedAt ? meetingNav(m, 'จุดรับ ER') : '<div class="note ok">📄 ได้รับ ER แล้ว '+hm(j.eirHandedAt)+'</div>')+
+      '<div class="slots">'+photoSlot(j,'EIR_CARD_PHOTO',1,'เอกสาร ER')+photoSlot(j,'CONTAINER_SEAL_PHOTO',2,'ซีลตะกั่ว')+'</div>'+
       (ok ? '<button class="btn btn-green" data-op="complete" data-id="'+id+'">✅ ยืนยันส่งงาน</button>'
           : '<div class="muted">ส่งรูปครบ 2 รูปแล้วจะมีปุ่ม "ยืนยันส่งงาน"</div>');
   }
@@ -320,23 +336,120 @@ function stepBody(j, idx){
 }
 function stepDone(j, i){
   if(i===0) return 'ได้รับงานแล้ว';
-  if(i===1) return j.cardHandedAt?'ได้การ์ดแล้ว '+hm(j.cardHandedAt):(j.cardAckAt?'ได้การ์ดแล้ว '+hm(j.cardAckAt):'เสร็จ');
+  if(i===1) return j.cardHandedAt?'ได้การ์ดแล้ว '+hm(j.cardHandedAt):'ได้การ์ดแล้ว';
   if(i===2) return 'ส่งรูปแล้ว '+hm(j.pickedUpAt);
   if(i===3) return 'เข้า Fast Scan แล้ว';
   return 'ส่งงานแล้ว '+hm(j.completedAt);
 }
 function jobCard(j){
   var idx=stepIndex(j), id=esc(j.id);
-  var head='<div class="cn">'+esc(j.containerNo||j.bl)+'</div><div class="muted">BL '+esc(j.bl)+' • ท่า '+esc(j.port||'-')+(j.destination?' → '+esc(j.destination):'')+'</div>';
+  // หัวการ์ด: เน้นวันที่งาน + เลขตู้ (ข้อมูลที่คนขับใช้ยืนยันกับชิปปิ้ง / ท่า)
+  var head='<div class="jhead"><div class="jdate">📅 งานวันที่ '+thd(j.inspectDate)+(j.inspectDate===(D.data&&D.data.today)?' <em>วันนี้</em>':'')+'</div>'+
+    '<div class="jcn"><small>เลขตู้</small>'+esc(j.containerNo||j.bl)+'</div>'+
+    '<div class="muted">BL '+esc(j.bl)+' • ท่า '+esc(j.port||'-')+(j.destination?' → '+esc(j.destination):'')+'</div></div>';
   if(idx===5){
     return '<div class="card done-card" data-job="'+id+'">'+head+'<div class="finished">✅ งานของคุณเสร็จสิ้นแล้ว<small>ส่งงานเมื่อ '+hm(j.completedAt)+' • ขอบคุณครับ</small></div></div>';
   }
   var steps=STEPS.map(function(t, i){
-    var st=i<idx?'done':(i===idx?'now':'later');
+    var st=i<idx?'done':(i===idx?'now':'later'), body=i===idx?stepBody(j, idx):'';
     return '<div class="st '+st+'"><div class="st-h"><i>'+(i<idx?'✓':(i+1))+'</i><b>'+esc(t)+'</b>'+(i<idx?'<span>'+esc(stepDone(j,i))+'</span>':'')+'</div>'+
-      (i===idx?'<div class="st-b">'+stepBody(j, idx)+'</div>':'')+'</div>';
+      (body?'<div class="st-b">'+body+'</div>':'')+'</div>';
   }).join('');
   return '<div class="card" data-job="'+id+'">'+head+'<div class="steps">'+steps+'</div><button class="link" data-op="problem" data-id="'+id+'">แจ้งปัญหา</button></div>';
+}
+
+// ---------------- แผนที่นำทางในแอป (ไม่ต้องออกไป Google Maps) ----------------
+function loadMaps(cb){
+  if(window.google && google.maps && google.maps.geometry) return cb();
+  (D.mapsCbs=D.mapsCbs||[]).push(cb);
+  if(D.mapsLoading) return;
+  D.mapsLoading=true;
+  window.__drvMaps=function(){ (D.mapsCbs||[]).splice(0).forEach(function(f){ try{ f(); }catch(e){} }); };
+  var sc=document.createElement('script');
+  sc.src='https://maps.googleapis.com/maps/api/js?key='+encodeURIComponent((D.cfg&&D.cfg.mapsKey)||'')+'&callback=__drvMaps&loading=async&libraries=geometry&language=th&region=TH';
+  sc.async=true; sc.onerror=function(){ D.mapsLoading=false; var n=$('nav-msg'); if(n) n.textContent='โหลดแผนที่ไม่สำเร็จ — เช็กอินเทอร์เน็ต'; };
+  document.head.appendChild(sc);
+}
+/**
+ * o = { lat, lng, label, meetingId?, what? } — meetingId = นัดหมาย (มีปุ่ม "ถึงจุด…แล้ว" เมื่อเข้าใกล้)
+ * ติดตามตำแหน่งเฉพาะตอนเปิดหน้านี้ ปิดแล้วหยุดทันที
+ */
+function openNav(o){
+  closeNav();
+  var v=document.createElement('div'); v.id='nav'; v.className='nav-view';
+  v.innerHTML='<div class="nav-top"><button id="nav-x" aria-label="ปิด">✕</button><div class="grow"><b>'+esc(o.label||'จุดหมาย')+'</b><span id="nav-eta"></span></div></div>'+
+    '<div id="nav-map" class="nav-map"><div class="center" style="color:#475569">กำลังโหลดแผนที่…</div></div>'+
+    '<div class="nav-panel"><div id="nav-msg" class="nav-msg">กำลังหาตำแหน่งของคุณ…</div>'+
+    (o.meetingId?'<button class="btn btn-green hidden" id="nav-arrive">📍 '+esc(arriveLabel(o.what))+'</button>':'')+'</div>';
+  document.body.appendChild(v); document.body.style.overflow='hidden';
+  $('nav-x').addEventListener('click', function(){ closeNav(); render(); });
+  var dest={ lat:o.lat, lng:o.lng }, st={ me:null, acc:null, line:null, routeAt:0, routeFrom:null, map:null, fitted:false, pos:null };
+  D.nav=st;
+  if(o.meetingId) $('nav-arrive').addEventListener('click', function(){ arrive(o.meetingId, st.pos, this); });
+  var msg=function(t){ var n=$('nav-msg'); if(n) n.textContent=t; };
+  var draw=function(){
+    if(!st.map || !st.pos) return;
+    var p={ lat:st.pos.lat, lng:st.pos.lng };
+    if(!st.me){
+      st.me=new google.maps.Marker({ map:st.map, position:p, zIndex:9, icon:{ path:google.maps.SymbolPath.CIRCLE, scale:9, fillColor:'#1a73e8', fillOpacity:1, strokeColor:'#fff', strokeWeight:3 } });
+      st.acc=new google.maps.Circle({ map:st.map, center:p, radius:st.pos.acc||0, fillColor:'#1a73e8', fillOpacity:.12, strokeWeight:0, clickable:false });
+    } else { st.me.setPosition(p); st.acc.setCenter(p); st.acc.setRadius(st.pos.acc||0); }
+    if(!st.fitted){ var b=new google.maps.LatLngBounds(); b.extend(p); b.extend(dest); st.map.fitBounds(b, 60); st.fitted=true; }
+    // เส้นทางจริงจาก Google Routes — ขอใหม่เมื่อขยับไกลกว่า 300 ม. และห่างครั้งก่อน 1 นาที
+    if(!st.routeFrom || (distM(st.routeFrom, p)>300 && Date.now()-st.routeAt>60000)){
+      st.routeFrom=p; st.routeAt=Date.now();
+      api({ action:'driverRoute', fromLat:p.lat, fromLng:p.lng, toLat:dest.lat, toLng:dest.lng }).then(function(r){
+        if(!st.map || !r || !r.ok) return;
+        if(st.line) st.line.setMap(null);
+        var path=r.polyline ? google.maps.geometry.encoding.decodePath(r.polyline) : [p, dest];
+        st.line=new google.maps.Polyline({ map:st.map, path:path, strokeColor:r.polyline?'#1a73e8':'#64748b', strokeOpacity:r.polyline?.9:.6, strokeWeight:r.polyline?6:3 });
+        var eta=$('nav-eta'); if(eta) eta.textContent=r.durationSec ? ' • ขับรถ ~'+Math.max(1, Math.round(r.durationSec/60))+' นาที ('+fmtDist(r.distanceM)+')' : '';
+      }).catch(function(){});
+    }
+  };
+  var onPos=function(g){
+    st.pos={ lat:g.coords.latitude, lng:g.coords.longitude, acc:Math.round(g.coords.accuracy||0) };
+    D.lastPos=st.pos;
+    var d=distM(st.pos, dest), near=d<=ARRIVE_M+Math.min(st.pos.acc||0, 100);
+    msg(near ? 'ถึงจุดหมายแล้ว'+(o.meetingId?' — กดปุ่มด้านล่าง':'') : 'อีก '+fmtDist(d)+' ถึงจุดหมาย');
+    var btn=$('nav-arrive'); if(btn) btn.classList.toggle('hidden', !near);
+    draw();
+  };
+  var onErr=function(e){
+    msg(e && e.code===1 ? 'ไม่ได้อนุญาตให้ใช้ตำแหน่ง — เปิดสิทธิ์ตำแหน่งของ LINE แล้วลองใหม่' : 'หาตำแหน่งไม่ได้ — เปิด GPS แล้วลองใหม่');
+    // หาตำแหน่งไม่ได้จริง ๆ ก็ยังกดถึงจุดได้ (บันทึกเวลา ไม่มีตำแหน่ง) จะได้ไม่ติดอยู่ขั้นนี้
+    var btn=$('nav-arrive'); if(btn) btn.classList.remove('hidden');
+  };
+  if(navigator.geolocation) st.watch=navigator.geolocation.watchPosition(onPos, onErr, { enableHighAccuracy:true, maximumAge:5000, timeout:20000 });
+  else onErr();
+  if(!(D.cfg&&D.cfg.mapsKey)){ $('nav-map').innerHTML='<div class="center">ยังไม่ได้ตั้งค่าแผนที่ — เดินทางไปที่ '+esc(o.label||'')+'</div>'; return; }
+  loadMaps(function(){
+    if(D.nav!==st) return;
+    var box=$('nav-map'); box.innerHTML='';
+    st.map=new google.maps.Map(box, { center:dest, zoom:15, disableDefaultUI:true, zoomControl:true, gestureHandling:'greedy', clickableIcons:false });
+    new google.maps.Marker({ map:st.map, position:dest, title:o.label });
+    draw();
+  });
+}
+function closeNav(){
+  var st=D.nav; D.nav=null;
+  if(st && st.watch!=null && navigator.geolocation) navigator.geolocation.clearWatch(st.watch);
+  var v=$('nav'); if(v) v.remove();
+  document.body.style.overflow='';
+}
+function arrive(meetingId, pos, btn){
+  if(btn) btn.disabled=true;
+  var send=function(p){
+    api({ action:'driverArrive', meetingId:meetingId, lat:p?p.lat:null, lng:p?p.lng:null, accuracy:p?p.acc:null }).then(function(r){
+      if(!r.ok){ if(btn) btn.disabled=false; toast(errText(r), 3500); return; }
+      toast('บันทึกเวลาถึงจุดนัดหมายแล้ว ✓', 3000); closeNav(); home();
+    }).catch(function(){ if(btn) btn.disabled=false; toast('เชื่อมต่อไม่ได้ ลองใหม่'); });
+  };
+  if(pos) return send(pos);
+  // กดจากหน้างาน (ไม่ได้เปิดแผนที่) — ขอตำแหน่งครั้งเดียวก่อนบันทึก
+  if(!navigator.geolocation) return send(null);
+  navigator.geolocation.getCurrentPosition(function(g){ send({ lat:g.coords.latitude, lng:g.coords.longitude, acc:Math.round(g.coords.accuracy||0) }); },
+    function(){ send(null); }, { enableHighAccuracy:true, timeout:12000, maximumAge:30000 });
 }
 
 function step(b){
@@ -348,12 +461,12 @@ function step(b){
     if(payload.status==='hold'){ var n=prompt('ติดปัญหาอะไรที่ Fast Scan (ไม่บังคับ)'); if(n===null) return; payload.note=n; } }
   if(op==='problem'){ var note=prompt('แจ้งปัญหาให้ชิปปิ้งทราบ'); if(!note) return; payload.note=note; }
   if(op==='picked-up' && !confirm('ยืนยันส่งงานรับตู้?\nหลังยืนยัน ต้องไปเข้า Fast Scan ภายใน 30 นาที (ส่งแล้วแก้รูปไม่ได้)')) return;
-  if(op==='complete' && !confirm('ยืนยันส่งงาน? ได้รับ EIR และรูปเอกสาร EIR + ซีลตะกั่วถูกต้องแล้ว')) return;
+  if(op==='complete' && !confirm('ยืนยันส่งงาน? ได้รับ ER และรูปเอกสาร ER + ซีลตะกั่วถูกต้องแล้ว')) return;
   D.busy[itemId]=true; b.disabled=true;
   api(payload).then(function(res){
     D.busy[itemId]=false;
     if(!res.ok){ b.disabled=false; toast(errText(res), 4500); return; }
-    toast(op==='complete'?'งานของคุณเสร็จสิ้นแล้ว ✓':(op==='picked-up'?'ส่งงานรับตู้แล้ว ✓ ไปเข้า Fast Scan ภายใน 30 นาที':(op==='xray'&&payload.status==='scanned'?'บันทึกแล้ว ✓ ต่อไป: รอนัดรับ EIR ออกท่า':'บันทึกแล้ว ✓')), 3500);
+    toast(op==='complete'?'งานของคุณเสร็จสิ้นแล้ว ✓':(op==='picked-up'?'ส่งงานรับตู้แล้ว ✓ ไปเข้า Fast Scan ภายใน 30 นาที':(op==='xray'&&payload.status==='scanned'?'บันทึกแล้ว ✓ ต่อไป: รอชิปปิ้งนัดหมายรับ ER':'บันทึกแล้ว ✓')), 3500);
     home();
   }).catch(function(){ D.busy[itemId]=false; b.disabled=false; toast('เชื่อมต่อไม่ได้ ลองใหม่'); });
 }
@@ -426,6 +539,7 @@ function upload(inp){
   if(!file) return;
   if(file.size>25*1024*1024){ toast('รูปใหญ่เกินไป'); return; }
   toast('กำลังอัปโหลดรูป…', 8000);
+  D.uploading=true;
   var blob;
   resize(file).then(function(b){ blob=b; if(blob.size>10*1024*1024) throw new Error('รูปใหญ่เกิน 10MB');
     return api({ action:'driverEvidenceSign', itemId:itemId, kind:kind });
@@ -437,8 +551,8 @@ function upload(inp){
     });
   }).then(function(c){
     if(!c.ok) throw new Error(errText(c));
-    toast('อัปโหลดรูปแล้ว ✓'); home();
-  }).catch(function(e){ toast(e.message||'อัปโหลดไม่สำเร็จ', 3500); });
+    D.uploading=false; toast('อัปโหลดรูปแล้ว ✓'); home();
+  }).catch(function(e){ D.uploading=false; toast(e.message||'อัปโหลดไม่สำเร็จ', 3500); });
 }
 function delPhoto(id){
   if(!confirm('ลบรูปนี้?')) return;

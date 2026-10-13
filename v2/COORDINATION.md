@@ -210,6 +210,34 @@ Per-container steps on the driver page (6 steps):
 - Location requests are no longer part of the main flow. They're still in the Map tab as optional.
 - **Tested:** 14 checks against the real DB with temporary data (all deleted), plus screenshots of the driver page (waiting / meeting received / accepted) and the meeting sheet (creating a new point and sending it to 2 drivers).
 
+## Round 5 (2026-10-13, owner request; supersedes the previous rounds)
+
+**Driver page (5 steps):**
+- Header of each job card: the **job date** (gold badge) and the **container number** in large text.
+
+| # | Step | What happens |
+|---|---|---|
+| 1 | ได้รับงาน (job received) | Done as soon as the job is visible |
+| 2 | รอชิปปิ้งนัดหมายรับการ์ด (waiting for shipping to schedule the card pickup) | No meeting yet: title only (no description, no call button).<br>Meeting received: "🧭 นำทางไปจุดนัดหมาย" (navigate to the meeting point) opens a **map inside the app** with live position, the Google Routes route, and the distance remaining.<br>Within 200 m (plus GPS accuracy): "📍 ถึงจุดรับการ์ดแล้ว" (arrived at card point) appears and records the time, position, accuracy and distance to the point on the meeting (status ARRIVED).<br>**Only staff can record the card handover**; the driver's card-ack is blocked with `card_by_staff`. |
+| 3 | ถ่ายรูปรับตู้ (pickup photos) | Truck front / rear / container seal → "ยืนยันส่งงาน" (confirm submission) |
+| 4 | เข้า Fast Scan (enter Fast Scan) | Press "เข้า Fast Scan แล้ว" (entered Fast Scan). **No X-Ray result is recorded any more.** 30-minute rule, reminders every 5 minutes. |
+| 5 | รอชิปปิ้งนัดหมายรับ ER (waiting for shipping to schedule the ER pickup) | Same as step 2, then "ถึงจุดรับ ER แล้ว" (arrived at ER point).<br>**Photos of the ER document and lead seal open only after arrival**, or once staff have recorded the ER handover. Then "ยืนยันส่งงาน" (confirm submission) → done. |
+
+- The page refreshes itself every 30 seconds, and redraws only when the state changes. It never redraws while the map is open or a photo is uploading.
+- If location is unavailable, the arrival button still appears and records only the time, so the driver can't get stuck.
+
+**Staff side:**
+- Meetings no longer have a time: no time picker, and none shown in the list or the LINE message.
+- The LINE meeting card has only "นำทางไปจุดนัดหมาย" (navigate to meeting point).
+- X-Ray results are no longer recorded.
+- An ER meeting / ER handover is allowed **per container**, once that container has pressed Fast Scan. There is no longer a batch gate.
+- A "📍 คนขับถึงจุดนัดแล้ว" (driver has arrived) card on the plan tab, and the meeting list, both have "🎫 แจกการ์ดแล้ว" (card handed) / "📄 ส่งมอบ EIR แล้ว" (EIR handed) buttons for that meeting's containers.
+- Pressing **card handed / ER handed** sends the driver a LINE message: "ได้รับการ์ดรับตู้แล้ว → ถ่ายรูปหน้ารถ ท้ายรถ ซีลตู้" (card received → photograph truck front, rear, seal) / "ได้รับ ER แล้ว → ถ่ายรูปเอกสาร ER + ซีลตะกั่ว" (ER received → photograph the ER document + lead seal). Pressing again doesn't resend.
+
+**Schema:** `meetings.arrived_at / arrived_lat / arrived_lng / arrived_accuracy_m / arrived_distance_m` (0018).
+
+**Tested:** 27 checks against the real DB with temporary data (all deleted), plus driver-page screenshots: waiting / meeting received / navigating near the point → the arrival button shows and records coordinates.
+
 ## Not built yet
 
 - Reports / CSV for this flow.

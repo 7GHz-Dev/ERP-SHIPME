@@ -73,6 +73,20 @@
   .slot.has .plus { font-size:13.5px; background:#eef2f7; color:#1f2937; padding:9px 6px; }
   .meet { border:2px solid var(--amber); border-radius:14px; padding:6px 12px 12px; background:#fffbf0; }
   .meet.ok { border-color:var(--green); background:#f3fdf6; }
+  .nav-view { position:fixed; inset:0; z-index:80; background:#fff; display:flex; flex-direction:column; }
+  .nav-top { display:flex; align-items:center; gap:10px; padding:10px 12px; padding-top:calc(10px + env(safe-area-inset-top)); background:var(--navy); color:#fff; }
+  .nav-top button { width:40px; height:40px; border:0; border-radius:12px; background:rgba(255,255,255,.15); color:#fff; font-size:18px; }
+  .nav-top b { display:block; font-size:16px; } .nav-top span { font-size:12.5px; opacity:.85; }
+  .nav-map { flex:1; background:#dfe6ee; position:relative; }
+  .nav-panel { padding:12px 14px calc(14px + env(safe-area-inset-bottom)); box-shadow:0 -4px 14px rgba(0,0,0,.08); }
+  .nav-msg { font-size:17px; font-weight:800; color:var(--navy); margin-bottom:10px; text-align:center; }
+  .jhead { border-bottom:1px solid #eef1f5; padding-bottom:10px; }
+  .jdate { display:inline-block; background:#fff4dc; color:#7a4b00; border:1.5px solid var(--amber); border-radius:10px; padding:5px 11px; font-size:16px; font-weight:800; }
+  .jdate em { font-style:normal; background:var(--amber); color:#2b1b00; border-radius:6px; padding:1px 7px; margin-left:4px; font-size:13px; }
+  .jcn { font-size:26px; font-weight:900; letter-spacing:1px; color:var(--navy); margin:8px 0 2px; line-height:1.15; word-break:break-all; }
+  .jcn small { display:block; font-size:12px; font-weight:700; letter-spacing:0; color:var(--muted); }
+  .todo-cn span { display:inline-block; background:rgba(255,255,255,.18); border-radius:8px; padding:3px 9px; font-size:15px; font-weight:800; margin-right:6px; }
+  .todo-cn b { font-size:18px; letter-spacing:.5px; }
   .finished { margin-top:12px; background:var(--okbg); color:var(--ok); border-radius:14px; padding:16px; text-align:center; font-size:19px; font-weight:800; }
   .finished small { display:block; font-size:13px; font-weight:600; margin-top:4px; }
   .flash { box-shadow:0 0 0 3px var(--amber) !important; transition:box-shadow .3s; }
