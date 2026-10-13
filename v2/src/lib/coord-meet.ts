@@ -66,6 +66,11 @@ async function createMeeting(m: MeetingInput, user: Staff, username: string, bat
   const own = b.items.filter((i) => b.steps.get(i.id)?.driverId === driver.id);
   const ids = (m.itemIds?.length ? own.filter((i) => m.itemIds!.includes(i.id)) : own.filter((i) => !handed(m.phase, b.steps.get(i.id))));
   if (!ids.length) return { ok: false, error: 'no_items' };
+  // นัดรับการ์ด: คนขับต้องกด "รับงาน" ก่อน (เจ้าของงาน 2026-10-13)
+  if (m.phase === 'CARD_PICKUP') {
+    const notYet = ids.filter((i) => !b.steps.get(i.id)?.acceptedAt);
+    if (notYet.length) return { ok: false, error: 'not_accepted', containers: notYet.map((i) => i.containerNo || i.bl) };
+  }
   // นัดรับ ER: เฉพาะตู้ที่คนขับกด "เข้า Fast Scan แล้ว" (ทีละตู้ ไม่ต้องรอทั้งชุด / ไม่ต้องรอผล X-Ray)
   if (m.phase === 'EIR_HANDOVER') {
     const notYet = ids.filter((i) => !isFastScanned(b.steps.get(i.id)?.xrayStatus));
@@ -355,8 +360,8 @@ export async function lineRichMenuInstall(body: ApiBody): Promise<ApiResult> {
     ],
     staffButtons: [
       { label: 'งานชิปปิ้ง', uri: staffUrl(origin, 'tab=plan') },
-      { label: 'แผนที่', uri: staffUrl(origin, 'tab=map') },
-      { label: 'สถานะงาน', uri: staffUrl(origin, 'tab=status') }
+      { label: 'ส่งนัดหมาย', uri: staffUrl(origin, 'tab=plan&meet=1') },
+      { label: 'เพิ่มเติม', uri: staffUrl(origin, 'tab=more') }
     ]
   });
   if (!res.ok) return res;

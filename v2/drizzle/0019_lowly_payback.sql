@@ -1,0 +1,1 @@
+ALTER TABLE "job_steps" ADD COLUMN "accepted_at" text DEFAULT '' NOT NULL;

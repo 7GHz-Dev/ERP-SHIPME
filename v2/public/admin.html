@@ -713,7 +713,7 @@
         <div id="line-result" style="margin-top:14px"></div>
         <div style="margin-top:16px">
           <b>Rich Menu (เมนูล่างในแชท SHIPME)</b>
-          <div class="muted" style="margin:4px 0 8px">คนขับ: งานของฉัน / ส่งตำแหน่ง / ช่วยเหลือ • ชิปปิ้งที่ผูก LINE: งานชิปปิ้ง / แผนที่ / สถานะงาน — กดติดตั้งใหม่ได้ทุกเมื่อ (แทนชุดเดิมของระบบ ไม่แตะเมนูที่สร้างเองใน OA Manager)</div>
+          <div class="muted" style="margin:4px 0 8px">คนขับ: งานของฉัน / ส่งตำแหน่ง / ช่วยเหลือ • ชิปปิ้งที่ผูก LINE: งานชิปปิ้ง / ส่งนัดหมาย / เพิ่มเติม — กดติดตั้งใหม่ได้ทุกเมื่อ (แทนชุดเดิมของระบบ ไม่แตะเมนูที่สร้างเองใน OA Manager)</div>
           <div id="rm-preview" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px"></div>
           <button id="rm-install" class="btn btn-primary btn-sm">📲 ติดตั้ง Rich Menu</button>
           <span id="rm-msg" class="muted" style="margin-left:8px"></span>
@@ -3487,7 +3487,7 @@ function drawRichMenu(title, buttons, accent){
 function richMenuImages(){
   return {
     driverImage: drawRichMenu('SHIPME • คนขับ', [{icon:'📋',label:'งานของฉัน'},{icon:'📍',label:'ส่งตำแหน่ง'},{icon:'☎️',label:'ช่วยเหลือ'}], '#06C755'),
-    staffImage: drawRichMenu('SHIPME • ชิปปิ้ง', [{icon:'🗂️',label:'งานชิปปิ้ง'},{icon:'🗺️',label:'แผนที่'},{icon:'📦',label:'สถานะงาน'}], '#D4A044')
+    staffImage: drawRichMenu('SHIPME • ชิปปิ้ง', [{icon:'🗂️',label:'งานชิปปิ้ง'},{icon:'📅',label:'ส่งนัดหมาย'},{icon:'☰',label:'เพิ่มเติม'}], '#D4A044')
   };
 }
 $('rm-install').addEventListener('click', function(){

@@ -151,7 +151,7 @@ async function ensureRegistry(items: ItemRow[]) {
 }
 
 function emptyStep(): Omit<StepRow, 'itemId' | 'inspectDate' | 'username' | 'driverId' | 'updatedAt'> {
-  return { cardHandedAt: '', cardHandedBy: '', cardAckAt: '', pickedUpAt: '', xrayStatus: 'pending', xrayAt: '', xrayNote: '',
+  return { acceptedAt: '', cardHandedAt: '', cardHandedBy: '', cardAckAt: '', pickedUpAt: '', xrayStatus: 'pending', xrayAt: '', xrayNote: '',
     eirHandedAt: '', eirHandedBy: '', eirReceivedAt: '', completedAt: '', problem: '', version: 0 };
 }
 
@@ -188,6 +188,7 @@ export function stageOf(s: StepRow | undefined) {
   if (isScanned(s.xrayStatus)) return 'XRAY_SCANNED';
   if (s.pickedUpAt) return 'PICKED_UP';
   if (s.cardHandedAt || s.cardAckAt) return 'CARD_HANDED';
+  if (s.acceptedAt) return 'ACCEPTED';
   return 'PLANNED';
 }
 
@@ -766,7 +767,7 @@ export async function driverHome(body: ApiBody): Promise<ApiResult> {
       const ev = evidence.filter((e) => e.itemId === i.id);
       return {
         id: i.id, inspectDate: i.inspectDate, bl: i.bl, containerNo: i.containerNo, port: i.port, destination: i.destination,
-        staff: String(i.username), stage: stageOf(s), cardHandedAt: s.cardHandedAt, cardAckAt: s.cardAckAt, pickedUpAt: s.pickedUpAt, xrayStatus: s.xrayStatus,
+        staff: String(i.username), stage: stageOf(s), acceptedAt: s.acceptedAt, cardHandedAt: s.cardHandedAt, cardAckAt: s.cardAckAt, pickedUpAt: s.pickedUpAt, xrayStatus: s.xrayStatus,
         xrayAt: s.xrayAt, eirHandedAt: s.eirHandedAt, eirReceivedAt: s.eirReceivedAt, completedAt: s.completedAt,
         eirGateOpen: gates[`${i.inspectDate}|${String(i.username)}`] || false,
         evidence: ev.map((e) => ({ id: e.id, kind: e.kind, url: e.url }))
@@ -840,7 +841,18 @@ export async function driverStep(body: ApiBody): Promise<ApiResult> {
   const at = nowIso();
   const op = String(body.op || '');
   let patch: Partial<StepRow> | null = null, event = '';
-  if (op === 'card-ack') {
+  if (op === 'accept') {
+    // กด "รับงาน" ครั้งเดียว = รับทุกตู้ของคนขับคนนี้ในงานวันเดียวกัน (ชิปปิ้งคนเดียวกัน)
+    const rows = await db.select().from(jobSteps).where(and(eq(jobSteps.driverId, driver.id), eq(jobSteps.inspectDate, s.inspectDate),
+      eq(jobSteps.username, String(s.username)), eq(jobSteps.acceptedAt, '')));
+    if (!rows.length) return { ok: true };
+    await db.update(jobSteps).set({ acceptedAt: at, updatedAt: at }).where(inArray(jobSteps.itemId, rows.map((r) => r.itemId)));
+    await logEvents(rows.map((r) => ({ itemId: r.itemId, inspectDate: r.inspectDate, username: String(r.username) })), 'driver', driver.id, 'JOB_ACCEPTED');
+    const cns = await Promise.all(rows.map((r) => containerOf(r.itemId)));
+    await notifyStaff({ username: String(s.username), level: 'all', ref: `accept:${driver.id}:${s.inspectDate}`, title: `👍 ${driver.name} รับงานแล้ว`,
+      lines: [`งานวันที่ ${thShortDate(s.inspectDate)}`, `ตู้: ${cns.join(', ')}`, 'ส่งนัดหมายรับการ์ดได้แล้ว'], url: staffUrl(String(body._origin || ''), `date=${s.inspectDate}`) });
+    return { ok: true, at, count: rows.length };
+  } else if (op === 'card-ack') {
     // แจกการ์ดบันทึกฝั่งชิปปิ้งฝั่งเดียว (เจ้าของงาน 2026-10-13)
     return { ok: false, error: 'card_by_staff' };
   } else if (op === 'picked-up') {

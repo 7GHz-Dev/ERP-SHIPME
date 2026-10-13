@@ -132,20 +132,21 @@ var STEPS=['ได้รับงาน','รอชิปปิ้งนัด�
 var SCAN_MIN=30;     // ยืนยันส่งงานรับตู้แล้ว ต้องเข้า Fast Scan ภายในกี่นาที (เลยแล้วระบบเตือนทุก 5 นาที)
 var ARRIVE_M=200;    // ห่างจุดนัดไม่เกินกี่เมตร ถึงขึ้นปุ่ม "ถึงจุด…แล้ว"
 var GUIDE=[
-  ['ได้รับข้อความรับงาน','SHIPME ส่งข้อความ "คุณได้รับงาน" ทาง LINE → กด "ดูงาน"'],
+  ['ได้รับงาน','SHIPME ส่งข้อความ "คุณได้รับงาน" ทาง LINE → กด "ดูงาน" แล้วกด "รับงาน"'],
   ['รอชิปปิ้งนัดหมายรับการ์ด','ได้นัดแล้วกด "นำทางไปจุดนัดหมาย" ถึงแล้วกด "ถึงจุดรับการ์ดแล้ว"'],
   ['ถ่ายรูปรับตู้','รับตู้แล้วถ่ายรูปหน้ารถ ท้ายรถ ซีลตู้ → "ยืนยันส่งงาน"'],
   ['เข้า Fast Scan','เข้า Fast Scan ภายใน 30 นาทีหลังยืนยันส่งงาน แล้วกด "เข้า Fast Scan แล้ว"'],
   ['รอชิปปิ้งนัดหมายรับ ER','ได้นัดแล้วนำทางไปจุดนัดหมาย ถึงแล้วกด "ถึงจุดรับ ER แล้ว" → ถ่ายรูป ER + ซีลตะกั่ว → "ยืนยันส่งงาน"']
 ];
 var FAST=['scanned','waiting','passed'];
-/** 1 = รอนัดรับการ์ด / 2 = ถ่ายรูปรับตู้ / 3 = เข้า Fast Scan / 4 = รับ ER / 5 = เสร็จสิ้น (ขั้น 0 "ได้รับงาน" เสร็จเสมอ) */
+/** 0 = กดรับงาน / 1 = รอนัดรับการ์ด / 2 = ถ่ายรูปรับตู้ / 3 = เข้า Fast Scan / 4 = รับ ER / 5 = เสร็จสิ้น */
 function stepIndex(j){
   if(j.completedAt) return 5;
   if(j.pickedUpAt && FAST.indexOf(j.xrayStatus)>=0) return 4;
   if(j.pickedUpAt) return 3;
   if(j.cardHandedAt||j.cardAckAt) return 2;
-  return 1;
+  if(j.acceptedAt) return 1;
+  return 0;
 }
 /** นัดหมายที่ยังเปิดอยู่ของตู้นี้ในรอบนั้น */
 function meetingOf(j, phase){
@@ -187,7 +188,8 @@ function nextTodo(d){
   var date=open[0].inspectDate, list=open.filter(function(j){ return j.inspectDate===date; });
   var idx=Math.min.apply(null, list.map(stepIndex)), on=list.filter(function(j){ return stepIndex(j)===idx; });
   var t, m;
-  if(idx===1){ m=meetingOf(on[0], 'CARD_PICKUP');
+  if(idx===0) t={ title:'กดรับงาน', text:'กด "✅ รับงาน" เพื่อยืนยันกับชิปปิ้ง แล้วรอนัดหมายรับการ์ด' };
+  else if(idx===1){ m=meetingOf(on[0], 'CARD_PICKUP');
     t = !m ? { title:'รอชิปปิ้งนัดหมายรับการ์ด', text:'', wait:true }
       : (m.arrivedAt ? { title:'ถึงจุดรับการ์ดแล้ว', text:'รอชิปปิ้งแจกการ์ด', wait:true } : { title:'ไปจุดรับการ์ด', text:'กด "นำทางไปจุดนัดหมาย" ถึงแล้วกด "ถึงจุดรับการ์ดแล้ว"' }); }
   else if(idx===2) t={ title:'ถ่ายรูปรับตู้', text:'ถ่ายรูปหน้ารถ ท้ายรถ และซีลตู้ แล้วกด "ยืนยันส่งงาน"' };
@@ -309,6 +311,7 @@ function meetingNav(m, what){
 }
 function stepBody(j, idx){
   var id=esc(j.id), m;
+  if(idx===0) return '<button class="btn btn-green" data-op="accept" data-id="'+id+'">✅ รับงาน</button>';
   if(idx===1){ m=meetingOf(j, 'CARD_PICKUP'); return m ? meetingNav(m, 'จุดรับการ์ด') : ''; }
   if(idx===2){
     var ready=hasKinds(j, ['TRUCK_FRONT_PHOTO','TRUCK_REAR_PHOTO','PICKUP_SEAL_PHOTO']);
@@ -336,7 +339,7 @@ function stepBody(j, idx){
   return '';
 }
 function stepDone(j, i){
-  if(i===0) return 'ได้รับงานแล้ว';
+  if(i===0) return j.acceptedAt?'รับงานแล้ว '+hm(j.acceptedAt):'รับงานแล้ว';
   if(i===1) return j.cardHandedAt?'ได้การ์ดแล้ว '+hm(j.cardHandedAt):'ได้การ์ดแล้ว';
   if(i===2) return 'ส่งรูปแล้ว '+hm(j.pickedUpAt);
   if(i===3) return 'เข้า Fast Scan แล้ว';
@@ -397,18 +400,26 @@ function openNav(o){
   v.innerHTML='<div class="nav-top"><button id="nav-x" aria-label="ปิด">✕</button><div class="grow"><b>'+esc(o.label||'จุดหมาย')+'</b><span id="nav-eta"></span></div></div>'+
     '<div id="nav-step" class="nav-step"><div class="ic">🧭</div><div class="grow"><div class="dist" id="nav-sd">กำลังหาเส้นทาง…</div><div class="tx" id="nav-st"></div></div></div>'+
     '<div class="nav-mapwrap"><div id="nav-map" class="nav-map"><div class="center" style="color:#475569">กำลังโหลดแผนที่…</div></div>'+
-      '<div class="nav-fab"><button id="nav-follow" class="hidden">📍 ตามตำแหน่งฉัน</button><button id="nav-all">🗺️ ภาพรวม</button></div></div>'+
+      '<div class="nav-fab"><button id="nav-voice">🔊 เสียง: เปิด</button><button id="nav-traffic">🚦 จราจร</button>'+
+      '<button id="nav-follow" class="hidden">📍 ตามตำแหน่งฉัน</button><button id="nav-all">🗺️ ภาพรวม</button></div></div>'+
     '<div class="nav-panel"><div id="nav-msg" class="nav-msg">กำลังหาตำแหน่งของคุณ…</div>'+
     '<div id="nav-list" class="nav-list hidden"></div><button class="link" id="nav-more" style="display:block;margin:-4px auto 8px" hidden>ดูเส้นทางทั้งหมด</button>'+
-    (o.meetingId?'<button class="btn btn-green hidden" id="nav-arrive">📍 '+esc(arriveLabel(o.what))+'</button>':'')+'</div>';
+    (o.meetingId?'<button class="btn btn-green hidden" id="nav-arrive">📍 '+esc(arriveLabel(o.what))+'</button>':'')+
+    '<button class="btn btn-ghost" id="nav-gmaps" style="margin-top:8px">🚗 เปิดแอป Google Maps (นำทางด้วยเสียงของ Google)</button></div>';
   document.body.appendChild(v); document.body.style.overflow='hidden';
   $('nav-x').addEventListener('click', function(){ closeNav(); render(); });
   var dest={ lat:o.lat, lng:o.lng };
-  var st={ me:null, acc:null, line:null, routeAt:0, map:null, pos:null, route:null, idx:0, follow:true, firstFix:true, offSince:0, asking:false };
+  var st={ me:null, acc:null, line:null, routeAt:0, map:null, pos:null, route:null, idx:0, follow:true, firstFix:true, offSince:0, asking:false,
+    voice:read('drv_voice')!=='off', spoken:{}, traffic:null };
   D.nav=st;
   if(o.meetingId) $('nav-arrive').addEventListener('click', function(){ arrive(o.meetingId, st.pos, this); });
   $('nav-more').addEventListener('click', function(){ var l=$('nav-list'); l.classList.toggle('hidden'); this.textContent=l.classList.contains('hidden')?'ดูเส้นทางทั้งหมด':'ซ่อนเส้นทาง'; });
   $('nav-follow').addEventListener('click', function(){ st.follow=true; this.classList.add('hidden'); if(st.map&&st.pos){ st.map.panTo(st.pos); st.map.setZoom(17); } });
+  $('nav-gmaps').addEventListener('click', function(){ openGoogleMaps(dest); });
+  var voiceBtn=function(){ var b=$('nav-voice'); if(b) b.textContent=st.voice?'🔊 เสียง: เปิด':'🔇 เสียง: ปิด'; };
+  voiceBtn();
+  $('nav-voice').addEventListener('click', function(){ st.voice=!st.voice; store('drv_voice', st.voice?'on':'off'); voiceBtn(); if(st.voice) say('เปิดเสียงนำทาง'); else stopSay(); });
+  $('nav-traffic').addEventListener('click', function(){ if(!st.traffic) return; var on=!st.traffic.getMap(); st.traffic.setMap(on?st.map:null); this.classList.toggle('on', on); });
   $('nav-all').addEventListener('click', function(){ if(!st.map) return; st.follow=false; $('nav-follow').classList.remove('hidden'); fitAll(); });
   var msg=function(t){ var n=$('nav-msg'); if(n) n.textContent=t; };
   var fitAll=function(){
@@ -434,10 +445,18 @@ function openNav(o){
     if(bestD>80){ if(!st.offSince) st.offSince=Date.now(); else if(Date.now()-st.offSince>15000 && Date.now()-st.routeAt>20000) askRoute(); }
     else st.offSince=0;
     var next=steps[best+1];
-    if(!next){ showStep('🏁', 'อีก '+fmtDist(distM(p, dest)), 'ตรงไปจนถึงจุดหมาย'); }
-    else showStep(MANEUVER[next.maneuver]||'⬆️', 'อีก '+fmtDist(distM(p, next.start)), next.text||'ไปต่อตามเส้นทาง');
+    if(!next){ var dEnd=distM(p, dest); showStep('🏁', 'อีก '+fmtDist(dEnd), 'ตรงไปจนถึงจุดหมาย'); speakOnce('end', dEnd<=150 ? 'ถึงจุดหมายแล้ว' : ''); }
+    else {
+      var dn=distM(p, next.start), txt=next.text||'ไปต่อตามเส้นทาง';
+      showStep(MANEUVER[next.maneuver]||'⬆️', 'อีก '+fmtDist(dn), txt);
+      // พูดเมื่อเริ่มช่วงใหม่ / เหลือ 300 ม. / เหลือ 50 ม. (ครั้งเดียวต่อช่วง)
+      speakOnce((best+1)+':start', 'อีก '+spokenDist(dn)+' '+txt);
+      if(dn<=300) speakOnce((best+1)+':300', 'อีก '+spokenDist(dn)+' '+txt);
+      if(dn<=50) speakOnce((best+1)+':50', txt);
+    }
     Array.prototype.forEach.call(document.querySelectorAll('#nav-list li'), function(li, k){ li.classList.toggle('on', k===best+1); li.classList.toggle('past', k<=best); });
   };
+  var speakOnce=function(key, text){ if(!text || st.spoken[key]) return; st.spoken[key]=1; if(st.voice) say(text); };
   var askRoute=function(){
     if(!st.pos || st.asking) return;
     st.asking=true; st.routeAt=Date.now(); st.offSince=0;
@@ -445,7 +464,7 @@ function openNav(o){
     api({ action:'driverRoute', fromLat:p.lat, fromLng:p.lng, toLat:dest.lat, toLng:dest.lng }).then(function(r){
       st.asking=false;
       if(D.nav!==st || !r || !r.ok) return;
-      st.route=r; st.idx=0;
+      st.route=r; st.idx=0; st.spoken={};
       var eta=$('nav-eta'); if(eta) eta.textContent=r.durationSec ? ' • ขับรถ ~'+Math.max(1, Math.round(r.durationSec/60))+' นาที ('+fmtDist(r.distanceM)+')' : ' • เส้นตรง '+fmtDist(r.distanceM);
       var list=$('nav-list'), more=$('nav-more');
       if(list && r.steps && r.steps.length){
@@ -476,7 +495,8 @@ function openNav(o){
       st.me=new google.maps.Marker({ map:st.map, position:p, zIndex:9, icon:{ path:google.maps.SymbolPath.CIRCLE, scale:9, fillColor:'#1a73e8', fillOpacity:1, strokeColor:'#fff', strokeWeight:3 } });
       st.acc=new google.maps.Circle({ map:st.map, center:p, radius:st.pos.acc||0, fillColor:'#1a73e8', fillOpacity:.12, strokeWeight:0, clickable:false });
     } else { st.me.setPosition(p); st.acc.setCenter(p); st.acc.setRadius(st.pos.acc||0); }
-    if(st.firstFix){ st.firstFix=false; st.map.setCenter(p); st.map.setZoom(16); }
+    // กดนำทาง = เริ่มเดินทางเลย: ซูมใกล้แล้วตามตำแหน่งรถ (เหมือนกดเริ่มใน Google Maps)
+    if(st.firstFix){ st.firstFix=false; st.map.setCenter(p); st.map.setZoom(17); if(st.voice) say('เริ่มนำทางไป '+(o.label||'จุดหมาย')); }
     else if(st.follow) st.map.panTo(p);
   };
   var onPos=function(g){
@@ -500,13 +520,30 @@ function openNav(o){
   loadMaps(function(){
     if(D.nav!==st) return;
     var box=$('nav-map'); box.innerHTML='';
-    st.map=new google.maps.Map(box, { center:dest, zoom:15, disableDefaultUI:true, zoomControl:true, gestureHandling:'greedy', clickableIcons:false });
+    // แผนที่ Google พร้อมเครื่องมือ: ดาวเทียม / Street View / เต็มจอ / ซูม / สภาพจราจร
+    st.map=new google.maps.Map(box, { center:dest, zoom:15, gestureHandling:'greedy', clickableIcons:true,
+      mapTypeControl:true, mapTypeControlOptions:{ position:google.maps.ControlPosition.TOP_LEFT, style:google.maps.MapTypeControlStyle.DROPDOWN_MENU },
+      streetViewControl:true, fullscreenControl:true, zoomControl:true, scaleControl:true, rotateControl:true });
+    st.traffic=new google.maps.TrafficLayer(); st.traffic.setMap(st.map); $('nav-traffic').classList.add('on');
     new google.maps.Marker({ map:st.map, position:dest, title:o.label });
     st.map.addListener('dragstart', function(){ st.follow=false; $('nav-follow').classList.remove('hidden'); });
     prepRoute(); draw(); guide();
   });
 }
+/** เสียงนำทางภาษาไทย (เสียงของเครื่อง) */
+function say(text){
+  try{ if(!window.speechSynthesis) return; var u=new SpeechSynthesisUtterance(text); u.lang='th-TH'; u.rate=1; speechSynthesis.cancel(); speechSynthesis.speak(u); }catch(e){}
+}
+function stopSay(){ try{ if(window.speechSynthesis) speechSynthesis.cancel(); }catch(e){} }
+function spokenDist(m){ return m>=1000 ? (Math.round(m/100)/10)+' กิโลเมตร' : (Math.round(m/10)*10)+' เมตร'; }
+/** เปิดแอป Google Maps แล้วเริ่มนำทางทันที (dir_action=navigate) — ใน LINE เปิดนอกแอปเพื่อให้ส่งต่อไปแอป Google Maps ได้ */
+function openGoogleMaps(dest){
+  var url='https://www.google.com/maps/dir/?api=1&destination='+dest.lat+','+dest.lng+'&travelmode=driving&dir_action=navigate';
+  try{ if(window.liff && liff.isInClient && liff.isInClient()){ liff.openWindow({ url:url, external:true }); return; } }catch(e){}
+  window.open(url, '_blank');
+}
 function closeNav(){
+  stopSay();
   var st=D.nav; D.nav=null;
   if(st && st.watch!=null && navigator.geolocation) navigator.geolocation.clearWatch(st.watch);
   var v=$('nav'); if(v) v.remove();
@@ -541,7 +578,7 @@ function step(b){
   api(payload).then(function(res){
     D.busy[itemId]=false;
     if(!res.ok){ b.disabled=false; toast(errText(res), 4500); return; }
-    toast(op==='complete'?'งานของคุณเสร็จสิ้นแล้ว ✓':(op==='picked-up'?'ส่งงานรับตู้แล้ว ✓ ไปเข้า Fast Scan ภายใน 30 นาที':(op==='xray'&&payload.status==='scanned'?'บันทึกแล้ว ✓ ต่อไป: รอชิปปิ้งนัดหมายรับ ER':'บันทึกแล้ว ✓')), 3500);
+    toast(op==='accept'?'รับงานแล้ว ✓ รอชิปปิ้งนัดหมายรับการ์ด':op==='complete'?'งานของคุณเสร็จสิ้นแล้ว ✓':(op==='picked-up'?'ส่งงานรับตู้แล้ว ✓ ไปเข้า Fast Scan ภายใน 30 นาที':(op==='xray'&&payload.status==='scanned'?'บันทึกแล้ว ✓ ต่อไป: รอชิปปิ้งนัดหมายรับ ER':'บันทึกแล้ว ✓')), 3500);
     home();
   }).catch(function(){ D.busy[itemId]=false; b.disabled=false; toast('เชื่อมต่อไม่ได้ ลองใหม่'); });
 }

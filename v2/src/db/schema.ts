@@ -576,6 +576,7 @@ export const jobSteps = pgTable('job_steps', {
   inspectDate: text('inspect_date').notNull(),
   username: citext('username').notNull(),             // ชิปปิ้งเจ้าของชุดงาน
   driverId: text('driver_id').notNull().default(''),
+  acceptedAt: text('accepted_at').notNull().default(''),         // คนขับกด "รับงาน" (ก่อนนั้นส่งนัดรับการ์ดไม่ได้)
   cardHandedAt: text('card_handed_at').notNull().default(''),
   cardHandedBy: citext('card_handed_by').notNull().default(''),
   cardAckAt: text('card_ack_at').notNull().default(''),          // คนขับกด "รับการ์ดแล้ว"

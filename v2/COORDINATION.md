@@ -238,6 +238,31 @@ Per-container steps on the driver page (6 steps):
 
 **Tested:** 27 checks against the real DB with temporary data (all deleted), plus driver-page screenshots: waiting / meeting received / navigating near the point → the arrival button shows and records coordinates.
 
+## Round 6 (2026-10-13)
+
+- **Driver accepts the job:** step 1 "ได้รับงาน" (job received) has a "✅ รับงาน" (accept job) button.
+  - Writes `job_steps.accepted_at` (migration 0019) for all of that driver's containers on that date in one go.
+  - Staff get a notification.
+  - **A card meeting can't be sent before the driver accepts** (`not_accepted`).
+- **Navigation inside the app:**
+  - Uses the Google map with its tools: map type / satellite, Street View, fullscreen, zoom, scale, plus the traffic layer.
+  - Tapping "นำทาง" (navigate) starts immediately: zoom 17, follows the driver, Thai turn instructions, and Thai voice guidance (`speechSynthesis`, can be switched off).
+  - There's a button to open the **Google Maps app** in navigation mode (`dir_action=navigate`; inside LINE it opens through `liff.openWindow external`).
+  - Google doesn't allow its real "Start" turn-by-turn navigation to be embedded in another web page or app.
+- **Shipping page:**
+  - Only 2 tabs remain: แผนงาน (plan) / เพิ่มเติม (more). Old links to the map / job-status tabs open the plan tab.
+  - Buttons: 📨 แจ้งงานคนขับ (notify drivers) / 🎫 ส่งนัดหมายรับการ์ด (send card meeting) / 📄 ส่งนัดหมายรับ ER (send ER meeting). The meeting list is on the plan tab.
+  - The meeting sheet shows **every BL + container number**. Containers that can't be scheduled are greyed out with the reason:
+    - ยังไม่ได้กดรับงาน (job not accepted yet)
+    - แจกการ์ดแล้ว (card already handed)
+    - ยังไม่ได้รับตู้ (container not picked up yet)
+    - ยังไม่ได้ Fast Scan (not Fast Scanned yet)
+    - ส่งมอบ ER แล้ว (ER already handed)
+    - จบงานแล้ว (job completed)
+    - ไม่มีเบอร์คนขับ (no driver phone)
+  - Containers that already have a meeting are marked "มีนัดแล้ว" (already scheduled) and left unticked.
+- **Shipping Rich Menu:** งานชิปปิ้ง / ส่งนัดหมาย / เพิ่มเติม (shipping jobs / send meeting / more). **Reinstall it under Settings → 📲 ติดตั้ง Rich Menu.**
+
 ## Not built yet
 
 - Reports / CSV for this flow.
