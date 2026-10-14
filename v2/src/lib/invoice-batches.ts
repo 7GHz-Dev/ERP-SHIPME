@@ -388,18 +388,24 @@ export async function settleReceivables(body: ApiBody, actor: { username: string
   if (!input.length) return { ok: false, error: 'no_rows' };
   const paidAt = validYmd(body.paidAt) ? String(body.paidAt) : ymd();
 
+  // รวมยอดของเลขเดียวกันในไฟล์ (มีได้หลายแถว = รับชำระหลายครั้ง) แล้วอ่านใบทั้งหมดในครั้งเดียว
+  // เดิมอ่าน + เขียนทีละแถว (2 query ต่อแถว) ไฟล์ 39 แถวใช้เกิน 30 วินาทีตอน function อยู่ไกลฐานข้อมูล
+  const sums = new Map<string, number>();
+  for (const raw of input) {
+    const number = text(raw?.number, 40);
+    const amount = money(raw?.amount);
+    if (!number || !(amount > 0)) continue;
+    sums.set(number, money((sums.get(number) || 0) + amount));
+  }
   const updated: any[] = [];
-  await db.transaction(async (tx) => {
-    for (const raw of input) {
-      const number = text(raw?.number, 40);
-      const amount = money(raw?.amount);
-      if (!number || !(amount > 0)) continue;
-      const [inv] = await tx.select().from(invoices).where(eq(invoices.number, number)).limit(1);
-      if (!inv || inv.status === 'cancelled') continue;
-      const paid = money(Number(inv.paidAmount) + amount);
-      await tx.update(invoices).set({ paidAmount: paid, paidAt, updatedAt: nowIso() })
-        .where(eq(invoices.number, number));
-      updated.push({ number, paidAmount: paid, total: money(inv.total), outstanding: money(Number(inv.total) - paid) });
+  if (sums.size) await db.transaction(async (tx) => {
+    const rows = await tx.select().from(invoices).where(inArray(invoices.number, [...sums.keys()]));
+    const at = nowIso();
+    for (const inv of rows) {
+      if (inv.status === 'cancelled') continue;
+      const paid = money(Number(inv.paidAmount) + sums.get(inv.number)!);
+      await tx.update(invoices).set({ paidAmount: paid, paidAt, updatedAt: at }).where(eq(invoices.number, inv.number));
+      updated.push({ number: inv.number, paidAmount: paid, total: money(inv.total), outstanding: money(Number(inv.total) - paid) });
     }
   });
   if (!updated.length) return { ok: false, error: 'nothing_updated' };

@@ -17,13 +17,15 @@ const noStore = { 'cache-control': 'no-store', 'access-control-allow-origin': '*
 
 /**
  * กันหน้าเว็บหมุนค้าง 60 วินาที: งานเกินกำหนด = ตอบ "ระบบไม่ว่างชั่วคราว" ทันที แล้วเปิด connection ฐานข้อมูลใหม่
- * (ส่วนใหญ่เกิดจาก connection ค้าง — ดู src/db/index.ts) งานที่ช้าโดยธรรมชาติ (OCR / ซิงก์ชีต / นำเข้า-ส่งออก) ได้เวลามากกว่า
+ * (ส่วนใหญ่เกิดจาก connection ค้าง — ดู src/db/index.ts)
+ * จำกัด 30 วินาทีเฉพาะการอ่านที่หน้าเว็บเรียกบ่อย ๆ (โพลสถานะ) — งานบันทึก/นำเข้าได้ 55 วินาที
+ * (14 ต.ค. 2026: อัป Excel รับชำระ 39 รายการโดนตัดที่ 30 วินาที ตอนนั้น function รันที่ iad1 — ดู v2/vercel.json)
  */
-const SLOW_ACTIONS = /slip|ocr|sync|prune|report|import|export|batch|kola|plan(save|load)|routeplan|sendDriverSms|notifyJobs|requestLocations|diagnostics|richmenu/i;
+const QUICK_ACTIONS = /^(coordDashboard|driverHome|driverConfig|me|todayStatus|coordOutbox|partnerDrivers|shipAskList|transportSyncStatus)$/;
 const busy = () => ({ ok: false, error: 'server_busy', message: 'ระบบไม่ว่างชั่วคราว กรุณาลองใหม่อีกครั้ง' });
 
 async function withWatchdog(body: Record<string, unknown>) {
-  const limit = SLOW_ACTIONS.test(String(body.action || '')) ? 55000 : 30000;
+  const limit = QUICK_ACTIONS.test(String(body.action || '')) ? 30000 : 55000;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<'timeout'>((resolve) => { timer = setTimeout(() => resolve('timeout'), limit); });
   try {
