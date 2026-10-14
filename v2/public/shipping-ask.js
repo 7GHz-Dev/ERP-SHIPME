@@ -9,7 +9,7 @@
  */
 var sa = { ready:false, date:'', data:null, picked:{}, pickedFor:'', timer:null, busy:false };
 
-var SA_ERR = {
+var SA_ERR = { group_not_found:'ไม่พบกลุ่มนี้ — กดรีเฟรชแล้วเลือกใหม่',
   bad_date:'วันที่ไม่ถูกต้อง', no_recipients:'ยังไม่ได้เลือกชิปปิ้ง', too_many_recipients:'เลือกได้ไม่เกิน 50 คนต่อครั้ง'
 };
 var SA_ANSWER = { DONE:'✅ เสร็จครบแล้ว', NOT_DONE:'⏳ ยังไม่เสร็จ' };
@@ -122,7 +122,16 @@ function saRender(){
       '<td style="text-align:left">'+esc(a.message)+'</td><td style="text-align:left">'+esc(a.answerNote)+'</td></tr>';
   }).join('');
 
-  $('sa-body').innerHTML = notes+
+  // กลุ่ม LINE ที่รับคำตอบ (ส่งคำตอบทุกครั้งเข้ากลุ่มนี้ด้วย)
+  var lg=d.lineGroup||{ groups:[], groupId:'' }, active=lg.groups.filter(function(g){ return g.active || g.id===lg.groupId; });
+  var groupBox='<div class="pl-drv" style="margin-bottom:14px"><label class="muted" style="font-weight:600;display:block;margin-bottom:6px">💬 แจ้งคำตอบเข้ากลุ่ม LINE</label>'+
+    (active.length
+      ? '<select id="sa-group" style="min-width:260px"><option value="">— ไม่ส่งเข้ากลุ่ม —</option>'+active.map(function(g){
+          return '<option value="'+esc(g.id)+'"'+(g.id===lg.groupId?' selected':'')+'>'+esc(g.name||('กลุ่มไม่มีชื่อ ('+g.id.slice(0,8)+'…)'))+(g.active?'':' — OA ออกจากกลุ่มแล้ว')+'</option>'; }).join('')+'</select>'+
+        ' <span class="muted">ชิปปิ้งตอบเมื่อไหร่ ส่งการ์ดคำตอบเข้ากลุ่มที่เลือกด้วย</span>'
+      : '<span class="muted">ยังไม่มีกลุ่ม — เชิญ LINE OA "SHIPME" เข้ากลุ่มที่ต้องการ (หรือพิมพ์ข้อความอะไรก็ได้ในกลุ่มที่มี OA อยู่แล้ว) แล้วกด ↻ รีเฟรช</span>')+
+    '</div>';
+  $('sa-body').innerHTML = notes+groupBox+
     '<div class="pl-summary">'+
       '<span class="pl-chip">วันที่ '+esc(saDmy(d.date))+(d.date===d.today?' (วันนี้)':'')+'</span>'+
       '<span class="pl-chip">ถามแล้ว '+asked+' คน</span>'+
@@ -149,6 +158,14 @@ function saRender(){
 
 function saOnChange(e){
   var t=e.target;
+  if(t.id==='sa-group'){
+    api({action:'shipAskGroupSet', token:state.token, groupId:t.value}).then(function(res){
+      if(!guard(res)) return;
+      toast(res.ok ? (t.value?'ตั้งกลุ่มรับคำตอบแล้ว':'ปิดการส่งเข้ากลุ่มแล้ว') : saErr(res.error));
+      saLoad(true);
+    });
+    return;
+  }
   if(t.id==='sa-all'){
     sa.picked={};
     if(t.checked) sa.data.shippers.forEach(function(s){ if(s.linked) sa.picked[s.username]=true; });

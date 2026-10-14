@@ -63,7 +63,7 @@ import {
 } from './invoices';
 import type { ApiBody, ApiResult, Handler } from './types';
 import { lineDiagnostics, lineMode } from './coord-line';
-import { shipAskList, shipAskSend } from './ship-ask';
+import { shipAskGroupSet, shipAskList, shipAskSend } from './ship-ask';
 import { checkinPolicy, id, isWindowsDevice, nowIso, publicUser, validYmd, ymd } from './utils';
 
 export type { ApiBody, ApiResult };
@@ -627,6 +627,10 @@ const handlers: Record<string, Handler> = {
   shipAskSend: async (body) => {
     const session = await guard(body, PLAN_ROLES);
     return session.error || shipAskSend(body, session.user);
+  },
+  shipAskGroupSet: async (body) => {
+    const session = await guard(body, PLAN_ROLES);
+    return session.error || shipAskGroupSet(body);
   },
   lineRichMenuInstall: async (body) => {
     const session = await guard(body, PLAN_ROLES);

@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, inArray, ne, sql } from 'drizzle-orm';
 import { db } from '@/db';
-import { jobPlanItems, jobPlans, jobSteps, shippingAsks, users } from '@/db/schema';
-import { flexMessage, lineMode, pushToDriver, replyLine, staffUrl } from './coord-line';
+import { appOptions, jobPlanItems, jobPlans, jobSteps, shippingAsks, users } from '@/db/schema';
+import { flexMessage, lineGroupName, lineMode, pushToDriver, replyLine, staffUrl } from './coord-line';
 import { staffLineStatus } from './coord-meet';
 import { thShortDate } from './sms';
 import type { ApiBody, ApiResult } from './types';
@@ -15,6 +15,8 @@ import { id, nowIso, validYmd, ymd } from './utils';
  * - ทุกคำตอบแจ้งผู้จัดการคนที่ถามทาง LINE (ถ้าผูกไว้) และเห็นในแท็บ "ถามชิปปิ้ง" ของหน้าผู้จัดการ
  * - ส่งถึงชิปปิ้งแม้ตั้งปิดแจ้งเตือนไว้ เพราะเป็นคำถามตรงจากผู้จัดการ ไม่ใช่แจ้งเตือนอัตโนมัติ
  * - ระบบแสดงความคืบหน้าในระบบ (ปิดงานกี่ตู้) คู่กับคำตอบเสมอ — คำตอบของชิปปิ้งไม่แก้สถานะตู้
+ * - เลือกกลุ่ม LINE ไว้ (แท็บ "ถามชิปปิ้ง") = ทุกคำตอบส่งเข้ากลุ่มนั้นด้วย
+ *   ระบบรู้จักกลุ่มเมื่อเชิญ OA เข้ากลุ่ม (join) หรือมีคนพิมพ์ในกลุ่มที่ OA อยู่แล้ว (เก็บไว้ที่ app_options.lineGroups)
  */
 
 type Staff = { username: string; name: string; role: string };
@@ -64,7 +66,7 @@ export async function shipAskList(body: ApiBody, user: Staff): Promise<ApiResult
   })).sort((a, b) => (b.containers - a.containers) || a.name.localeCompare(b.name, 'th'));
   return {
     ok: true, date, today: ymd(), planStatus: plan?.status || '', lineMode: lineMode(),
-    me: await staffLineStatus(user.username), shippers,
+    me: await staffLineStatus(user.username), shippers, lineGroup: await groupSettings(),
     asks: asks.map((a) => ({
       id: a.id, username: String(a.username), askedBy: String(a.askedBy),
       askedByName: askerNames.get(String(a.askedBy).toLowerCase()) || String(a.askedBy),
@@ -126,11 +128,68 @@ export async function shipAskSend(body: ApiBody, user: Staff): Promise<ApiResult
   return { ok: true, results, mode: lineMode() };
 }
 
+// ---------------- กลุ่ม LINE ที่รับคำตอบ ----------------
+
+type LineGroup = { id: string; type: string; name: string; active: boolean; joinedAt: string; lastSeen: string };
+const GROUPS_KEY = 'lineGroups', TARGET_KEY = 'shipAskGroup';
+
+async function readOption<T>(key: string, fallback: T): Promise<T> {
+  const [row] = await db.select().from(appOptions).where(eq(appOptions.key, key)).limit(1);
+  try { return row ? JSON.parse(row.valueJson) as T : fallback; } catch { return fallback; }
+}
+async function writeOption(key: string, value: unknown) {
+  const valueJson = JSON.stringify(value), updatedAt = nowIso();
+  await db.insert(appOptions).values({ key, valueJson, updatedAt }).onConflictDoUpdate({ target: appOptions.key, set: { valueJson, updatedAt } });
+}
+
+/** webhook: OA เข้ากลุ่ม / ออกจากกลุ่ม / มีข้อความในกลุ่ม → จำกลุ่มไว้ให้เลือกในหน้าผู้จัดการ */
+export async function rememberLineGroup(ev: any) {
+  const src = ev?.source || {};
+  const gid = String(src.groupId || src.roomId || '');
+  if (!gid || (src.type !== 'group' && src.type !== 'room')) return;
+  const list = await readOption<LineGroup[]>(GROUPS_KEY, []);
+  const at = nowIso();
+  let g = list.find((x) => x.id === gid);
+  const leaving = ev.type === 'leave';
+  // ข้อความทั่วไปในกลุ่มที่รู้จักแล้ว ไม่ต้องเขียนทุกครั้ง
+  if (g && g.active && !leaving && ev.type !== 'join' && g.name) return;
+  if (!g) { g = { id: gid, type: src.type, name: '', active: true, joinedAt: at, lastSeen: at }; list.push(g); }
+  g.active = !leaving; g.lastSeen = at;
+  if (!leaving && !g.name) g.name = await lineGroupName(gid);
+  await writeOption(GROUPS_KEY, list.slice(-50));
+}
+
+export async function shipAskGroupSet(body: ApiBody): Promise<ApiResult> {
+  const groupId = text(body.groupId, 80);
+  if (groupId) {
+    const list = await readOption<LineGroup[]>(GROUPS_KEY, []);
+    if (!list.some((g) => g.id === groupId)) return { ok: false, error: 'group_not_found' };
+  }
+  await writeOption(TARGET_KEY, { groupId });
+  return { ok: true, groupId };
+}
+
+async function groupSettings() {
+  const groups = await readOption<LineGroup[]>(GROUPS_KEY, []);
+  const target = await readOption<{ groupId?: string }>(TARGET_KEY, {});
+  return { groups: groups.map((g) => ({ id: g.id, type: g.type, name: g.name, active: g.active, joinedAt: g.joinedAt })), groupId: target.groupId || '' };
+}
+
+/** ส่งคำตอบเข้ากลุ่มที่เลือกไว้ (ไม่ได้เลือก / OA ออกจากกลุ่มแล้ว = ข้าม) */
+async function notifyGroup(title: string, lines: string[], origin: string, ref: string) {
+  const { groups, groupId } = await groupSettings();
+  const g = groups.find((x) => x.id === groupId);
+  if (!g || !g.active) return;
+  await pushToDriver({
+    lineUserId: g.id, driverId: '', kind: 'SHIP_ASK_GROUP', ref: `${ref}:group`,
+    messages: [flexMessage(title, title, lines, [{ label: 'ดูคำตอบทั้งหมด', uri: appUrl(origin), primary: true }])]
+  }).catch(() => {});
+}
+
 // ---------------- คำตอบจากแชท LINE (เรียกจาก webhook) ----------------
 
 async function notifyAsker(ask: typeof shippingAsks.$inferSelect, shipperName: string, origin: string, ref: string, isNote = false) {
   const [asker] = await db.select({ lineUserId: users.lineUserId }).from(users).where(eq(users.username, ask.askedBy)).limit(1);
-  if (!asker?.lineUserId) return;
   // ภาพรวมรอบที่ถามวันนั้น: คำถามล่าสุดของชิปปิ้งแต่ละคน
   const all = await db.select({ username: shippingAsks.username, answer: shippingAsks.answer, sendState: shippingAsks.sendState, askedAt: shippingAsks.askedAt })
     .from(shippingAsks).where(eq(shippingAsks.inspectDate, ask.inspectDate)).orderBy(desc(shippingAsks.askedAt));
@@ -149,10 +208,13 @@ async function notifyAsker(ask: typeof shippingAsks.$inferSelect, shipperName: s
     `ภาพรวม: เสร็จ ${done} · ยังไม่เสร็จ ${notDone} · รอตอบ ${waiting} คน`
   ];
   const title = isNote ? `📝 ${shipperName} แจ้งงานที่ยังค้าง` : `${ANSWER_TH[ask.answer] || ask.answer} — ${shipperName}`;
-  await pushToDriver({
-    lineUserId: asker.lineUserId, driverId: '', kind: 'SHIP_ASK_ANSWER', ref,
-    messages: [flexMessage(title, title, lines, [{ label: 'ดูคำตอบทั้งหมด', uri: appUrl(origin), primary: true }])]
-  }).catch(() => {});
+  if (asker?.lineUserId) {
+    await pushToDriver({
+      lineUserId: asker.lineUserId, driverId: '', kind: 'SHIP_ASK_ANSWER', ref,
+      messages: [flexMessage(title, title, lines, [{ label: 'ดูคำตอบทั้งหมด', uri: appUrl(origin), primary: true }])]
+    }).catch(() => {});
+  }
+  await notifyGroup(title, lines, origin, ref);
 }
 
 async function shipperByLine(lineUserId: string) {
@@ -194,7 +256,7 @@ export async function handleShipAskPostback(ev: any, origin: string) {
 /** ข้อความแรกที่ชิปปิ้งพิมพ์หลังตอบ "ยังไม่เสร็จ" = รายละเอียดที่ยังค้าง — ข้อความอื่นไม่ยุ่ง */
 export async function handleShipAskText(ev: any, origin: string) {
   const msg = text(ev?.message?.text, 500);
-  if (!msg) return false;
+  if (!msg || (ev?.source?.type && ev.source.type !== 'user')) return false;   // ข้อความในกลุ่มไม่ใช่คำตอบ
   const shipper = await shipperByLine(String(ev?.source?.userId || ''));
   if (!shipper) return false;
   const [ask] = await db.select().from(shippingAsks).where(and(

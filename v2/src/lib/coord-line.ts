@@ -123,6 +123,17 @@ export async function replyLine(replyToken: string, messages: unknown[]) {
   return Boolean(res?.ok);
 }
 
+/** ชื่อกลุ่ม LINE ที่ OA อยู่ (ห้องแชทแบบ room ไม่มีชื่อ) — ดึงไม่ได้คืน '' */
+export async function lineGroupName(groupId: string) {
+  if (lineMode() !== 'live' || !groupId.startsWith('C')) return '';
+  const res = await fetch(`https://api.line.me/v2/bot/group/${encodeURIComponent(groupId)}/summary`, {
+    headers: { authorization: `Bearer ${env.lineAccessToken}` }, signal: AbortSignal.timeout(8000)
+  }).catch(() => null);
+  if (!res?.ok) return '';
+  const data = await res.json().catch(() => ({})) as { groupName?: string };
+  return String(data.groupName || '').slice(0, 100);
+}
+
 // ---------------- การ์ดข้อความ (Flex Message) ----------------
 
 const NAVY = '#0B2A52', AMBER = '#D4A044', GREEN = '#06C755';
