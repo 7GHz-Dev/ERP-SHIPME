@@ -936,16 +936,18 @@
               <th class="no">No</th>
               <th>เลขใบแจ้งหนี้ / วันที่</th>
               <th>BL</th>
+              <th>ชุดเอกสาร</th>
               <th class="num">ค้างชำระ</th>
               <th class="num">ชำระแล้ว</th>
               <th>ใบเสร็จ</th>
             </tr></thead>
-            <tbody id="ar-body"><tr><td colspan="7" class="muted">กำลังโหลด…</td></tr></tbody>
+            <tbody id="ar-body"><tr><td colspan="8" class="muted">กำลังโหลด…</td></tr></tbody>
           </table>
         </div>
         <div class="toolbar" style="margin-top:10px">
           <span id="ar-picked" class="muted">เลือกไว้ 0 รายการ</span>
           <span class="grow"></span>
+          <button id="ar-unbatch" class="btn btn-ghost btn-sm" disabled title="ใบที่ยังไม่รับชำระ — กลับไปอยู่นอกชุด จัดชุดเอกสารใหม่ได้">↩️ ยกเลิกชุด (กลับไปจัดชุดใหม่)</button>
           <button id="ar-unsettle" class="btn btn-danger btn-sm" disabled>ยกเลิกการชำระ</button>
           <button id="ar-receipt" class="btn btn-primary btn-sm" disabled>ออกใบเสร็จ</button>
         </div>
@@ -4315,10 +4317,10 @@ $('wait-reload').addEventListener('click', loadPendingDocs);
 /* ---------- ลูกหนี้สำรองจ่ายคงค้าง ---------- */
 var arState = { rows:[], matched:[], today:'' };
 function loadReceivables(){
-  $('ar-body').innerHTML = '<tr><td colspan="7" class="muted">กำลังโหลด…</td></tr>';
+  $('ar-body').innerHTML = '<tr><td colspan="8" class="muted">กำลังโหลด…</td></tr>';
   api({ action:'listReceivables', token:state.token, showPaid:$('ar-show-paid').checked, from:$('ar-from').value, to:$('ar-to').value })
     .then(function(res){
-      if(!res.ok){ $('ar-body').innerHTML = '<tr><td colspan="7" class="muted">โหลดไม่สำเร็จ: '+esc(res.error)+'</td></tr>'; return; }
+      if(!res.ok){ $('ar-body').innerHTML = '<tr><td colspan="8" class="muted">โหลดไม่สำเร็จ: '+esc(res.error)+'</td></tr>'; return; }
       arState.rows = res.rows || [];
       arState.today = res.today;
       renderReceivables();
@@ -4343,7 +4345,7 @@ $('ar-excel').addEventListener('click', function(){ ArReport.excel(arReportOpts(
 function renderReceivables(){
   var rows = arState.rows;
   $('ar-summary').innerHTML = ArReport.summaryHtml(arReportRows(), arState.today, ArReport.rangeText($('ar-from').value, $('ar-to').value));
-  if(!rows.length){ $('ar-body').innerHTML = '<tr><td colspan="7" class="muted" style="padding:20px">ไม่มีรายการคงค้าง</td></tr>'; updateArPicked(); return; }
+  if(!rows.length){ $('ar-body').innerHTML = '<tr><td colspan="8" class="muted" style="padding:20px">ไม่มีรายการคงค้าง</td></tr>'; updateArPicked(); return; }
   $('ar-body').innerHTML = rows.map(function(r, i){
     var done = r.outstanding <= 0;
     // จ่ายบางส่วน — บอกไว้ใต้ยอดค้างจะได้ไม่ต้องเทียบเลขเอง
@@ -4353,6 +4355,7 @@ function renderReceivables(){
       + '<td class="no">'+(i+1)+'</td>'
       + '<td><b class="mono">'+esc(r.number)+'</b><div class="sub">'+esc(r.issueDate)+'</div></td>'
       + '<td class="mono">'+esc(r.bl||'—')+'</td>'
+      + '<td>'+(r.batchNo ? '<b>'+esc(arBatchLabel(r))+'</b><div><a href="#" class="ar-batch sub" data-batch="'+esc(arBatchKey(r))+'">เลือกทั้งชุด</a></div>' : '<span class="muted">—</span>')+'</td>'
       + '<td class="num">'+(r.outstanding>0
           ? '<b>'+baht(r.outstanding)+'</b>'+(partial?'<div class="sub">จ่ายบางส่วน</div>':'')
           : '<span class="pill approved">ครบแล้ว</span>')+'</td>'
@@ -4362,9 +4365,23 @@ function renderReceivables(){
   Array.prototype.forEach.call($('ar-body').querySelectorAll('.ar-pick'), function(cb){
     cb.addEventListener('change', updateArPicked);
   });
+  // เลือกทุกใบของชุดนั้น (ที่แสดงอยู่ในหน้านี้)
+  Array.prototype.forEach.call($('ar-body').querySelectorAll('.ar-batch'), function(a){
+    a.addEventListener('click', function(e){
+      e.preventDefault();
+      var key = a.getAttribute('data-batch');
+      Array.prototype.forEach.call($('ar-body').querySelectorAll('.ar-pick'), function(cb){
+        var r = arState.rows[Number(cb.getAttribute('data-i'))];
+        cb.checked = !!r && arBatchKey(r) === key;
+      });
+      updateArPicked();
+    });
+  });
   $('ar-all').checked = false;
   updateArPicked();
 }
+function arBatchKey(r){ return r.batchPeriod + '-' + r.batchNo; }
+function arBatchLabel(r){ return r.batchName || ('ชุดที่ ' + String(r.batchNo).padStart(2,'0') + '/' + String(r.batchPeriod||'').slice(4,6)); }
 function arPickedRows(){
   return Array.prototype.map.call($('ar-body').querySelectorAll('.ar-pick:checked'), function(cb){
     return arState.rows[Number(cb.getAttribute('data-i'))];
@@ -4379,7 +4396,41 @@ function updateArPicked(){
   // ยกเลิกการชำระได้เฉพาะใบที่มียอดรับชำระมาแล้ว
   $('ar-unsettle').disabled = !picked.length
     || !picked.some(function(r){ return Number(r.paidAmount) > 0; });
+  // ยกเลิกชุดได้เฉพาะใบที่อยู่ในชุดและยังไม่รับชำระ (รับชำระแล้วต้องยกเลิกการชำระก่อน)
+  $('ar-unbatch').disabled = !picked.length
+    || picked.some(function(r){ return !r.batchNo || Number(r.paidAmount) > 0; });
 }
+
+$('ar-unbatch').addEventListener('click', function(){
+  var picked = arPickedRows();
+  if(!picked.length) return;
+  var paid = picked.filter(function(r){ return Number(r.paidAmount) > 0; });
+  if(paid.length){ alert('ใบเหล่านี้รับชำระไปแล้ว ต้องกด "ยกเลิกการชำระ" ก่อน: ' + paid.map(function(r){ return r.number; }).join(', ')); return; }
+  // สรุปตามชุด: เลือกกี่ใบ จากที่มีในหน้านี้กี่ใบ
+  var groups = {};
+  picked.forEach(function(r){ var k = arBatchKey(r); (groups[k] = groups[k] || { label:arBatchLabel(r), n:0, all:0 }).n++; });
+  arState.rows.forEach(function(r){ var k = arBatchKey(r); if(groups[k]) groups[k].all++; });
+  var NL = String.fromCharCode(10);
+  var msg = 'ยกเลิกชุดเอกสาร ' + picked.length + ' ใบ?' + NL + NL
+    + Object.keys(groups).map(function(k){ var g = groups[k]; return '• ' + g.label + ' — ' + g.n + (g.n < g.all ? ' จาก ' + g.all + ' ใบ (ที่เหลือยังอยู่ในชุด)' : ' ใบ (ทั้งชุด)'); }).join(NL)
+    + NL + NL + 'ใบจะออกจากลูกหนี้คงค้าง ADV และกลับไปอยู่นอกชุดที่แท็บ "📄 ใบที่ออกแล้ว" — จัดชุดใหม่แล้วส่ง KOLA อีกครั้ง';
+  if(!confirm(msg)) return;
+  var btn = $('ar-unbatch'); btn.disabled = true;
+  api({ action:'unbatchInvoices', token:state.token, numbers:picked.map(function(r){ return r.number; }) })
+    .then(function(res){
+      btn.disabled = false;
+      if(!guard(res)) return;
+      if(!res.ok){
+        alert('ยกเลิกชุดไม่สำเร็จ: ' + (res.error==='already_paid'
+          ? ('ใบเหล่านี้รับชำระไปแล้ว ต้องยกเลิกการชำระก่อน: ' + (res.numbers||[]).join(', '))
+          : res.error==='not_batched' ? ('ใบเหล่านี้ไม่ได้อยู่ในชุด: ' + (res.numbers||[]).join(', ')) : res.error));
+        return;
+      }
+      $('ar-msg').textContent = 'ยกเลิกชุดแล้ว ' + res.count + ' ใบ — ไปจัดชุดใหม่ได้ที่แท็บ "📄 ใบที่ออกแล้ว"';
+      loadReceivables();
+      if(typeof loadInvoiceBatches === 'function') loadInvoiceBatches();
+    }).catch(function(){ btn.disabled = false; alert('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้'); });
+});
 
 $('ar-unsettle').addEventListener('click', function(){
   var picked = arPickedRows().filter(function(r){ return Number(r.paidAmount) > 0; });
