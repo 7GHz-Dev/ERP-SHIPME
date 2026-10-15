@@ -659,6 +659,13 @@ const handlers: Record<string, Handler> = {
   driverStep,
   driverMeeting,
   driverJoin,
+  // บันทึก error ฝั่งเครื่องผู้ใช้ (DocScan) ลง log ของ Vercel — ไม่มีรูป/ข้อมูลส่วนตัว ไว้ไล่ปัญหาที่เกิดเฉพาะบางเครื่อง
+  clientLog: async (body) => {
+    const pick = (v: unknown, n: number) => String(v ?? '').slice(0, n);
+    console.error('[clientLog]', JSON.stringify({ app: pick(body.app, 20), event: pick(body.event, 40), ua: pick(body.ua, 200),
+      mem: Number(body.mem) || 0, standalone: body.standalone === true, detail: body.detail }).slice(0, 1500));
+    return { ok: true };
+  },
   driverArrive,
   driverRoute,
   driverEvidenceSign,

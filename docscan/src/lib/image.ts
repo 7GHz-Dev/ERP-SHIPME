@@ -124,16 +124,60 @@ export function validateImageFile(f: File) {
 export async function takeImageFiles(list: FileList | null | undefined) {
   const picked = Array.from(list || []);   // คัดลอกรายการก่อน await แรก
   const files: File[] = [], errors: string[] = [];
-  for (const f of picked) {
+  // เริ่มอ่าน "ทุกรูปพร้อมกัน" ใน tick เดียวกับที่เลือกเสร็จ — อ่านทีละรูปแล้วเครื่องช้า ๆ (เช่น iPhone รุ่นเก่า)
+  // จะไปถึงรูปท้าย ๆ หลัง iOS ลบไฟล์ชั่วคราวไปแล้ว (เลือก 3–4 รูปผ่าน เลือกเยอะแล้วพัง)
+  const reads = picked.map((f) => {
+    try { validateImageFile(f); } catch (e) { return Promise.reject(e); }
+    return readNow(f);
+  });
+  const settled = await Promise.allSettled(reads);
+  const failed: { f: File; e: unknown }[] = [];
+  settled.forEach((r, i) => {
+    const f = picked[i];
+    if (r.status === 'fulfilled') files.push(new File([r.value], f.name, { type: f.type, lastModified: f.lastModified }));
+    else if (r.reason instanceof ImageError) errors.push(r.reason.message);
+    else failed.push({ f, e: r.reason });
+  });
+  // อ่านไม่ได้ ลองอีกครั้งเดียวทันที (บางครั้งเครื่องยังเตรียมไฟล์จาก iCloud ไม่เสร็จ)
+  for (const x of [...failed]) {
     try {
-      validateImageFile(f);
-      const data = await f.arrayBuffer();
-      files.push(new File([data], f.name, { type: f.type, lastModified: f.lastModified }));
-    } catch (e) {
-      errors.push(e instanceof ImageError ? e.message : `อ่านรูป "${f.name}" ไม่ได้ — เลือกรูปนี้ใหม่อีกครั้ง`);
-    }
+      const data = await readNow(x.f);
+      files.push(new File([data], x.f.name, { type: x.f.type, lastModified: x.f.lastModified }));
+      failed.splice(failed.indexOf(x), 1);
+    } catch (e) { x.e = e; }
+  }
+  if (failed.length) {
+    const names = failed.slice(0, 5).map((x) => x.f.name).join(', ') + (failed.length > 5 ? ` และอีก ${failed.length - 5} รูป` : '');
+    errors.push(`อ่านรูปจากเครื่องไม่ได้ ${failed.length} จาก ${picked.length} รูป (${names}) — เลือกเฉพาะรูปเหล่านั้นใหม่อีกครั้ง ถ้ายังไม่ได้ให้เลือกครั้งละไม่เกิน 10 รูป`);
+    const e = failed[0].e as Error;
+    reportClientError('import_read_fail', { total: picked.length, ok: files.length, failed: failed.length,
+      errName: String(e?.name || ''), errMsg: String(e?.message || e).slice(0, 200), sizes: failed.slice(0, 5).map((x) => x.f.size), types: [...new Set(failed.map((x) => x.f.type))] });
   }
   return { files, errors };
+}
+
+/** อ่านไฟล์ทั้งก้อนเข้าหน่วยความจำ — FileReader ใช้ได้กว้างกว่า Blob.arrayBuffer() บน iOS รุ่นเก่า */
+function readNow(f: File): Promise<ArrayBuffer> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => (r.result instanceof ArrayBuffer ? resolve(r.result) : reject(new Error('read_empty')));
+    r.onerror = () => reject(r.error || new Error('read_failed'));
+    r.readAsArrayBuffer(f);
+  });
+}
+
+/**
+ * ส่งรายละเอียด error ฝั่งเครื่องผู้ใช้ไปเก็บใน log ของระบบ (ไม่มีรูป ไม่มีข้อมูลส่วนตัว) — ไว้ไล่ปัญหาที่เกิดเฉพาะบางเครื่อง
+ * ส่งไม่ได้ก็ช่างมัน ไม่กระทบการใช้งาน
+ */
+export function reportClientError(event: string, detail: Record<string, unknown>) {
+  try {
+    const nav = navigator as Navigator & { deviceMemory?: number };
+    const body = JSON.stringify({ action: 'clientLog', app: 'docscan', event, ua: navigator.userAgent.slice(0, 200),
+      mem: nav.deviceMemory || 0, standalone: window.matchMedia?.('(display-mode: standalone)').matches || false, detail });
+    const url = (process.env.NEXT_PUBLIC_ERP_API || 'https://erp-shipme-ovmf-theta.vercel.app/api');
+    fetch(url, { method: 'POST', headers: { 'content-type': 'text/plain' }, body, keepalive: true }).catch(() => undefined);
+  } catch { /* ignore */ }
 }
 
 /** ชื่อไฟล์/ชื่อเอกสารที่ปลอดภัย — ตัดอักขระที่ใช้ในชื่อไฟล์ไม่ได้ และจำกัดความยาว */

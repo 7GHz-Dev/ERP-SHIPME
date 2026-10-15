@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { pinDoc } from '@/lib/cloud';
-import { MAX_ORIGINAL, blobToCanvas } from '@/lib/image';
+import { MAX_ORIGINAL, blobToCanvas, reportClientError } from '@/lib/image';
 import { buildPageFromCanvas, buildPageImages, suggestQuad } from '@/lib/process';
 import { addPage } from '@/lib/repo';
 import type { Quad } from '@/lib/types';
@@ -46,6 +46,8 @@ export default function CaptureFlow({ documentId, items, confirm = true, onDone,
         setAdded((a) => a + 1);
         setI((x) => x + 1);
       } catch (e) {
+        reportClientError('import_process_fail', { index: i, total: items.length, size: items[i]?.size || 0,
+          errName: String((e as Error)?.name || ''), errMsg: String((e as Error)?.message || e).slice(0, 200) });
         ui.toast(await saveErrorText(e), 'error');
         if (alive) setI((x) => x + 1);
       }
@@ -65,6 +67,8 @@ export default function CaptureFlow({ documentId, items, confirm = true, onDone,
       for (const b of others) { await addPage(documentId, await buildPageImages(b, null)); setAdded((a) => a + 1); }
       setI((x) => x + 1 + others.length);
     } catch (e) {
+      reportClientError('import_save_fail', { index: i, total: items.length,
+        errName: String((e as Error)?.name || ''), errMsg: String((e as Error)?.message || e).slice(0, 200) });
       ui.toast(await saveErrorText(e), 'error');
     } finally {
       setSaving(false);
