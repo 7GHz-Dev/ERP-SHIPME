@@ -33,7 +33,7 @@ import { shippingReconcileData } from './shipping-reconcile';
 import {
   acceptDocs, clearDocFix, createInvoiceBatch, flagDocsForFix, issueReceipts,
   listInvoiceBatches, listPendingDocs, listReceivables, matchReceivables, renameInvoiceBatch,
-  resetInvoices, sendBatchToKola, settleReceivables, unbatchInvoices, unsettleReceivables
+  resetInvoices, sendBatchToKola, settleReceivables, unbatchInvoices, unsettleReceivables, addToInvoiceBatch
 } from './invoice-batches';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '@/db';
@@ -725,6 +725,10 @@ const handlers: Record<string, Handler> = {
   createInvoiceBatch: async (body) => {
     const session = await guard(body, ACCOUNT_ROLES);
     return session.error || createInvoiceBatch(body);
+  },
+  addToInvoiceBatch: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || addToInvoiceBatch(body);
   },
   listInvoiceBatches: async (body) => {
     const session = await guard(body, ACCOUNT_ROLES);

@@ -81,6 +81,50 @@ export async function createInvoiceBatch(body: ApiBody): Promise<ApiResult> {
 }
 
 /**
+ * เพิ่มใบเข้าชุดที่มีอยู่แล้ว (ลืมใส่ / ออกใบทีหลัง) — ใช้ชื่อชุดและวันที่ฝากส่งเดิม
+ * ชุดที่ยังไม่ส่ง KOLA = เข้าชุดเฉย ๆ
+ * ชุดที่ส่ง KOLA แล้ว = ใบใหม่ติดสถานะส่งแล้ว + รอลูกค้ารับเอกสาร (แม้ใบอื่นในชุดลูกค้ารับไปแล้ว)
+ *   ไม่ข้ามขั้นลูกค้ารับเอกสาร — เข้าลูกหนี้หลังลูกค้ารับใบใหม่เหมือนใบอื่น
+ */
+export async function addToInvoiceBatch(body: ApiBody): Promise<ApiResult> {
+  const numbers = Array.isArray(body.numbers)
+    ? [...new Set(body.numbers.map((n: unknown) => text(n, 40)).filter(Boolean))] : [];
+  if (!numbers.length) return { ok: false, error: 'no_invoices' };
+  if (numbers.length > 200) return { ok: false, error: 'too_many' };
+  const batchNo = Number(body.batchNo), period = text(body.period, 6);
+  if (!Number.isInteger(batchNo) || !/^\d{6}$/.test(period)) return { ok: false, error: 'bad_request' };
+
+  return await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(71942027)`);
+    const batch = await tx.select({ number: invoices.number, sentDate: invoices.batchSentDate, name: invoices.batchName, sentToKola: invoices.sentToKola })
+      .from(invoices).where(and(eq(invoices.batchNo, batchNo), eq(invoices.batchPeriod, period), ne(invoices.status, 'cancelled')));
+    if (!batch.length) return { ok: false, error: 'batch_not_found' };
+    const rows = await tx.select({ number: invoices.number, batchNo: invoices.batchNo, status: invoices.status })
+      .from(invoices).where(inArray(invoices.number, numbers));
+    if (rows.length !== numbers.length) {
+      const found = new Set(rows.map(r => r.number));
+      return { ok: false, error: 'invoice_not_found', missing: numbers.filter(n => !found.has(n)) };
+    }
+    const already = rows.filter(r => r.batchNo != null);
+    if (already.length) return { ok: false, error: 'already_batched', numbers: already.map(r => r.number) };
+    const cancelled = rows.filter(r => r.status === 'cancelled');
+    if (cancelled.length) return { ok: false, error: 'invoice_cancelled', numbers: cancelled.map(r => r.number) };
+
+    const sent = batch.some(r => r.sentToKola);
+    const name = batch.find(r => r.name)?.name || batchLabel(batchNo, period);
+    const sentDate = batch.find(r => r.sentDate)?.sentDate || ymd();
+    await tx.update(invoices).set({
+      batchNo, batchPeriod: period, batchSentDate: sentDate, batchName: name,
+      ...(sent ? { sentToKola: true, docStatus: 'waiting', needsFix: false, fixNote: '' } : {}),
+      updatedAt: nowIso()
+    }).where(inArray(invoices.number, numbers));
+    const total = batch.length + numbers.length;
+    return { ok: true, batchNo, period, label: name, count: numbers.length, total, sentToKola: sent,
+      message: batchMessage(batchNo, period, total, sentDate) };
+  });
+}
+
+/**
  * ถอนใบออกจากชุด — ยกเลิกการจัดชุดที่เพิ่งทำไป
  * ทำได้เฉพาะชุดที่ยังไม่ส่ง KOLA เพราะส่งไปแล้วถือว่าเอกสารออกจากมือเราแล้ว
  * เลขชุดที่ว่างลงไม่ถูกนำกลับมาใช้ซ้ำ (batchNo เดินจาก max เสมอ) กันชนกับชุดเดิม

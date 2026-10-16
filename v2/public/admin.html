@@ -813,6 +813,9 @@
           <label style="display:flex;align-items:center;gap:6px">วันที่ฝากส่ง
             <input id="invl-sent-date" type="date"></label>
           <button id="invl-make-batch" class="btn btn-primary btn-sm" disabled>จัดชุด</button>
+          <span class="muted">หรือ</span>
+          <select id="invl-add-batch" title="ชุดที่มีอยู่แล้ว"></select>
+          <button id="invl-add-to-batch" class="btn btn-ghost btn-sm" disabled title="เพิ่มใบที่เลือก (ยังไม่จัดชุด) เข้าชุดที่มีอยู่แล้ว">➕ เพิ่มเข้าชุดนี้</button>
           <button id="invl-unbatch" class="btn btn-ghost btn-sm" disabled>ยกเลิกจัดชุด</button>
           <span class="grow"></span>
           <button id="invl-reset" class="btn btn-danger btn-sm hidden" disabled
@@ -3922,6 +3925,8 @@ function updateInvlPicked(){
   $('invl-picked').textContent = 'เลือกไว้ ' + picked.length + ' ใบ';
   // จัดชุดได้เฉพาะใบที่ยังไม่มีชุด ไม่งั้นเลขชุดจะเดินโดยไม่ตั้งใจ
   $('invl-make-batch').disabled = !loose.length || loose.length !== picked.length;
+  // เพิ่มเข้าชุดเดิม — เฉพาะใบที่ยังไม่จัดชุด และต้องเลือกชุดไว้
+  $('invl-add-to-batch').disabled = !loose.length || loose.length !== picked.length || !$('invl-add-batch').value;
   // ยกเลิกจัดชุดได้ทุกใบที่อยู่ในชุด รวมที่ส่ง KOLA ไปแล้ว
   $('invl-unbatch').disabled = !batched.length || batched.length !== picked.length;
   $('invl-cancel-picked').disabled = !picked.length || !invState.canApprove;
@@ -4091,13 +4096,55 @@ function refreshCoverOptions(){
   $('invl-send-kola').disabled = !open.length;
 }
 
+/** ชุดที่มีอยู่แล้ว ให้เลือกเพิ่มใบเข้าไป (ใหม่สุดก่อน) */
+function refreshAddBatchOptions(){
+  var sel = $('invl-add-batch');
+  var list = (batchState.batches || []).slice().sort(function(a, b){ return (b.period+String(b.batchNo).padStart(2,'0')).localeCompare(a.period+String(a.batchNo).padStart(2,'0')); });
+  var keep = sel.value;
+  sel.innerHTML = '<option value="">— เลือกชุดที่มีอยู่ —</option>' + list.map(function(b){
+    return '<option value="' + esc(b.key) + '">' + esc(b.name) + ' (' + b.count + ' ใบ' + (b.sentToKola ? ' • ส่ง KOLA แล้ว' : '') + ')</option>';
+  }).join('');
+  if(keep && list.some(function(b){ return b.key === keep; })) sel.value = keep;
+  if(typeof updateInvlPicked === 'function') updateInvlPicked();
+}
+
 function loadInvoiceBatches(){
   return api({ action:'listInvoiceBatches', token:state.token }).then(function(res){
     if(res.ok) batchState.batches = res.batches || [];
     refreshBatchNoOptions();
     refreshCoverOptions();
+    refreshAddBatchOptions();
   });
 }
+$('invl-add-batch').addEventListener('change', function(){ updateInvlPicked(); });
+$('invl-add-to-batch').addEventListener('click', function(){
+  var picked = invlPickedRows().filter(function(r){ return !r.batchNo; });
+  var b = (batchState.batches || []).filter(function(x){ return x.key === $('invl-add-batch').value; })[0];
+  if(!picked.length || !b) return;
+  var NL = String.fromCharCode(10);
+  var msg = 'เพิ่ม ' + picked.length + ' ใบเข้า "' + b.name + '" (ตอนนี้มี ' + b.count + ' ใบ)?' + NL + NL
+    + picked.map(function(r){ return '• ' + r.number + (r.bl ? ' — ' + r.bl : ''); }).slice(0, 15).join(NL) + (picked.length > 15 ? NL + '… และอีก ' + (picked.length - 15) + ' ใบ' : '');
+  if(b.sentToKola) msg += NL + NL + 'ชุดนี้ส่ง KOLA ไปแล้ว — ใบที่เพิ่มจะไปอยู่แท็บ "📮 รอลูกค้ารับเอกสาร" ต้องให้ลูกค้ารับก่อนจึงเข้าลูกหนี้';
+  if(!confirm(msg)) return;
+  var btn = $('invl-add-to-batch'); btn.disabled = true;
+  api({ action:'addToInvoiceBatch', token:state.token, batchNo:b.batchNo, period:b.period, numbers:picked.map(function(r){ return r.number; }) })
+    .then(function(res){
+      btn.disabled = false;
+      if(!guard(res)) return;
+      if(!res.ok){
+        alert('เพิ่มเข้าชุดไม่สำเร็จ: ' + (res.error==='already_batched' ? ('ใบเหล่านี้อยู่ในชุดแล้ว: ' + (res.numbers||[]).join(', '))
+          : res.error==='invoice_cancelled' ? ('ใบเหล่านี้ถูกยกเลิกแล้ว: ' + (res.numbers||[]).join(', '))
+          : res.error==='batch_not_found' ? 'ไม่พบชุดนี้แล้ว — โหลดใหม่แล้วเลือกอีกครั้ง' : res.error));
+        loadInvoiceBatches(); return;
+      }
+      $('invl-batch-msg').innerHTML = '<b>เพิ่มแล้ว ' + res.count + ' ใบ — ' + esc(res.message) + '</b>'
+        + (res.sentToKola ? ' <span class="muted">(ใบใหม่รอลูกค้ารับเอกสาร)</span>' : '')
+        + ' <button class="btn btn-ghost btn-sm" id="invl-copy">คัดลอกข้อความ</button>';
+      $('invl-copy').addEventListener('click', function(){ navigator.clipboard.writeText(res.message).then(function(){ alert('คัดลอกแล้ว'); }); });
+      loadInvoiceBatches();
+      loadInvoiceList();
+    }).catch(function(){ btn.disabled = false; alert('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้'); });
+});
 
 $('invl-batch-month').addEventListener('change', refreshBatchNoOptions);
 $('invl-sent-date').addEventListener('change', refreshBatchNoOptions);
