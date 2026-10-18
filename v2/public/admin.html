@@ -952,6 +952,7 @@
           <span class="grow"></span>
           <button id="ar-unbatch" class="btn btn-ghost btn-sm" disabled title="ใบที่ยังไม่รับชำระ — กลับไปอยู่นอกชุด จัดชุดเอกสารใหม่ได้">↩️ ยกเลิกชุด (กลับไปจัดชุดใหม่)</button>
           <button id="ar-unsettle" class="btn btn-danger btn-sm" disabled>ยกเลิกการชำระ</button>
+          <button id="ar-pay" class="btn btn-ok btn-sm" disabled title="บันทึกรับชำระเองทีละใบ (ไม่ต้องอัป Excel)">💵 รับชำระ (manual)</button>
           <button id="ar-receipt" class="btn btn-primary btn-sm" disabled>ออกใบเสร็จ</button>
         </div>
       </div>
@@ -4443,10 +4444,70 @@ function updateArPicked(){
   // ยกเลิกการชำระได้เฉพาะใบที่มียอดรับชำระมาแล้ว
   $('ar-unsettle').disabled = !picked.length
     || !picked.some(function(r){ return Number(r.paidAmount) > 0; });
+  // รับชำระเอง — ทุกใบที่เลือกต้องยังมียอดค้าง
+  $('ar-pay').disabled = !picked.length || picked.some(function(r){ return !(r.outstanding > 0); });
   // ยกเลิกชุดได้เฉพาะใบที่อยู่ในชุดและยังไม่รับชำระ (รับชำระแล้วต้องยกเลิกการชำระก่อน)
   $('ar-unbatch').disabled = !picked.length
     || picked.some(function(r){ return !r.batchNo || Number(r.paidAmount) > 0; });
 }
+
+/**
+ * รับชำระแบบ manual — ใส่ยอดที่รับจริงของแต่ละใบ (ค่าเริ่มต้น = ยอดค้างทั้งหมด) + วันที่รับชำระ
+ * ใช้ settleReceivables ตัวเดียวกับการอัป Excel (ยอดบวกเพิ่มจากที่รับไปแล้ว รับบางส่วนได้)
+ */
+$('ar-pay').addEventListener('click', function(){
+  var picked = arPickedRows().filter(function(r){ return r.outstanding > 0; });
+  if(!picked.length) return;
+  var t = new Date(), today = t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');
+  var bg = document.createElement('div'); bg.className = 'modal-bg';
+  bg.innerHTML = '<div class="modal" style="max-width:640px;width:96%">'
+    + '<h3 style="margin-top:0">💵 รับชำระ (manual) — ' + picked.length + ' ใบ</h3>'
+    + '<label>วันที่รับชำระ</label><input type="date" id="arp-date" value="' + today + '" style="margin-bottom:10px">'
+    + '<div class="tablewrap" style="max-height:52vh;overflow:auto"><table class="inv-tbl"><thead><tr><th>เลขใบแจ้งหนี้</th><th>BL</th><th class="num">ค้างชำระ</th><th class="num">ยอดที่รับ</th></tr></thead><tbody>'
+    + picked.map(function(r, i){
+        return '<tr><td class="mono"><b>' + esc(r.number) + '</b></td><td class="mono">' + esc(r.bl || '—') + '</td>'
+          + '<td class="num">' + baht(r.outstanding) + '</td>'
+          + '<td class="num"><input type="number" class="arp-amt" data-i="' + i + '" min="0" step="0.01" value="' + r.outstanding.toFixed(2) + '" style="width:130px;text-align:right"></td></tr>';
+      }).join('')
+    + '</tbody></table></div>'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin:10px 0 4px"><span class="muted">ยอดน้อยกว่ายอดค้าง = รับบางส่วน (ใบยังค้างส่วนที่เหลือ)</span><b id="arp-total"></b></div>'
+    + '<div id="arp-err" class="err hidden" style="margin:6px 0"></div>'
+    + '<div class="toolbar" style="justify-content:flex-end;margin-top:10px"><button class="btn btn-ghost" id="arp-x">ยกเลิก</button><button class="btn btn-primary" id="arp-save">บันทึกรับชำระ</button></div></div>';
+  document.body.appendChild(bg);
+  var inputs = bg.querySelectorAll('.arp-amt');
+  var sum = function(){
+    var tot = 0; Array.prototype.forEach.call(inputs, function(x){ tot += Number(x.value) || 0; });
+    bg.querySelector('#arp-total').textContent = 'รวมรับชำระ ' + baht(Math.round(tot*100)/100) + ' บาท';
+  };
+  Array.prototype.forEach.call(inputs, function(x){ x.addEventListener('input', sum); });
+  sum();
+  var close = function(){ bg.remove(); };
+  bg.addEventListener('click', function(e){ if(e.target === bg) close(); });
+  bg.querySelector('#arp-x').addEventListener('click', close);
+  bg.querySelector('#arp-save').addEventListener('click', function(){
+    var err = bg.querySelector('#arp-err'), date = bg.querySelector('#arp-date').value, rows = [], bad = [];
+    err.classList.add('hidden');
+    if(!date){ err.textContent = 'เลือกวันที่รับชำระ'; err.classList.remove('hidden'); return; }
+    Array.prototype.forEach.call(inputs, function(x){
+      var r = picked[Number(x.getAttribute('data-i'))], amt = Math.round((Number(x.value) || 0)*100)/100;
+      if(!(amt > 0)) return;   // ใส่ 0 / ว่าง = ข้ามใบนั้น
+      if(amt > r.outstanding + 0.009) bad.push(r.number + ' (ค้าง ' + baht(r.outstanding) + ')');
+      rows.push({ number:r.number, amount:amt });
+    });
+    if(bad.length){ err.textContent = 'ยอดที่รับเกินยอดค้าง: ' + bad.join(', '); err.classList.remove('hidden'); return; }
+    if(!rows.length){ err.textContent = 'ใส่ยอดที่รับอย่างน้อย 1 ใบ'; err.classList.remove('hidden'); return; }
+    var btn = this; btn.disabled = true; btn.textContent = 'กำลังบันทึก…';
+    api({ action:'settleReceivables', token:state.token, rows:rows, paidAt:date }).then(function(res){
+      btn.disabled = false; btn.textContent = 'บันทึกรับชำระ';
+      if(!guard(res)) return;
+      if(!res.ok){ err.textContent = 'บันทึกไม่สำเร็จ: ' + (res.error==='nothing_updated' ? 'ไม่มีใบที่บันทึกได้ (ถูกยกเลิก/ไม่พบ)' : (res.message || res.error)); err.classList.remove('hidden'); return; }
+      close();
+      var full = (res.updated || []).filter(function(u){ return u.outstanding <= 0.009; }).length;
+      $('ar-msg').textContent = 'รับชำระแล้ว ' + res.count + ' ใบ (ครบ ' + full + ' • บางส่วน ' + (res.count - full) + ') วันที่ ' + date;
+      loadReceivables();
+    }).catch(function(){ btn.disabled = false; btn.textContent = 'บันทึกรับชำระ'; err.textContent = 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้'; err.classList.remove('hidden'); });
+  });
+});
 
 $('ar-unbatch').addEventListener('click', function(){
   var picked = arPickedRows();
