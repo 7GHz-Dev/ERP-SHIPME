@@ -508,7 +508,7 @@ export const serviceInvoices = pgTable('service_invoices', {
   seq: integer('seq').notNull(),
   issueDate: text('issue_date').notNull(),
   title: text('title').notNull(),
-  category: text('category').notNull().default('inspect'),   // inspect | extra
+  category: text('category').notNull().default('inspect'),   // inspect | extra | manual (สร้างเองในระบบ)
   source: text('source').notNull().default(''),               // MAESOT FREEZONE | TRANSIT | '' (ค่าบริการเพิ่มเติมรวมทุกไฟล์)
   rangeFrom: text('range_from').notNull().default(''),        // ช่วงวันที่ตรวจปล่อยของงานในใบ
   rangeTo: text('range_to').notNull().default(''),

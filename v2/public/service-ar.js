@@ -20,6 +20,9 @@ function sarErr(res){ return (SAR_ERR[res.error]||res.error)+(res.numbers?' ('+r
 function sarDmy(ymd){ return ymd ? String(ymd).split('-').reverse().join('/') : '—'; }
 function sarToday(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function sarRange(r){ return r.rangeFrom ? (r.rangeFrom===r.rangeTo ? sarDmy(r.rangeFrom) : sarDmy(r.rangeFrom)+' – '+sarDmy(r.rangeTo)) : '—'; }
+/** ที่มาของใบ — ตรวจปล่อยช่วงไหน / สร้างเองในระบบ */
+function sarSource(r){ return r.category==='manual' ? 'สร้างเอง' : 'ตรวจปล่อย '+sarRange(r); }
+function sarMoney(n){ return Math.round((Number(n)||0)*100)/100; }
 
 /** เปิด PDF ในหน้าต่างใหม่ (เปิดหน้าต่างก่อน ไม่งั้นเบราว์เซอร์บล็อก) */
 function sarPdf(promiseDocs, name, options){
@@ -45,7 +48,118 @@ function sarPdf(promiseDocs, name, options){
 // ไฟล์นี้โหลดใน <head> ก่อนตัวหน้าเว็บ — ผูกปุ่มหลังหน้าโหลดเสร็จ
 document.addEventListener('DOMContentLoaded', function(){
   $('svc-save').addEventListener('click', function(){ svcSave(false); });
+  $('svc-manual').addEventListener('click', svcManualOpen);
 });
+
+// ---------------- สร้างใบแจ้งหนี้ค่าบริการเอง (ไม่ดึงจากวันที่ตรวจปล่อย) ----------------
+var SVC_VAT=0.07, SVC_WHT=0.03;   // ตรงกับ VAT_RATE / SERVICE_WITHHOLDING_RATE ฝั่งเซิร์ฟเวอร์ (เซิร์ฟเวอร์คิดซ้ำเองตอนบันทึก)
+function svcManualOpen(){
+  var bg=document.createElement('div'); bg.className='modal-bg';
+  bg.innerHTML='<div class="modal" style="max-width:860px;width:97%;max-height:92vh;overflow:auto">'+
+    '<h3 style="margin-top:0">✍️ สร้างใบแจ้งหนี้ค่าบริการเอง</h3>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px 12px">'+
+      '<div><label>วันที่ออกใบแจ้งหนี้</label><input type="date" id="svm-date" value="'+sarToday()+'" style="width:100%"></div>'+
+      '<div><label>เลขที่ใบแจ้งหนี้</label><input type="text" id="svm-no" class="mono" style="width:100%" placeholder="กำลังหาเลขถัดไป…"></div>'+
+      '<div style="grid-column:1/-1"><label>หัวเรื่อง</label><input type="text" id="svm-title" value="ใบแจ้งหนี้ค่าบริการ" maxlength="200" style="width:100%"></div>'+
+      '<div style="grid-column:1/-1"><label>ชื่อลูกค้า</label><input type="text" id="svm-cname" maxlength="200" style="width:100%"></div>'+
+      '<div style="grid-column:1/-1"><label>ที่อยู่ลูกค้า</label><input type="text" id="svm-caddr" maxlength="300" style="width:100%"></div>'+
+      '<div><label>เลขผู้เสียภาษีลูกค้า</label><input type="text" id="svm-ctax" maxlength="30" style="width:100%"></div>'+
+    '</div>'+
+    '<div class="tablewrap" style="margin-top:12px"><table class="inv-tbl"><thead><tr><th style="width:34px">#</th><th>รายการ</th><th class="num" style="width:80px">จำนวน</th><th class="num" style="width:120px">ราคา/หน่วย</th><th class="num" style="width:120px">จำนวนเงิน</th><th style="width:150px">หมายเหตุ</th><th style="width:36px"></th></tr></thead>'+
+      '<tbody id="svm-items"></tbody></table></div>'+
+    '<button class="btn btn-ghost btn-sm" id="svm-add" style="margin-top:6px">➕ เพิ่มรายการ</button>'+
+    '<div id="svm-sum" style="margin:12px 0 0;text-align:right;line-height:1.8"></div>'+
+    '<div id="svm-err" class="err hidden" style="margin:8px 0"></div>'+
+    '<div class="toolbar" style="justify-content:flex-end;margin-top:12px"><button class="btn btn-ghost" id="svm-x">ยกเลิก</button>'+
+      '<button class="btn btn-ghost" id="svm-pdf">📄 ดูตัวอย่าง PDF</button><button class="btn btn-primary" id="svm-save">💾 บันทึกเข้าระบบ (ลูกหนี้ค่าบริการ)</button></div></div>';
+  document.body.appendChild(bg);
+  var q=function(sel){ return bg.querySelector(sel); }, company=null;
+  var close=function(){ bg.remove(); };
+  q('#svm-x').addEventListener('click', close);
+  // ลูกค้า / หัวกระดาษบริษัท = ค่าเดียวกับใบที่ดึงจากระบบ
+  api({ action:'listServiceInvoices', token:state.token, from:sarToday(), to:sarToday() }).then(function(res){
+    if(!res.ok) return;
+    company=res.company; var c=res.customer||{};
+    if(!q('#svm-cname').value) q('#svm-cname').value=c.name||'';
+    if(!q('#svm-caddr').value) q('#svm-caddr').value=c.address||'';
+    if(!q('#svm-ctax').value) q('#svm-ctax').value=c.taxId||'';
+  });
+  var nextNo=function(){
+    api({ action:'serviceInvoiceNext', token:state.token, issueDate:q('#svm-date').value }).then(function(res){ if(res.ok) q('#svm-no').value=res.number; });
+  };
+  q('#svm-date').addEventListener('change', nextNo); nextNo();
+  var addRow=function(it){
+    it=it||{};
+    var tr=document.createElement('tr');
+    tr.innerHTML='<td class="no"></td><td><input type="text" class="svm-label" maxlength="400" style="width:100%" placeholder="เช่น ค่าบริการตรวจปล่อยตู้ (เพิ่มเติม)" value="'+esc(it.label||'')+'"></td>'+
+      '<td><input type="number" class="svm-qty" min="0" step="any" value="'+(it.qty!=null?it.qty:1)+'" style="width:100%;text-align:right"></td>'+
+      '<td><input type="number" class="svm-price" min="0" step="0.01" value="'+(it.unitPrice!=null?it.unitPrice:'')+'" style="width:100%;text-align:right"></td>'+
+      '<td class="num svm-amt">0.00</td><td><input type="text" class="svm-note" maxlength="200" style="width:100%" value="'+esc(it.note||'')+'"></td>'+
+      '<td><button class="btn btn-ghost btn-sm svm-del" title="ลบรายการ">✕</button></td>';
+    q('#svm-items').appendChild(tr);
+    tr.querySelector('.svm-del').addEventListener('click', function(){ tr.remove(); calc(); });
+    Array.prototype.forEach.call(tr.querySelectorAll('input'), function(x){ x.addEventListener('input', calc); });
+    calc();
+  };
+  var items=function(){
+    return Array.prototype.map.call(q('#svm-items').querySelectorAll('tr'), function(tr){
+      var qty=Number(tr.querySelector('.svm-qty').value)||0, price=sarMoney(tr.querySelector('.svm-price').value);
+      return { label:tr.querySelector('.svm-label').value.trim(), qty:qty, unitPrice:price, amount:sarMoney(qty*price), note:tr.querySelector('.svm-note').value.trim() };
+    });
+  };
+  var totals=function(list){
+    var sub=sarMoney(list.reduce(function(t,it){ return t+(it.label&&it.amount>0?it.amount:0); },0)), vat=sarMoney(sub*SVC_VAT), total=sarMoney(sub+vat), wht=sarMoney(sub*SVC_WHT);
+    return { subtotal:sub, vat:vat, total:total, withholding:wht, netTotal:sarMoney(total-wht) };
+  };
+  var calc=function(){
+    var list=items();
+    Array.prototype.forEach.call(q('#svm-items').querySelectorAll('tr'), function(tr, i){ tr.querySelector('.no').textContent=i+1; tr.querySelector('.svm-amt').textContent=baht(list[i].amount); });
+    var t=totals(list);
+    q('#svm-sum').innerHTML='รวมเงิน <b>'+baht(t.subtotal)+'</b><br>VAT 7% <b>'+baht(t.vat)+'</b><br>รวมทั้งสิ้น <b>'+baht(t.total)+'</b><br>'+
+      '<span class="muted">หัก ณ ที่จ่าย 3% '+baht(t.withholding)+'</span><br><span style="font-size:17px">ยอดชำระสุทธิ <b>'+baht(t.netTotal)+'</b> บาท</span>';
+  };
+  q('#svm-add').addEventListener('click', function(){ if(q('#svm-items').children.length<30) addRow(); });
+  addRow();
+  var check=function(){
+    var err=q('#svm-err'); err.classList.add('hidden');
+    var list=items().filter(function(it){ return it.label || it.amount>0; });
+    var bad=list.filter(function(it){ return !it.label || !(it.amount>0); });
+    var msg = !q('#svm-date').value ? 'เลือกวันที่ออกใบแจ้งหนี้'
+      : !/^IN\d{8,10}$/i.test(q('#svm-no').value.trim()) ? 'เลขที่ใบต้องเป็น IN + ปีเดือนของวันออกใบ + เลขรัน (เช่น IN20261001)'
+      : !list.length ? 'ใส่รายการอย่างน้อย 1 รายการ'
+      : bad.length ? 'ทุกรายการต้องมีชื่อรายการ และจำนวนเงินมากกว่า 0' : '';
+    if(msg){ err.textContent=msg; err.classList.remove('hidden'); return null; }
+    var t=totals(list);
+    return { number:q('#svm-no').value.trim().toUpperCase(), title:q('#svm-title').value.trim()||'ใบแจ้งหนี้ค่าบริการ', category:'manual', source:'',
+      items:list.map(function(it, i){ return { no:i+1, label:it.label, qty:it.qty, unitPrice:it.unitPrice, amount:it.amount, note:it.note }; }),
+      customerName:q('#svm-cname').value.trim(), customerAddress:q('#svm-caddr').value.trim(), customerTaxId:q('#svm-ctax').value.trim(), totals:t };
+  };
+  q('#svm-pdf').addEventListener('click', function(){
+    var d=check(); if(!d) return;
+    sarPdf(Promise.resolve({ company:company||{}, docs:[{ kind:'V', title:d.title, number:d.number, issueDate:q('#svm-date').value, bl:'', items:d.items,
+      subtotal:d.totals.subtotal, vat:d.totals.vat, total:d.totals.total, withholding:d.totals.withholding, netTotal:d.totals.netTotal,
+      customerName:d.customerName, customerAddress:d.customerAddress, customerTaxId:d.customerTaxId, preparedBy:(state.user&&state.user.name)||'' }] }), d.number);
+  });
+  q('#svm-save').addEventListener('click', function(){
+    var d=check(); if(!d) return;
+    if(!confirm('บันทึกใบแจ้งหนี้ค่าบริการ '+d.number+'\n'+d.title+'\nยอดชำระสุทธิ '+baht(d.totals.netTotal)+' บาท\n\nใบจะเข้า "ลูกหนี้คงค้างค่าบริการ"')) return;
+    var btn=this; btn.disabled=true;
+    api({ action:'saveServiceInvoices', token:state.token, issueDate:q('#svm-date').value, docs:[d] }).then(function(res){
+      btn.disabled=false;
+      if(!res.ok){
+        var e=q('#svm-err'); e.textContent='บันทึกไม่สำเร็จ: '+sarErr(res); e.classList.remove('hidden');
+        if(res.error==='number_used') nextNo();
+        return;
+      }
+      close();
+      toast('บันทึกใบแจ้งหนี้ค่าบริการ '+res.numbers.join(', ')+' แล้ว', 3500);
+      if($('svc-msg')) $('svc-msg').textContent='✅ สร้างใบแจ้งหนี้ค่าบริการเองแล้ว: '+res.numbers.join(', ')+' — ดูได้ที่ "ใบที่ออกแล้ว" และ "ลูกหนี้คงค้างค่าบริการ"';
+      svl.ready=false; sar.ready=false;
+      if(typeof svcFetchNext==='function') svcFetchNext();
+      if(confirm('เปิด PDF ใบแจ้งหนี้ '+res.numbers[0]+' เลยไหม?')) svcPrintInvoice(res.numbers[0]);
+    }).catch(function(){ btn.disabled=false; alert('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้'); });
+  });
+}
 
 function svcSave(force){
   var docs=svcDocuments().filter(function(d){ return d.kind!=='SUMMARY'; });
@@ -106,7 +220,7 @@ function svlRender(){
       : (r.outstanding<=0 ? '<span class="pill approved">ชำระครบ</span>'
       : (r.paidAmount>0 ? '<span class="pill pending">ชำระบางส่วน ค้าง '+baht(r.outstanding)+'</span>' : '<span class="pill pending">ค้างชำระ</span>'));
     return '<tr><td><b class="mono">'+esc(r.number)+'</b><div class="sub">'+sarDmy(r.issueDate)+'</div></td>'+
-      '<td>'+esc(r.title)+'</td><td>'+sarRange(r)+'</td>'+
+      '<td>'+esc(r.title)+'</td><td>'+(r.category==='manual'?'<span class="pill">สร้างเอง</span>':sarRange(r))+'</td>'+
       '<td class="num">'+baht(r.total)+'</td><td class="num">'+baht(r.withholding)+'</td><td class="num"><b>'+baht(r.netTotal)+'</b></td>'+
       '<td>'+status+'</td><td class="acts">'+
         '<button class="btn btn-ghost btn-sm" data-act="pdf" data-n="'+esc(r.number)+'">ดู PDF</button>'+
@@ -160,6 +274,7 @@ function svcArOpen(){
     $('sar-report').addEventListener('click', function(){ ArReport.open(sarReportOpts()); });
     $('sar-excel').addEventListener('click', function(){ ArReport.excel(sarReportOpts()); });
     $('sar-unsettle').addEventListener('click', sarUnsettle);
+    $('sar-pay').addEventListener('click', sarPayManual);
     $('sar-receipt').addEventListener('click', function(){
       var picked=sarPicked(); if(!picked.length) return;
       sarPrintReceipts(picked.map(function(r){ return r.number; }), $('sar-receipt-date').value, true);
@@ -181,7 +296,7 @@ function sarLoad(){
 function sarReportRows(){
   return sar.rows.map(function(r){
     // ตัดคำว่า "ใบแจ้งหนี้" ออก — ในรายงานทุกแถวเป็นใบแจ้งหนี้อยู่แล้ว เหลือแค่ว่าค่าอะไร
-    return { number:r.number, issueDate:r.issueDate, ref:String(r.title||'').replace(/^ใบแจ้งหนี้/,''), detail:'ตรวจปล่อย '+sarRange(r),
+    return { number:r.number, issueDate:r.issueDate, ref:String(r.title||'').replace(/^ใบแจ้งหนี้/,''), detail:sarSource(r),
       total:r.total, withholding:r.withholding, net:r.netTotal, paid:r.paidAmount, outstanding:r.outstanding };
   });
 }
@@ -197,7 +312,7 @@ function sarRender(){
     var done=r.outstanding<=0, partial=r.paidAmount>0 && !done;
     return '<tr'+(done?' style="opacity:.6"':'')+'><td><input type="checkbox" class="sar-pick" data-i="'+i+'"></td><td class="no">'+(i+1)+'</td>'+
       '<td><b class="mono">'+esc(r.number)+'</b><div class="sub">'+sarDmy(r.issueDate)+' • อายุ '+ArReport.days(r.issueDate, sar.today)+' วัน</div></td>'+
-      '<td>'+esc(r.title)+'<div class="sub">ตรวจปล่อย '+sarRange(r)+' • รวม VAT '+baht(r.total)+' − หัก 3% '+baht(r.withholding)+'</div></td>'+
+      '<td>'+esc(r.title)+'<div class="sub">'+esc(sarSource(r))+' • รวม VAT '+baht(r.total)+' − หัก 3% '+baht(r.withholding)+'</div></td>'+
       '<td class="num">'+baht(r.netTotal)+'</td>'+
       '<td class="num">'+(done?'<span class="pill approved">ครบแล้ว</span>':'<b>'+baht(r.outstanding)+'</b>'+(partial?'<div class="sub">จ่ายบางส่วน</div>':''))+'</td>'+
       '<td class="num">'+baht(r.paidAmount)+(r.paidAt?'<div class="sub">'+sarDmy(r.paidAt)+'</div>':'')+'</td>'+
@@ -215,6 +330,62 @@ function sarUpdatePicked(){
   // ออกใบเสร็จได้เฉพาะที่รับชำระครบแล้ว (ใบที่ออกไปแล้วพิมพ์ซ้ำได้)
   $('sar-receipt').disabled=!p.length || p.some(function(r){ return r.outstanding>0; });
   $('sar-unsettle').disabled=!p.length || !p.some(function(r){ return r.paidAmount>0; });
+  $('sar-pay').disabled=!p.length || p.some(function(r){ return !(r.outstanding>0); });
+}
+
+/**
+ * รับชำระแบบ manual — ยอดเริ่มต้น = ยอดค้างสุทธิ (หลังหัก ณ ที่จ่าย 3%)
+ * ลูกค้าบางรายโอนเต็มจำนวนไม่หัก ณ ที่จ่าย = ใส่เกินยอดค้างได้ไม่เกินยอดรวม VAT ที่เหลือ (ถามยืนยันก่อน)
+ */
+function sarPayManual(){
+  var picked=sarPicked().filter(function(r){ return r.outstanding>0; });
+  if(!picked.length) return;
+  var bg=document.createElement('div'); bg.className='modal-bg';
+  bg.innerHTML='<div class="modal" style="max-width:720px;width:96%">'+
+    '<h3 style="margin-top:0">💵 รับชำระค่าบริการ (manual) — '+picked.length+' ใบ</h3>'+
+    '<label>วันที่รับชำระ</label><input type="date" id="sap-date" value="'+sarToday()+'" style="margin-bottom:10px">'+
+    '<div class="tablewrap" style="max-height:52vh;overflow:auto"><table class="inv-tbl"><thead><tr><th>เลขใบ</th><th>รายการ</th><th class="num">ค้างสุทธิ</th><th class="num">ยอดที่รับ</th></tr></thead><tbody>'+
+    picked.map(function(r, i){
+      return '<tr><td class="mono"><b>'+esc(r.number)+'</b></td><td>'+esc(r.title)+'<div class="sub">'+esc(sarSource(r))+'</div></td>'+
+        '<td class="num">'+baht(r.outstanding)+'<div class="sub">ไม่หัก 3% = '+baht(sarMoney(r.total-r.paidAmount))+'</div></td>'+
+        '<td class="num"><input type="number" class="sap-amt" data-i="'+i+'" min="0" step="0.01" value="'+r.outstanding.toFixed(2)+'" style="width:130px;text-align:right"></td></tr>';
+    }).join('')+'</tbody></table></div>'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin:10px 0 4px"><span class="muted">ยอดน้อยกว่ายอดค้าง = รับบางส่วน</span><b id="sap-total"></b></div>'+
+    '<div id="sap-err" class="err hidden" style="margin:6px 0"></div>'+
+    '<div class="toolbar" style="justify-content:flex-end;margin-top:10px"><button class="btn btn-ghost" id="sap-x">ยกเลิก</button><button class="btn btn-primary" id="sap-save">บันทึกรับชำระ</button></div></div>';
+  document.body.appendChild(bg);
+  var inputs=bg.querySelectorAll('.sap-amt');
+  var sum=function(){ var t=0; Array.prototype.forEach.call(inputs, function(x){ t+=Number(x.value)||0; }); bg.querySelector('#sap-total').textContent='รวมรับชำระ '+baht(sarMoney(t))+' บาท'; };
+  Array.prototype.forEach.call(inputs, function(x){ x.addEventListener('input', sum); }); sum();
+  var close=function(){ bg.remove(); };
+  bg.addEventListener('click', function(e){ if(e.target===bg) close(); });
+  bg.querySelector('#sap-x').addEventListener('click', close);
+  bg.querySelector('#sap-save').addEventListener('click', function(){
+    var err=bg.querySelector('#sap-err'), date=bg.querySelector('#sap-date').value, rows=[], tooMuch=[], noWht=[];
+    err.classList.add('hidden');
+    if(!date){ err.textContent='เลือกวันที่รับชำระ'; err.classList.remove('hidden'); return; }
+    Array.prototype.forEach.call(inputs, function(x){
+      var r=picked[+x.getAttribute('data-i')], amt=sarMoney(x.value);
+      if(!(amt>0)) return;
+      var maxGross=sarMoney(r.total-r.paidAmount);
+      if(amt>maxGross+0.009) tooMuch.push(r.number+' (สูงสุด '+baht(maxGross)+')');
+      else if(amt>r.outstanding+0.009) noWht.push(r.number);
+      rows.push({ number:r.number, amount:amt });
+    });
+    if(tooMuch.length){ err.textContent='ยอดที่รับเกินยอดรวม VAT ที่ค้าง: '+tooMuch.join(', '); err.classList.remove('hidden'); return; }
+    if(!rows.length){ err.textContent='ใส่ยอดที่รับอย่างน้อย 1 ใบ'; err.classList.remove('hidden'); return; }
+    if(noWht.length && !confirm('ยอดที่รับมากกว่ายอดค้างสุทธิ: '+noWht.join(', ')+'\n\nลูกค้าโอนเต็มจำนวนโดยไม่หัก ณ ที่จ่าย 3% ใช่ไหม?')) return;
+    var btn=this; btn.disabled=true; btn.textContent='กำลังบันทึก…';
+    api({ action:'settleServiceReceivables', token:state.token, paidAt:date, rows:rows }).then(function(res){
+      btn.disabled=false; btn.textContent='บันทึกรับชำระ';
+      if(!res.ok){ err.textContent='บันทึกไม่สำเร็จ: '+sarErr(res); err.classList.remove('hidden'); return; }
+      close();
+      var full=(res.updated||[]).filter(function(u){ return u.outstanding<=0.009; }).length;
+      $('sar-msg').textContent='รับชำระแล้ว '+res.count+' ใบ (ครบ '+full+' • บางส่วน '+(res.count-full)+') วันที่ '+sarDmy(date);
+      toast('รับชำระแล้ว '+res.count+' ใบ', 3000);
+      svl.ready=false; sarLoad();
+    }).catch(function(){ btn.disabled=false; btn.textContent='บันทึกรับชำระ'; err.textContent='เชื่อมต่อเซิร์ฟเวอร์ไม่ได้'; err.classList.remove('hidden'); });
+  });
 }
 
 /** อ่านไฟล์ตรวจยอด: คอลัมน์ A = เลขใบแจ้งหนี้ค่าบริการ, B = ยอดเงิน */

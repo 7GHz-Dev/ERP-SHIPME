@@ -868,6 +868,8 @@
           <label style="display:flex;align-items:center;gap:6px">วันที่ตรวจปล่อย ตั้งแต่ <input id="svc-from" type="date"></label>
           <label style="display:flex;align-items:center;gap:6px">ถึง <input id="svc-to" type="date"></label>
           <button id="svc-load" class="btn btn-primary btn-sm">ดึงข้อมูล</button>
+          <span class="grow"></span>
+          <button id="svc-manual" class="btn btn-ok btn-sm" title="สร้างใบแจ้งหนี้ค่าบริการเอง ใส่รายการเอง ไม่ต้องดึงจากวันที่ตรวจปล่อย">✍️ สร้างใบแจ้งหนี้ค่าบริการเอง</button>
         </div>
         <div class="toolbar" style="margin-top:-6px">
           <label style="display:flex;align-items:center;gap:6px">วันที่ออกใบแจ้งหนี้ <input id="svc-issue" type="date"></label>
@@ -1008,6 +1010,7 @@
           <span class="grow"></span>
           <label style="display:flex;align-items:center;gap:6px">วันที่ใบเสร็จ <input id="sar-receipt-date" type="date"></label>
           <button id="sar-unsettle" class="btn btn-danger btn-sm" disabled>ยกเลิกการชำระ</button>
+          <button id="sar-pay" class="btn btn-ok btn-sm" disabled title="บันทึกรับชำระเองทีละใบ (ไม่ต้องอัป Excel)">💵 รับชำระ (manual)</button>
           <button id="sar-receipt" class="btn btn-primary btn-sm" disabled>ออกใบเสร็จรับเงิน / ใบกำกับภาษี</button>
         </div>
       </div>

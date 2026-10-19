@@ -73,7 +73,8 @@ export async function saveServiceInvoices(body: ApiBody, actor: { username: stri
     const vat = money(subtotal * VAT_RATE);
     const total = money(subtotal + vat);
     const withholding = money(subtotal * SERVICE_WITHHOLDING_RATE);
-    const category = doc?.category === 'extra' ? 'extra' : 'inspect';
+    // manual = สร้างเองในหน้าระบบ (ไม่ดึงจากวันที่ตรวจปล่อย) — ไม่มีช่วงวันที่ จึงไม่ตรวจออกซ้ำตามช่วง
+    const category = doc?.category === 'extra' ? 'extra' : (doc?.category === 'manual' ? 'manual' : 'inspect');
     rows.push({
       number, period, seq: parsed.seq, issueDate,
       title: text(doc?.title, 200) || 'ใบแจ้งหนี้ค่าบริการ', category, source: text(doc?.source, 60),
@@ -188,17 +189,22 @@ export async function matchServiceReceivables(body: ApiBody): Promise<ApiResult>
 export async function settleServiceReceivables(body: ApiBody): Promise<ApiResult> {
   const input = Array.isArray(body.rows) ? body.rows.slice(0, 500) : [];
   const paidAt = validYmd(body.paidAt) ? String(body.paidAt) : ymd();
+  // รวมยอดเลขเดียวกัน แล้วอ่านใบทั้งหมดครั้งเดียว (เดิมอ่าน + เขียนทีละแถว ไฟล์ยาวแล้วช้าเกินเวลา)
+  const sums = new Map<string, number>();
+  for (const raw of input) {
+    const number = text(raw?.number, 20).toUpperCase();
+    const amount = money(raw?.amount);
+    if (!number || !(amount > 0)) continue;
+    sums.set(number, money((sums.get(number) || 0) + amount));
+  }
   const updated: any[] = [];
-  await db.transaction(async (tx) => {
-    for (const raw of input) {
-      const number = text(raw?.number, 20).toUpperCase();
-      const amount = money(raw?.amount);
-      if (!number || !(amount > 0)) continue;
-      const [inv] = await tx.select().from(serviceInvoices).where(eq(serviceInvoices.number, number)).limit(1);
-      if (!inv) continue;
-      const paid = money(inv.paidAmount + amount);
-      await tx.update(serviceInvoices).set({ paidAmount: paid, paidAt, updatedAt: nowIso() }).where(eq(serviceInvoices.number, number));
-      updated.push({ number, paidAmount: paid, outstanding: money(inv.netTotal - paid) });
+  if (sums.size) await db.transaction(async (tx) => {
+    const rows = await tx.select().from(serviceInvoices).where(inArray(serviceInvoices.number, [...sums.keys()]));
+    const at = nowIso();
+    for (const inv of rows) {
+      const paid = money(inv.paidAmount + sums.get(inv.number)!);
+      await tx.update(serviceInvoices).set({ paidAmount: paid, paidAt, updatedAt: at }).where(eq(serviceInvoices.number, inv.number));
+      updated.push({ number: inv.number, paidAmount: paid, outstanding: money(inv.netTotal - paid) });
     }
   });
   if (!updated.length) return { ok: false, error: 'nothing_updated' };
