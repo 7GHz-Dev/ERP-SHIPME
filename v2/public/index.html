@@ -492,13 +492,13 @@
       <!-- หลักฐานการตรวจปล่อย: PDF จากแอป DocScan (ถ่ายหน้าเอกสารตรวจปล่อยรวมเป็นไฟล์เดียว) หรือแนบไฟล์เอง -->
       <div class="card" id="st-insp-card">
         <h3 style="margin:0 0 4px; font-size:16px">4) หลักฐานการตรวจปล่อย <span style="color:var(--err)">*</span></h3>
-        <p class="muted" style="margin:0 0 12px">ถ่ายรูปหน้าเอกสารที่ตรวจปล่อยด้วยแอป DocScan แล้วกด "ส่งเข้าใบปิดบัญชี" ระบบจะรวมเป็นไฟล์ PDF แนบให้ (หรือเปิด DocScan เอง กด "ส่งไปปิดบัญชี" ใส่รหัส ERP แล้วเลือกใบเบิกของวันนี้) — ใบปิดบัญชีใหม่ต้องมีอย่างน้อย 1 ไฟล์</p>
+        <p class="muted" style="margin:0 0 12px">เลือกรูปเอกสารตรวจปล่อยได้หลายรูปพร้อมกัน ระบบจะตีกรอบเอกสาร ปรับให้ตรงเหมือนสแกน แล้วรวมเป็น PDF ไฟล์เดียวให้เอง (ไฟล์ PDF แนบได้ตามเดิม) หรือใช้แอป DocScan ก็ได้ — ใบปิดบัญชีใหม่ต้องมีอย่างน้อย 1 ไฟล์</p>
         <div id="st-insp-status" class="status wait">เลือกวันที่ตรวจปล่อยก่อน</div>
         <div id="st-insp-list"></div>
         <div id="st-insp-actions" class="hidden">
-          <button type="button" id="st-insp-scan" class="btn btn-primary" style="margin-bottom:8px">📷 สแกนเอกสารด้วย DocScan</button>
-          <button type="button" id="st-insp-attach" class="btn btn-ghost">📎 แนบไฟล์เอง (PDF / รูป)</button>
-          <input id="st-insp-file" type="file" accept="application/pdf,.pdf,image/jpeg,image/png" multiple class="hidden">
+          <button type="button" id="st-insp-attach" class="btn btn-primary" style="margin-bottom:8px">🖼️ เลือกรูปเอกสาร (ตีกรอบ + รวมเป็น PDF ให้เอง)</button>
+          <button type="button" id="st-insp-scan" class="btn btn-ghost">📷 สแกนด้วยแอป DocScan</button>
+          <input id="st-insp-file" type="file" accept="image/*,application/pdf,.pdf" multiple class="hidden">
           <div id="st-insp-link" class="muted hidden" style="margin-top:8px"></div>
         </div>
       </div>
@@ -2571,32 +2571,44 @@ $('st-insp-scan').addEventListener('click', function(){
 });
 
 $('st-insp-attach').addEventListener('click', function(){ $('st-insp-file').click(); });
+// อัปโหลด 1 ไฟล์ (PDF ที่แนบเอง / PDF ที่รวมจากรูป) → storage แล้วลงทะเบียนกับวันที่ตรวจปล่อย
+function uploadInspFile(date, body, name, ext, pages){
+  return api({ action:'signInspectionUpload', token:state.token, inspectDate:date, ext:ext }).then(function(res){
+    if(!res.ok) throw res;
+    return fetch(res.uploadUrl, { method:'PUT', headers:{ 'Content-Type': body.type || 'application/octet-stream' }, body:body }).then(function(r){
+      if(!r.ok) throw { ok:false, error:'upload_failed' };
+      return api({ action:'registerInspectionFile', token:state.token, inspectDate:date, key:res.key, name:name, size:body.size, pages:pages||0 });
+    });
+  }).then(function(res){ if(!res.ok) throw res; return res; });
+}
+// รูปหลายรูป = ตีกรอบเอกสาร + รวมเป็น PDF ไฟล์เดียว (insp-scan.js) • PDF = อัปโหลดตามเดิมทีละไฟล์
 $('st-insp-file').addEventListener('change', function(){
   var files=Array.prototype.slice.call(this.files||[]); this.value='';
   var date=insp.date; if(!date || !files.length) return;
+  var isPdf=function(f){ return /pdf$/i.test(f.type)||/\.pdf$/i.test(f.name); };
+  var pdfs=files.filter(isPdf), images=files.filter(function(f){ return !isPdf(f); });
   var st=$('st-insp-status'), i=0;
-  function next(){
-    if(i>=files.length){ toast('แนบไฟล์หลักฐานแล้ว'); return loadInspFiles(); }
-    var file=files[i++];
-    var ext=/pdf$/i.test(file.type)||/\.pdf$/i.test(file.name) ? 'pdf' : (/png$/i.test(file.type) ? 'png' : (/jpe?g$/i.test(file.type) ? 'jpg' : ''));
-    if(!ext){ toast('รองรับเฉพาะ PDF / JPG / PNG: '+file.name); return next(); }
-    if(file.size>INSP_MAX){ toast('ไฟล์ใหญ่เกิน 25MB: '+file.name); return next(); }
+  function nextPdf(){
+    if(i>=pdfs.length){ if(pdfs.length) toast('แนบไฟล์ PDF แล้ว'); return loadInspFiles(); }
+    var file=pdfs[i++];
+    if(file.size>INSP_MAX){ toast('ไฟล์ใหญ่เกิน 25MB: '+file.name); return nextPdf(); }
     st.className='status wait'; st.innerHTML='<span class="spinner"></span> กำลังอัปโหลด '+esc(file.name)+'…';
-    return api({ action:'signInspectionUpload', token:state.token, inspectDate:date, ext:ext }).then(function(res){
-      if(!res.ok) throw res;
-      return fetch(res.uploadUrl, { method:'PUT', headers:{ 'Content-Type': file.type || 'application/octet-stream' }, body:file }).then(function(r){
-        if(!r.ok) throw { ok:false, error:'upload_failed' };
-        return api({ action:'registerInspectionFile', token:state.token, inspectDate:date, key:res.key, name:file.name, size:file.size });
-      });
-    }).then(function(res){
-      if(!res.ok) throw res;
-      return next();
-    }).catch(function(err){
+    return uploadInspFile(date, file, file.name, 'pdf', 0).then(nextPdf).catch(function(err){
       toast('แนบไฟล์ไม่สำเร็จ: '+errTH((err&&err.error)||'upload_failed'), 4000);
       loadInspFiles();
     });
   }
-  next();
+  if(!images.length) return nextPdf();
+  // รูป: ใช้ชื่อไฟล์ตามวันที่ + เวลา จะได้แยกออกถ้าแนบหลายรอบในวันเดียว
+  InspScan.open(images, {
+    title:'เอกสารตรวจปล่อย '+fmtD(date),
+    upload:function(blob, pages){
+      var t=new Date(), hm=String(t.getHours()).padStart(2,'0')+'.'+String(t.getMinutes()).padStart(2,'0');
+      return uploadInspFile(date, blob, 'ตรวจปล่อย '+date+' '+hm+' ('+pages+' หน้า).pdf', 'pdf', pages)
+        .catch(function(err){ throw new Error('อัปโหลดไม่สำเร็จ: '+errTH((err&&err.error)||'upload_failed')); });
+    },
+    onClose:function(uploaded){ if(uploaded) toast('แนบ PDF เอกสารตรวจปล่อยแล้ว'); nextPdf(); }
+  });
 });
 
 // กลับมาจากแท็บ DocScan = ดึงรายการไฟล์ใหม่
@@ -4482,5 +4494,6 @@ function photoFull(url){
 }
 </script>
 <script src="/release-jobs.js"></script>
+<script src="/insp-scan.js?v=1"></script>
 </body>
 </html>
