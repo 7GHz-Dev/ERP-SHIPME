@@ -378,7 +378,7 @@ export async function listReceivables(body: ApiBody): Promise<ApiResult> {
     batchNo: invoices.batchNo, batchPeriod: invoices.batchPeriod, batchName: invoices.batchName
   })
     .from(invoices).where(and(...clauses))
-    .orderBy(asc(invoices.issueDate), asc(invoices.number)).limit(1000);
+    .orderBy(asc(invoices.issueDate), asc(invoices.seq), asc(invoices.number)).limit(1000);
 
   return {
     ok: true, today: ymd(),

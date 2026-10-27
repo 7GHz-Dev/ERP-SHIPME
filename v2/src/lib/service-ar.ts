@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, lte, or, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { serviceInvoices } from '@/db/schema';
 import {
@@ -59,9 +59,11 @@ export async function saveServiceInvoices(body: ApiBody, actor: { username: stri
   const rows: (typeof serviceInvoices.$inferInsert)[] = [];
   const seen = new Set<string>();
   for (const doc of docs) {
-    const number = text(doc?.number, 20).toUpperCase();
-    const parsed = parseNumber('IN', number);
-    if (!parsed || parsed.period !== period) return { ok: false, error: 'bad_number', number };
+    const typed = text(doc?.number, 20).toUpperCase();
+    const parsed = parseNumber('IN', typed);
+    if (!parsed || parsed.period !== period || parsed.seq < 1 || parsed.seq > 999) return { ok: false, error: 'bad_number', number: typed };
+    // รูปแบบมาตรฐาน: เลขรัน 2 หลัก, 100 ขึ้นไป 3 หลัก — พิมพ์ IN202610005 = IN20261005 (กันเลขสองแบบของลำดับเดียวกัน)
+    const number = `IN${period}${String(parsed.seq).padStart(2, '0')}`;
     if (seen.has(number)) return { ok: false, error: 'duplicate_number', number };
     seen.add(number);
     const items: IncomingItem[] = (Array.isArray(doc?.items) ? doc.items : []).slice(0, 30).map((it: any, i: number) => ({
@@ -91,7 +93,8 @@ export async function saveServiceInvoices(body: ApiBody, actor: { username: stri
   }
 
   const existing = await db.select({ number: serviceInvoices.number }).from(serviceInvoices)
-    .where(inArray(serviceInvoices.number, [...seen]));
+    .where(or(inArray(serviceInvoices.number, [...seen]),
+      and(eq(serviceInvoices.period, period), inArray(serviceInvoices.seq, rows.map((r) => r.seq)))));
   if (existing.length) return { ok: false, error: 'number_used', numbers: existing.map((r) => r.number) };
 
   if (!body.force) {
@@ -138,7 +141,7 @@ export async function listServiceInvoices(body: ApiBody): Promise<ApiResult> {
   if (body.outstandingOnly === true) clauses.push(sql`${serviceInvoices.paidAmount} < ${serviceInvoices.netTotal}`);
   const rows = await db.select().from(serviceInvoices)
     .where(clauses.length ? and(...clauses) : undefined)
-    .orderBy(asc(serviceInvoices.issueDate), asc(serviceInvoices.number)).limit(1000);
+    .orderBy(asc(serviceInvoices.issueDate), asc(serviceInvoices.seq)).limit(1000);
   return { ok: true, rows: rows.map(view), company: SERVICE_COMPANY, customer: INVOICE_CUSTOMER, today: ymd() };
 }
 
@@ -237,7 +240,7 @@ export async function issueServiceReceipts(body: ApiBody): Promise<ApiResult> {
   return db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(71942031)`);
     const rows = await tx.select().from(serviceInvoices).where(inArray(serviceInvoices.number, numbers))
-      .orderBy(asc(serviceInvoices.issueDate), asc(serviceInvoices.number));
+      .orderBy(asc(serviceInvoices.issueDate), asc(serviceInvoices.seq));
     const unpaid = rows.filter((r) => r.paidAmount < r.netTotal - 0.009);
     if (unpaid.length) return { ok: false, error: 'not_fully_paid', numbers: unpaid.map((r) => r.number) };
     const [top] = await tx.select({ maxNo: sql<number | null>`max(cast(substring(${serviceInvoices.receiptNo} from 9) as integer))` })

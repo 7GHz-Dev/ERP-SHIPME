@@ -312,7 +312,7 @@ export const invoices = pgTable('invoices', {
   number: text('number').primaryKey(),
   kind: text('kind').notNull(),                       // 'V' = มี VAT | 'NV' = ไม่มี VAT
   period: text('period').notNull(),                   // yyyymm — ใช้หาเลขรันถัดไปของเดือนนั้น
-  seq: integer('seq').notNull(),                      // เลขรันในเดือน (1-99)
+  seq: integer('seq').notNull(),                      // เลขรันในเดือน (1-999)
   issueDate: text('issue_date').notNull(),            // yyyy-MM-dd
   customerName: text('customer_name').notNull().default(''),
   customerAddress: text('customer_address').notNull().default(''),

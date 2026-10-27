@@ -222,10 +222,17 @@ function renderInvoiceSources(){
       row.numberEdited[kind]=true;
       updateInvoicePicked();
     });
-    // ช่องว่าง = กลับไปใช้เลขรันอัตโนมัติ
+    // ช่องว่าง = กลับไปใช้เลขรันอัตโนมัติ • พิมพ์เลขรัน 1–3 หลัก (115) = เติม V/NV + ปีเดือนให้ • 0 นำหน้าเกิน (V202610005) = V20261005
     input.addEventListener('blur',function(){
       var row=rows[Number(input.dataset.row)],kind=input.dataset.kind;
       if(!input.value.trim()){ if(row.numberEdited) row.numberEdited[kind]=false; assignInvoiceNumbers(); }
+      else {
+        var v=input.value.trim().toUpperCase().replace(/\s+/g,''), m=v.match(/^(?:N?V([0-9]{6}))?([0-9]{1,6})$/);
+        if(m && Number(m[2])>0 && (m[1] ? v.indexOf(kind+m[1])===0 : m[2].length<=3)){
+          v=kind+(m[1]||invoicePeriod())+String(Number(m[2])).padStart(2,'0');
+          input.value=v; row.numbers[kind]=v;
+        }
+      }
       updateInvoicePicked();
     });
   });

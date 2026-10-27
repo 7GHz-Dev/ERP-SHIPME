@@ -45,10 +45,28 @@ export function isVatExempt(label: unknown) {
   return INVOICE_VAT_EXEMPT_LABELS.some((exempt) => exempt === value);
 }
 
-/** V20260901 — kind + yyyymm + เลขรัน 2 หลัก / ค่ามัดจำตู้ใช้เลข NV ต่อท้าย -D (NV20260901-D) */
+/** เลขรันสูงสุดต่อเดือน — เดือนหนึ่งออกเกิน 99 ชุดแล้ว (ก.ย. 2026 ถึง 140) จึงรับถึง 3 หลัก */
+export const MAX_INVOICE_SEQ = 999;
+
+/**
+ * V20260901 — kind + yyyymm + เลขรัน (เติม 0 ให้ครบ 2 หลัก, 100 ขึ้นไปเป็น 3 หลัก: V202609108)
+ * ค่ามัดจำตู้ใช้เลข NV ต่อท้าย -D (NV20260901-D)
+ */
 export function invoiceNumber(kind: string, period: string, seq: number) {
   const run = String(seq).padStart(2, '0');
   return kind === 'D' ? `NV${period}${run}-D` : `${kind}${period}${run}`;
+}
+
+/**
+ * เลขที่พิมพ์เอง → รูปแบบมาตรฐานของระบบ: 0 นำหน้าเกิน (V202610005) = V20261005 • ไม่ตรงชนิด/เดือน = คืนค่าเดิม
+ * (ให้พิมพ์เลขรัน 3 หลักแบบมี 0 นำหน้าได้ โดยไม่เกิดเลขสองแบบของลำดับเดียวกัน)
+ */
+export function canonicalInvoiceNumber(kind: string, period: string, raw: string) {
+  const value = String(raw ?? '').trim().toUpperCase().replace(/\s+/g, '');
+  const pattern = kind === 'D' ? `^NV${period}([0-9]{1,6})-D$` : `^${kind}${period}([0-9]{1,6})$`;
+  const match = value.match(new RegExp(pattern));
+  const seq = match ? Number(match[1]) : 0;
+  return seq ? invoiceNumber(kind, period, seq) : value;
 }
 
 /** อ่านเลขรันกลับจากเลขที่ใบ — ไม่ตรงรูปแบบของชนิดนั้น = 0 */
@@ -336,13 +354,13 @@ export async function invoicePreview(body: ApiBody): Promise<ApiResult> {
 type Db = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
 async function checkManualNumber(q: Db, rawNumber: unknown, kind: string, issueDate: string, bl: string):
   Promise<{ error: ApiResult } | { number: string; period: string; seq: number }> {
-  const number = text(rawNumber, 40).toUpperCase().replace(/\s+/g, '');
   const period = issueDate.slice(0, 7).replace('-', '');
+  const number = canonicalInvoiceNumber(kind, period, text(rawNumber, 40));
   const seq = invoiceSeqOf(kind, period, number);
   if (!seq) {
-    return { error: { ok: false, error: 'invoice_number_format', detail: `ต้องเป็น ${invoiceNumber(kind, period, 1).slice(0, -2)}xx ตามเดือนของวันที่ออกใบ (เช่น ${invoiceNumber(kind, period, 15)})` } };
+    return { error: { ok: false, error: 'invoice_number_format', detail: `ต้องเป็น ${kind}${period} + เลขรัน 2–3 หลัก ตามเดือนของวันที่ออกใบ (เช่น ${invoiceNumber(kind, period, 15)} หรือ ${invoiceNumber(kind, period, 115)})` } };
   }
-  if (seq > 99) return { error: { ok: false, error: 'invoice_number_format', detail: 'เลขรันต้องไม่เกิน 99' } };
+  if (seq > MAX_INVOICE_SEQ) return { error: { ok: false, error: 'invoice_number_format', detail: `เลขรันต้องไม่เกิน ${MAX_INVOICE_SEQ}` } };
   const [same] = await q.select({ number: invoices.number }).from(invoices).where(eq(invoices.number, number)).limit(1);
   if (same) return { error: { ok: false, error: 'invoice_number_exists', detail: `เลข ${number} มีอยู่แล้ว` } };
   const owners = await q.select({ number: invoices.number, bl: invoices.bl }).from(invoices)
@@ -411,7 +429,7 @@ export async function saveInvoice(body: ApiBody, actor: { username: string; name
       const usedSeq = new Set(taken.map((r) => Number(r.seq)));
       seq = 1;
       while (usedSeq.has(seq)) seq += 1;
-      if (seq > 99) throw new Error('seq_overflow');
+      if (seq > MAX_INVOICE_SEQ) throw new Error('seq_overflow');
       number = invoiceNumber(kind, period, seq);
     }
 
@@ -457,7 +475,8 @@ export async function listInvoices(body: ApiBody, actor: { username: string; rol
 
   const rows = await db.select().from(invoices)
     .where(clauses.length ? and(...clauses) : undefined)
-    .orderBy(desc(invoices.issueDate), desc(invoices.number))
+    // เลขรันเรียงแบบตัวเลข (เรียงเป็นข้อความ V202610100 จะไปอยู่ก่อน V20261099) — V ก่อน NV ของเลขเดียวกัน
+    .orderBy(desc(invoices.issueDate), desc(invoices.seq), desc(invoices.number))
     .limit(500);
 
   return {
@@ -565,7 +584,7 @@ export async function saveInvoiceBatch(body: ApiBody, actor: { username: string;
       // ข้ามเลขที่ยังมีใบอยู่ หยิบเฉพาะช่องว่าง
       do { seq += 1; } while (usedSeq.has(seq));
       usedSeq.add(seq);
-      if (seq > 99) throw new Error('seq_overflow');
+      if (seq > MAX_INVOICE_SEQ) throw new Error('seq_overflow');
       const number = invoiceNumber(kind, period, seq);
       const totals = invoiceTotals(entry.items, kind);
       await tx.insert(invoices).values({

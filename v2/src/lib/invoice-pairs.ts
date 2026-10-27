@@ -3,7 +3,7 @@ import { db } from '@/db';
 import { invoices, settlements } from '@/db/schema';
 import { INVOICE_CUSTOMER, INVOICE_DEPOSIT_LABEL } from './constants';
 import { blKey, invoiceOccurrences, jobKey, reusedBls } from './bl-occurrence';
-import { invoiceSeqOf, invoiceTotals, type InvoiceItem } from './invoices';
+import { MAX_INVOICE_SEQ, canonicalInvoiceNumber, invoiceSeqOf, invoiceTotals, type InvoiceItem } from './invoices';
 import { nowIso, validYmd } from './utils';
 import type { ApiBody, ApiResult } from './types';
 
@@ -33,9 +33,9 @@ export async function saveInvoicePairs(body: ApiBody, actor: { username: string;
       if (!Array.isArray(input) || input.length > 100) {
         return { ok: false, error: 'no_items', bl, kind };
       }
-      const number = clean(target.numbers?.[kind], 40);
+      const number = canonicalInvoiceNumber(kind, period, clean(target.numbers?.[kind], 40));
       const seq = invoiceSeqOf(kind, period, number);
-      if (!seq || seen.has(number)) {
+      if (!seq || seq > MAX_INVOICE_SEQ || seen.has(number)) {
         return { ok: false, error: 'bad_invoice_number', number };
       }
       // เลขคู่ต้องตรงกันเมื่อออกทั้งสองฝั่ง (V เป็นตัวตั้ง ถ้าออกเฉพาะ NV ก็ใช้เลขตัวเองได้)
