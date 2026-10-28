@@ -49,6 +49,12 @@ function sarPdf(promiseDocs, name, options){
 document.addEventListener('DOMContentLoaded', function(){
   $('svc-save').addEventListener('click', function(){ svcSave(false); });
   $('svc-manual').addEventListener('click', svcManualOpen);
+  $('svc-excel-all').addEventListener('click', function(){
+    var docs=svcDocuments().filter(function(d){ return d.kind!=='SUMMARY'; });
+    if(!docs.length){ $('svc-msg').textContent='ยังไม่มีเอกสาร — กด "ดึงข้อมูล" ก่อน'; return; }
+    svcExcel(docs, { draft:true, range:'ตรวจปล่อย '+sarRange(docs[0])+' • ยังไม่บันทึกเข้าระบบ',
+      fileName:'ใบแจ้งหนี้ค่าบริการ-'+docs[0].number+(docs.length>1?'-'+docs[docs.length-1].number:'')+'.xlsx' });
+  });
 });
 
 // ---------------- สร้างใบแจ้งหนี้ค่าบริการเอง (ไม่ดึงจากวันที่ตรวจปล่อย) ----------------
@@ -199,6 +205,7 @@ function svcListOpen(){
     $('svl-search').addEventListener('input', svlRender);
     ['svl-from','svl-to'].forEach(function(id){ $(id).addEventListener('change', svlLoad); });
     $('svl-body').addEventListener('click', svlOnClick);
+    $('svl-excel').addEventListener('click', svlExcel);
   }
   svlLoad();
 }
@@ -210,9 +217,12 @@ function svlLoad(){
     svlRender();
   });
 }
-function svlRender(){
+function svlFiltered(){
   var q=$('svl-search').value.trim().toLowerCase();
-  var rows=svl.rows.filter(function(r){ return !q || (r.number+' '+r.title+' '+(r.receiptNo||'')).toLowerCase().indexOf(q)>=0; });
+  return svl.rows.filter(function(r){ return !q || (r.number+' '+r.title+' '+(r.receiptNo||'')).toLowerCase().indexOf(q)>=0; });
+}
+function svlRender(){
+  var rows=svlFiltered();
   var sum=rows.reduce(function(t,r){ return t+Number(r.netTotal); },0);
   $('svl-msg').textContent=rows.length ? ('แสดง '+rows.length+' ใบ • ยอดชำระสุทธิรวม '+baht(sum)+' บาท') : '';
   $('svl-body').innerHTML=rows.length ? rows.map(function(r){
@@ -224,6 +234,7 @@ function svlRender(){
       '<td class="num">'+baht(r.total)+'</td><td class="num">'+baht(r.withholding)+'</td><td class="num"><b>'+baht(r.netTotal)+'</b></td>'+
       '<td>'+status+'</td><td class="acts">'+
         '<button class="btn btn-ghost btn-sm" data-act="pdf" data-n="'+esc(r.number)+'">ดู PDF</button>'+
+        '<button class="btn btn-ghost btn-sm" data-act="excel" data-n="'+esc(r.number)+'" title="ใบนี้ + รายละเอียดราย BL เป็นไฟล์ Excel">Excel</button>'+
         (r.receiptNo ? '<button class="btn btn-ghost btn-sm" data-act="receipt" data-n="'+esc(r.number)+'">ใบเสร็จ</button>' : '')+
         (!r.receiptNo && !(r.paidAmount>0) ? '<button class="btn btn-ghost btn-sm" data-act="cancel" data-n="'+esc(r.number)+'" style="color:#b91c1c">ยกเลิก</button>' : '')+
       '</td></tr>';
@@ -233,6 +244,7 @@ function svlOnClick(e){
   var b=e.target.closest('[data-act]'); if(!b) return;
   var n=b.getAttribute('data-n'), act=b.getAttribute('data-act');
   if(act==='pdf') return svcPrintInvoice(n);
+  if(act==='excel') return svlExcelOne(n, b);
   if(act==='receipt') return sarPrintReceipts([n], '');
   if(act==='cancel'){
     if(!confirm('ยกเลิกใบ '+n+' ?\n\nใบจะถูกลบออกจากระบบและลูกหนี้')) return;
@@ -254,6 +266,102 @@ function svcPrintInvoice(number){
       customerName:inv.customerName, customerAddress:inv.customerAddress, customerTaxId:inv.customerTaxId, preparedBy:inv.preparedBy });
     return { docs:docs, company:res.company };
   }), number);
+}
+
+// ---------------- Excel: ใบแจ้งหนี้ค่าบริการ + รายละเอียด ----------------
+/**
+ * รายละเอียดของใบ (ก่อน VAT) — ใบที่มีใบสรุปแนบใช้แถวในใบสรุป:
+ *   ตรวจปล่อย = ราย BL × ค่าบริการ/ตู้ (RORO ใช้ราคาของรายการ RORO ในใบ) • ค่าบริการเพิ่มเติม = รายการ + BL + ยอด
+ * ใบที่ไม่มีใบสรุป (สร้างเอง) ใช้รายการในใบ
+ */
+function svcDetailRows(inv){
+  var items=inv.items||[], rows=inv.summaryRows || (inv.summary && inv.summary.rows) || null;
+  var oneLine=function(t){ return String(t||'').replace(/\s*\n\s*/g,' ').trim(); };
+  if(rows && rows.length && inv.category==='inspect'){
+    return rows.map(function(r){
+      var roro=!!r.highlight, qty=Number(r.qty)||0;
+      var item=items.filter(function(it){ return /RORO/i.test(it.label)===roro; })[0];
+      var price=item ? Number(item.unitPrice)||0 : 0;
+      return { bl:r.label, label:'ค่าบริการตรวจปล่อย'+(roro?' (RORO)':''), qty:qty, unitPrice:price, amount:sarMoney(qty*price), note:r.note||'' };
+    });
+  }
+  if(rows && rows.length && inv.category==='extra'){
+    return rows.map(function(r){
+      return { bl:r.note||'', label:r.label, qty:'', unitPrice:'', amount:sarMoney(String(r.qty).replace(/,/g,'')), note:'' };
+    });
+  }
+  return items.map(function(it){
+    return { bl:'', label:oneLine(it.label), qty:Number(it.qty)||0, unitPrice:Number(it.unitPrice)||0, amount:Number(it.amount)||0, note:it.note||'' };
+  });
+}
+function svcStatus(r){
+  return r.receiptNo ? 'ออกใบเสร็จแล้ว' : (r.outstanding<=0 ? 'ชำระครบ' : (r.paidAmount>0 ? 'ชำระบางส่วน' : 'ค้างชำระ'));
+}
+/** ไฟล์ Excel 2 ชีต: ใบแจ้งหนี้ค่าบริการ (ใบละแถว) + รายละเอียด (ราย BL / รายการ) • opts.draft = ยังไม่บันทึก ไม่มีคอลัมน์รับชำระ */
+function svcExcel(invoices, opts){
+  if(!window.XLSX){ alert('ตัวสร้างไฟล์ Excel ยังไม่โหลด (ต้องใช้อินเทอร์เน็ต)'); return; }
+  var MONEY='#,##0.00', draft=!!opts.draft, sum=function(list, k){ return sarMoney(list.reduce(function(t, x){ return t+(Number(x[k])||0); }, 0)); };
+  // ใส่รูปแบบตัวเลขให้คอลัมน์เงิน ตั้งแต่แถวหัวตาราง+1 ถึงแถวสุดท้าย
+  function sheet(aoa, headRow, moneyCols, widths){
+    var ws=XLSX.utils.aoa_to_sheet(aoa);
+    for(var r=headRow+1; r<aoa.length; r++) moneyCols.forEach(function(c){
+      var cell=ws[XLSX.utils.encode_cell({ r:r, c:c })]; if(cell && cell.t==='n') cell.z=MONEY;
+    });
+    ws['!cols']=widths.map(function(w){ return { wch:w }; });
+    return ws;
+  }
+
+  var head=['ลำดับ','เลขที่ใบแจ้งหนี้','วันที่','รายการ','ที่มา','ค่าบริการ (ก่อน VAT)','VAT 7%','รวม VAT','หัก ณ ที่จ่าย 3%','ยอดชำระสุทธิ']
+    .concat(draft ? [] : ['ชำระแล้ว','วันที่รับชำระ','ค้างชำระ','สถานะ','เลขที่ใบเสร็จ','วันที่ใบเสร็จ']);
+  var aoa=[['ใบแจ้งหนี้ค่าบริการ'+(opts.range?' — '+opts.range:'')], [], head];
+  invoices.forEach(function(r, i){
+    aoa.push([i+1, r.number, sarDmy(r.issueDate), r.title, sarSource(r), Number(r.subtotal), Number(r.vat), Number(r.total), Number(r.withholding), Number(r.netTotal)]
+      .concat(draft ? [] : [Number(r.paidAmount)||0, r.paidAt?sarDmy(r.paidAt):'', Number(r.outstanding)||0, svcStatus(r), r.receiptNo||'', r.receiptDate?sarDmy(r.receiptDate):'']));
+  });
+  if(invoices.length > 1) aoa.push(['', 'รวม '+invoices.length+' ใบ', '', '', '', sum(invoices,'subtotal'), sum(invoices,'vat'), sum(invoices,'total'), sum(invoices,'withholding'), sum(invoices,'netTotal')]
+    .concat(draft ? [] : [sum(invoices,'paidAmount'), '', sum(invoices,'outstanding')]));
+  var ws1=sheet(aoa, 2, draft ? [5,6,7,8,9] : [5,6,7,8,9,10,12], [7,15,11,40,26,16,13,15,15,16].concat(draft ? [] : [14,13,14,15,15,12]));
+
+  var detail=[['รายละเอียดใบแจ้งหนี้ค่าบริการ'+(opts.range?' — '+opts.range:'')], ['จำนวนเงินเป็นยอดก่อน VAT (รวมทุกแถวของใบ = ค่าบริการก่อน VAT ของใบนั้น)'],
+    ['ลำดับ','เลขที่ใบแจ้งหนี้','วันที่ใบแจ้งหนี้','ใบแจ้งหนี้','BL','รายการ','จำนวน','ราคาต่อหน่วย','จำนวนเงิน','หมายเหตุ']];
+  var n=0, total=0;
+  invoices.forEach(function(r){
+    svcDetailRows(r).forEach(function(d){
+      total+=Number(d.amount)||0;
+      detail.push([++n, r.number, sarDmy(r.issueDate), r.title, d.bl, d.label, d.qty, d.unitPrice, d.amount, d.note]);
+    });
+  });
+  if(n) detail.push(['', 'รวม '+n+' รายการ', '', '', '', '', '', '', sarMoney(total), '']);
+  var ws2=sheet(detail, 2, [7,8], [7,15,13,36,20,40,9,13,15,18]);
+
+  var wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws1, 'ใบแจ้งหนี้ค่าบริการ');
+  XLSX.utils.book_append_sheet(wb, ws2, 'รายละเอียดใบแจ้งหนี้ค่าบริการ');
+  XLSX.writeFile(wb, opts.fileName.replace(/[\\/:*?"<>|]/g,'-'));
+}
+/** ใบที่ออกแล้ว — ใบตามช่วงวันที่ + คำค้นที่เห็นบนจอ */
+function svlExcel(){
+  var shown=svlFiltered();
+  if(!shown.length){ alert('ไม่มีใบให้ส่งออก'); return; }
+  var btn=$('svl-excel'), want={};
+  shown.forEach(function(r){ want[r.number]=true; });
+  btn.disabled=true;
+  api({ action:'listServiceInvoices', token:state.token, from:$('svl-from').value, to:$('svl-to').value, details:true }).then(function(res){
+    btn.disabled=false;
+    if(!res.ok){ alert('โหลดข้อมูลไม่สำเร็จ: '+sarErr(res)); return; }
+    var rows=(res.rows||[]).filter(function(r){ return want[r.number]; });
+    var from=$('svl-from').value, to=$('svl-to').value;
+    svcExcel(rows, { range:ArReport.rangeText(from, to)+($('svl-search').value.trim()?' • ค้นหา "'+$('svl-search').value.trim()+'"':''),
+      fileName:'ใบแจ้งหนี้ค่าบริการ-'+(from||to ? (from||'')+'_'+(to||'') : sarToday())+'.xlsx' });
+  }).catch(function(e){ btn.disabled=false; alert('ส่งออก Excel ไม่สำเร็จ: '+(e && e.message || e)); });
+}
+function svlExcelOne(number, btn){
+  btn.disabled=true;
+  api({ action:'getServiceInvoice', token:state.token, number:number }).then(function(res){
+    btn.disabled=false;
+    if(!res.ok){ alert('เปิดใบไม่สำเร็จ: '+sarErr(res)); return; }
+    svcExcel([res.invoice], { range:res.invoice.number, fileName:res.invoice.number+'.xlsx' });
+  }).catch(function(e){ btn.disabled=false; alert('ส่งออก Excel ไม่สำเร็จ: '+(e && e.message || e)); });
 }
 
 // ---------------- ลูกหนี้คงค้างค่าบริการ ----------------

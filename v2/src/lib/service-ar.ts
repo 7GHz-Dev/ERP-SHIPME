@@ -133,7 +133,10 @@ function view(row: typeof serviceInvoices.$inferSelect) {
   };
 }
 
-/** ใบค่าบริการที่ออกแล้ว / ลูกหนี้คงค้างค่าบริการ — กรองวันที่ออกใบได้ */
+/**
+ * ใบค่าบริการที่ออกแล้ว / ลูกหนี้คงค้างค่าบริการ — กรองวันที่ออกใบได้
+ * details: true (Excel) = แนบรายการในใบ + แถวในใบสรุปที่แนบคู่ (ราย BL) — ส่งเฉพาะแถว ไม่ส่งทั้งเอกสารสรุป
+ */
 export async function listServiceInvoices(body: ApiBody): Promise<ApiResult> {
   const clauses = [];
   if (validYmd(body.from)) clauses.push(gte(serviceInvoices.issueDate, String(body.from)));
@@ -142,7 +145,15 @@ export async function listServiceInvoices(body: ApiBody): Promise<ApiResult> {
   const rows = await db.select().from(serviceInvoices)
     .where(clauses.length ? and(...clauses) : undefined)
     .orderBy(asc(serviceInvoices.issueDate), asc(serviceInvoices.seq)).limit(1000);
-  return { ok: true, rows: rows.map(view), company: SERVICE_COMPANY, customer: INVOICE_CUSTOMER, today: ymd() };
+  const withDetails = body.details === true;
+  return {
+    ok: true,
+    rows: rows.map((row) => withDetails ? {
+      ...view(row), items: safeJson(row.itemsJson, []),
+      summaryRows: safeJson<{ rows?: unknown[] } | null>(row.summaryJson || 'null', null)?.rows ?? null
+    } : view(row)),
+    company: SERVICE_COMPANY, customer: INVOICE_CUSTOMER, today: ymd()
+  };
 }
 
 /** เอกสารเต็มสำหรับพิมพ์ซ้ำ — ใบสรุปที่แนบ + ใบแจ้งหนี้ */
