@@ -770,3 +770,54 @@ export const shippingAsks = pgTable('shipping_asks', {
   answerNote: text('answer_note').notNull().default(''),  // ชิปปิ้งพิมพ์บอกว่ายังค้างอะไร (หลังตอบ "ยังไม่เสร็จ")
   answeredAt: text('answered_at').notNull().default('')
 }, (t) => [index('shipping_asks_date_idx').on(t.inspectDate, t.username), index('shipping_asks_user_idx').on(t.username, t.askedAt)]);
+
+// ============ บัญชีรับจ่ายบริษัท (ledger.ts) ============
+/**
+ * รายการรับ-จ่ายของบริษัท — 1 แถว = 1 รายการในสมุดรายรับ-รายจ่ายประจำเดือน
+ * ยอดสุทธิ = ก่อนภาษี + VAT − หัก ณ ที่จ่าย (ภงด.3 หรือ ภงด.53 อย่างใดอย่างหนึ่ง)
+ * ออกใบสำคัญแล้ว (voucherNo) = ล็อก แก้/ลบไม่ได้จนกว่าจะยกเลิกใบสำคัญ
+ */
+export const ledgerEntries = pgTable('ledger_entries', {
+  id: text('id').primaryKey(),
+  entryDate: text('entry_date').notNull(),            // yyyy-MM-dd
+  direction: text('direction').notNull(),             // in = รายรับ | out = รายจ่าย
+  description: text('description').notNull(),
+  qty: doublePrecision('qty').notNull().default(1),   // จำนวน (ราคา/หน่วย = amount ÷ qty) — ใช้ในใบสำคัญ
+  amount: doublePrecision('amount').notNull().default(0),   // จำนวนเงินก่อนหักภาษี
+  vat: doublePrecision('vat').notNull().default(0),
+  whtType: text('wht_type').notNull().default(''),    // '' | pnd3 | pnd53
+  whtRate: doublePrecision('wht_rate').notNull().default(0),  // % (1 / 2 / 3 / 5)
+  wht: doublePrecision('wht').notNull().default(0),
+  net: doublePrecision('net').notNull().default(0),
+  payMethod: text('pay_method').notNull().default(''),  // cash | transfer | cheque
+  payRef: text('pay_ref').notNull().default(''),        // ธนาคาร / เลขที่เช็ค
+  party: text('party').notNull().default(''),           // จ่ายให้แก่ / รับจาก
+  note: text('note').notNull().default(''),
+  voucherNo: text('voucher_no').notNull().default(''),
+  createdBy: citext('created_by').notNull().default(''),
+  createdAt: text('created_at').notNull(),
+  updatedBy: citext('updated_by').notNull().default(''),
+  updatedAt: text('updated_at').notNull()
+}, (t) => [index('ledger_entries_date_idx').on(t.entryDate), index('ledger_entries_voucher_idx').on(t.voucherNo)]);
+
+/**
+ * ใบสำคัญจ่าย (PV) / ใบสำคัญรับ (RV) — เลขที่ PV|RV + yyyymm + เลขรัน แยกชุดกัน
+ * รายการในใบ = ledger_entries ที่ voucherNo ตรงกัน (ล็อกไว้ ยอดในใบจึงไม่เปลี่ยน) ยอดรวมเก็บซ้ำไว้แสดงในรายการ
+ */
+export const ledgerVouchers = pgTable('ledger_vouchers', {
+  number: text('number').primaryKey(),
+  kind: text('kind').notNull(),                       // PV | RV
+  period: text('period').notNull(),
+  seq: integer('seq').notNull(),
+  voucherDate: text('voucher_date').notNull(),
+  party: text('party').notNull().default(''),
+  payMethod: text('pay_method').notNull().default(''),
+  payRef: text('pay_ref').notNull().default(''),
+  amount: doublePrecision('amount').notNull().default(0),
+  vat: doublePrecision('vat').notNull().default(0),
+  wht: doublePrecision('wht').notNull().default(0),
+  net: doublePrecision('net').notNull().default(0),
+  preparedBy: text('prepared_by').notNull().default(''),
+  createdBy: citext('created_by').notNull().default(''),
+  createdAt: text('created_at').notNull()
+}, (t) => [uniqueIndex('ledger_vouchers_seq_idx').on(t.kind, t.period, t.seq)]);

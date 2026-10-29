@@ -22,6 +22,9 @@ import {
   saveServiceInvoices, serviceInvoiceNext, settleServiceReceivables, unsettleServiceReceivables
 } from './service-ar';
 import {
+  ledgerDelete, ledgerList, ledgerPresetsSave, ledgerSave, voucherCancel, voucherGet, voucherIssue, voucherNext
+} from './ledger';
+import {
   myReleaseJobs, planDelete, planLoad, planSave, portAssignmentData, savePortAssignments, smsTracking
 } from './plans';
 import {
@@ -672,6 +675,40 @@ const handlers: Record<string, Handler> = {
   driverEvidenceCommit,
   driverEvidenceDelete,
   driverComplete,
+
+  // ---- บัญชีรับจ่ายบริษัท + ใบสำคัญรับ (RV) / ใบสำคัญจ่าย (PV) ----
+  ledgerList: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || ledgerList(body);
+  },
+  ledgerSave: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || ledgerSave(body, session.user);
+  },
+  ledgerDelete: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || ledgerDelete(body);
+  },
+  voucherNext: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || voucherNext(body);
+  },
+  voucherIssue: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || voucherIssue(body, session.user);
+  },
+  ledgerPresetsSave: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || ledgerPresetsSave(body);
+  },
+  voucherGet: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || voucherGet(body);
+  },
+  voucherCancel: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || voucherCancel(body);
+  },
 
   // ---- ใบแจ้งหนี้ค่าบริการ (IN) + ลูกหนี้คงค้างค่าบริการ + ใบเสร็จ RE ----
   serviceInvoiceNext: async (body) => {
