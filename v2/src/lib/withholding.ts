@@ -90,44 +90,26 @@ const blBase = (bl: unknown) => blKey(bl).split('(')[0];
  * ใบหักค่า DO — จากชีตค่าแลกดีโอ ตามวันที่จ่ายจริง (1 แถวในชีต = 1 ใบ)
  * ชีตนี้ไม่มีช่อง VESSEL จึงหาสายเรือจากชีตงานขนส่งด้วยเลข BL
  * เทียบทั้ง BL เต็ม และส่วนหน้าวงเล็บ (ในชีตบางแถวลืมปิดวงเล็บ เช่น "KG…-668571(ONEYTYOGD2073800")
+ * BL ที่ยังไม่ได้ลงชีตงานขนส่ง: ถ้ารูปแบบเลข BL บอกสายเรือได้ (blPattern เช่น JJC…) นับเลย ไม่งั้นแจ้งเป็น "หาสายเรือไม่เจอ"
  */
 export function buildDoLines(entries: DoEntry[], vessels: Map<string, string>, from: string, to: string) {
   const lines: WhtLine[] = [];
   const unmatched: { date: string; bl: string; amount: number }[] = [];
   for (const e of entries) {
     if (e.date < from || e.date > to || !(e.amount > 0)) continue;
-    const vessel = vessels.get(blKey(e.bl)) || vessels.get(blBase(e.bl)) || '';
+    let vessel = vessels.get(blKey(e.bl)) || vessels.get(blBase(e.bl)) || '', byBl = false;
+    if (!vessel) {
+      vessel = WHT_DO_VESSELS.find((v) => v.blPattern?.test(blBase(e.bl)))?.label || '';
+      byBl = !!vessel;
+    }
     if (!vessel) { unmatched.push({ date: e.date, bl: e.bl, amount: e.amount }); continue; }
     const label = whtDoVessel(vessel);
     if (!label) continue;
-    const extra = [e.note, /\+/.test(e.raw) ? `ยอดในชีต ${e.raw}` : ''].filter(Boolean).join(' • ');
+    const extra = [e.note, /\+/.test(e.raw) ? `ยอดในชีต ${e.raw}` : '', byBl ? 'ยังไม่มี BL ในชีตงานขนส่ง (ดูสายเรือจากเลข BL)' : ''].filter(Boolean).join(' • ');
     lines.push({ category: 'DO', date: e.date, bl: e.bl, vessel, source: `ชีตค่าแลกดีโอ (${e.tab})`,
       amount: e.amount, detail: `DO ${label}${extra ? ` • ${extra}` : ''}`, count: 1 });
   }
   return { lines, unmatched };
-}
-
-/**
- * ใบหักค่า DO ของสายเรือที่ไม่ได้ลงชีตค่าแลกดีโอ (fromTransport เช่น RCL) — ช่อง DO ในชีตงานขนส่ง ตามวันที่ตรวจปล่อย
- * ยอดอยู่แถวแรกของ BL จึงรวมตาม ไฟล์ + BL + วันที่ • BL ที่มีในชีตค่าแลกดีโอแล้ว (inDoSheet) ข้าม ไม่นับซ้ำ
- */
-export function buildTransportDoLines(rows: JobRow[], inDoSheet: (bl: string) => boolean) {
-  const groups = new Map<string, { row: JobRow; doFee: number }>();
-  for (const row of rows) {
-    const key = `${row.sourceFile}|${blKey(row.bl)}|${row.transportDate}`;
-    const g = groups.get(key) || { row, doFee: 0 };
-    g.doFee += Number(row.doFee) || 0;
-    if (!g.row.vessel && row.vessel) g.row = { ...g.row, vessel: row.vessel };
-    groups.set(key, g);
-  }
-  const lines: WhtLine[] = [];
-  for (const { row, doFee } of groups.values()) {
-    const vessel = WHT_DO_VESSELS.find((v) => v.pattern.test(String(row.vessel || '')));
-    if (!vessel?.fromTransport || !(doFee > 0) || inDoSheet(row.bl)) continue;
-    lines.push({ category: 'DO', date: row.transportDate, bl: row.bl, vessel: row.vessel, source: `ชีตงานขนส่ง (${row.sourceFile})`,
-      amount: round2(doFee), detail: `DO ${vessel.label} • ตามวันที่ตรวจปล่อย (ไม่มีในชีตค่าแลกดีโอ)`, count: 1 });
-  }
-  return lines;
 }
 
 /** ข้อมูลใบหัก ณ ที่จ่ายตามช่วงวันที่ตรวจปล่อย (อ่านอย่างเดียว) */
@@ -147,11 +129,9 @@ export async function withholdingData(body: ApiBody): Promise<ApiResult> {
   // DO: วันที่จ่ายจากชีตค่าแลกดีโอ — อ่านไม่ได้ไม่ล้มทั้งหน้า ยังเห็นหมวดอื่น แต่บอกว่า DO ขาด
   let doLines: WhtLine[] = [], unmatched: { date: string; bl: string; amount: number }[] = [];
   let doError = '', doTabs: string[] = [];
-  const sheetBls = new Set<string>();
   try {
     const sheet = await readDoSheet();
     doTabs = sheet.tabs;
-    for (const e of sheet.entries) { sheetBls.add(blKey(e.bl)); sheetBls.add(blBase(e.bl)); }
     const known = await db.selectDistinct({ bl: transportJobs.bl, vessel: transportJobs.vessel })
       .from(transportJobs).where(ne(transportJobs.vessel, ''));
     const vessels = new Map<string, string>();
@@ -163,7 +143,6 @@ export async function withholdingData(body: ApiBody): Promise<ApiResult> {
   } catch (error) {
     doError = String((error as Error).message || error);
   }
-  doLines.push(...buildTransportDoLines(rows, (bl) => sheetBls.has(blKey(bl)) || sheetBls.has(blBase(bl))));
   doLines.sort((a, b) => a.date.localeCompare(b.date) || a.bl.localeCompare(b.bl));
 
   return {
