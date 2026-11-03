@@ -90,7 +90,7 @@ const blBase = (bl: unknown) => blKey(bl).split('(')[0];
  * ใบหักค่า DO — จากชีตค่าแลกดีโอ ตามวันที่จ่ายจริง (1 แถวในชีต = 1 ใบ)
  * ชีตนี้ไม่มีช่อง VESSEL จึงหาสายเรือจากชีตงานขนส่งด้วยเลข BL
  * เทียบทั้ง BL เต็ม และส่วนหน้าวงเล็บ (ในชีตบางแถวลืมปิดวงเล็บ เช่น "KG…-668571(ONEYTYOGD2073800")
- * BL ที่ยังไม่ได้ลงชีตงานขนส่ง: ถ้ารูปแบบเลข BL บอกสายเรือได้ (blPattern เช่น JJC…) นับเลย ไม่งั้นแจ้งเป็น "หาสายเรือไม่เจอ"
+ * BL ที่ยังไม่ได้ลงชีตงานขนส่ง: ถ้ารูปแบบเลข BL บอกสายเรือได้ (blPattern เช่น JJC… / KPSCB) นับเลย ไม่งั้นแจ้งเป็น "หาสายเรือไม่เจอ"
  */
 export function buildDoLines(entries: DoEntry[], vessels: Map<string, string>, from: string, to: string) {
   const lines: WhtLine[] = [];
