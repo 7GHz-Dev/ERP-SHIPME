@@ -2,7 +2,8 @@
  * ใบหัก ณ ที่จ่าย (กระทำการแทน) — สรุปจำนวนใบและยอดหักตามช่วงวันที่ตรวจปล่อย
  *
  * ข้อมูลจากชีตงานขนส่ง MAESOT FREEZONE + TRANSIT (เซิร์ฟเวอร์แตกเป็นรายการ 1 รายการ = 1 ใบ)
- *   DO             : VESSEL = KNOT GLOBAL / SEAL / M+R — นับตามวันที่จ่ายในชีตค่าแลกดีโอ (ไม่ใช่วันที่ตรวจปล่อย)
+ *   DO             : VESSEL = KNOT GLOBAL / SEAL / M+R / IFOUR FREIGHT / JJ / RCL — นับตามวันที่จ่ายในชีตค่าแลกดีโอ (ไม่ใช่วันที่ตรวจปล่อย)
+ *                    RCL ไม่ได้ลงชีตค่าแลกดีโอ → ใช้ช่อง DO ในชีตงานขนส่ง ตามวันที่ตรวจปล่อย
  *   EXTRA MOVEMENT : ทุก BL ที่มียอด
  *   STORAGE + LIFT ON + LIFT OFF : รวมเป็น 1 ใบต่อ BL
  * ยอดหัก = ยอดในชีต ÷ ตัวหาร × อัตรา — ตั้งแยกได้ทีละหมวด (ค่าเริ่มต้น ÷ 1.04 × 3%)
@@ -11,7 +12,7 @@
  */
 var whtState = { ready:false, data:null, filter:'' };
 var WHT_CATS = [
-  { key:'DO', label:'DO (KNOT GLOBAL / SEAL / M+R / IFOUR FREIGHT) ตามวันที่จ่าย' },
+  { key:'DO', label:'DO (KNOT GLOBAL / SEAL / M+R / IFOUR FREIGHT / JJ / RCL) ตามวันที่จ่าย' },
   { key:'EM', label:'EXTRA MOVEMENT' },
   { key:'PORT', label:'STORAGE / LIFT ON / LIFT OFF' }
 ];
@@ -87,7 +88,7 @@ function whtRenderDoWarn(res){
   var list = res.doUnmatched || [];
   if(list.length){
     html += '<div><b>BL ที่จ่าย DO แล้วแต่หาสายเรือ (VESSEL) ในชีตงานขนส่งไม่เจอ '+list.length+' รายการ</b>'
-      + ' — ยังไม่นับเป็นใบหัก ถ้าเป็น KNOT GLOBAL / SEAL / M+R ให้ลง BL ในชีตงานขนส่งก่อนแล้วดึงใหม่</div>'
+      + ' — ยังไม่นับเป็นใบหัก ถ้าเป็นสายเรือที่ออกใบหัก (KNOT GLOBAL / SEAL / M+R / IFOUR FREIGHT / JJ / RCL) ให้ลง BL ในชีตงานขนส่งก่อนแล้วดึงใหม่</div>'
       + '<div style="margin-top:4px;font-size:12px">'+list.map(function(x){
           return esc(whtDmy(x.date))+' <span class="mono">'+esc(x.bl)+'</span> '+whtMoney(x.amount);
         }).join(' • ')+'</div>';

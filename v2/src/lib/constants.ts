@@ -163,13 +163,17 @@ export const SERVICE_NO_CAR_PATTERN = /NO\s*-?\s*CAR/i;
 
 /**
  * ใบหัก ณ ที่จ่าย (กระทำการแทน) — นับจากชีตงานขนส่งตามช่วงวันที่ตรวจปล่อย
- * DO นับเฉพาะสายเรือ (ช่อง VESSEL) ที่ออกใบหักให้ — ในชีตเขียนว่า K-NOT / SEALS / M+R
+ * DO นับเฉพาะสายเรือ (ช่อง VESSEL) ที่ออกใบหักให้ — ในชีตเขียนว่า K-NOT / SEALS / M+R / IFOUR / JJ / RCL
+ * fromTransport = สายเรือที่ไม่ได้ลงในชีตค่าแลกดีโอ (RCL งาน TRANSIT) → ใช้ช่อง DO ในชีตงานขนส่ง ตามวันที่ตรวจปล่อย
+ *   (BL ไหนมีในชีตค่าแลกดีโอแล้ว ใช้ของชีตค่าแลกดีโอ ไม่นับซ้ำ)
  */
-export const WHT_DO_VESSELS: { label: string; pattern: RegExp }[] = [
+export const WHT_DO_VESSELS: { label: string; pattern: RegExp; fromTransport?: boolean }[] = [
   { label: 'KNOT GLOBAL', pattern: /K\s*-?\s*NOT/i },
   { label: 'SEAL', pattern: /^\s*SEALS?\b/i },
   { label: 'M+R', pattern: /M\s*\+\s*R/i },
-  { label: 'IFOUR FREIGHT', pattern: /I\s*-?\s*FOUR/i }
+  { label: 'IFOUR FREIGHT', pattern: /I\s*-?\s*FOUR/i },
+  { label: 'JJ', pattern: /^\s*J\s*-?\s*J\b/i },
+  { label: 'RCL', pattern: /\bR\.?\s*C\.?\s*L\b/i, fromTransport: true }
 ];
 /**
  * LIFT ON ต่ำกว่า 1,000 (เช่น 716.90) ไม่ออกใบหัก — ใช้กับงานตรวจปล่อยถึงสิ้นเดือน ก.ย. 2569
