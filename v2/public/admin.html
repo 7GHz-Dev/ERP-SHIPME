@@ -834,6 +834,7 @@
           <input id="invl-from" type="date" title="วันที่ออกใบ ตั้งแต่">
           <input id="invl-to" type="date" title="วันที่ออกใบ ถึง">
           <button id="invl-reload" class="btn btn-ghost btn-sm">โหลดใหม่</button>
+          <button id="invl-excel" class="btn btn-ghost btn-sm" title="ส่งออกใบที่แสดงอยู่ (ตามช่วงวันที่ ตัวกรอง และคำค้น) เป็นไฟล์ Excel">📊 Excel</button>
         </div>
         <div class="toolbar" style="margin-top:-6px">
           <span class="muted">แสดง</span>
@@ -3628,6 +3629,7 @@ $('inv-reload').addEventListener('click', loadInvoiceSources);
 $('invl-reload').addEventListener('click', loadInvoiceList);
 $('inv-search').addEventListener('input', renderInvoiceSources);
 $('invl-search').addEventListener('input', renderInvoiceList);
+$('invl-excel').addEventListener('click', invAdvExcel);
 ['invl-show-loose','invl-show-batched','invl-show-kola'].forEach(function(id){
   $(id).addEventListener('change', renderInvoiceList);
 });
@@ -4972,6 +4974,75 @@ function renderInvoiceList(){
     });
   };
   invDecide('.invl-cancel', 'cancelled', 'ยกเลิกใบ %s ?\n\nรายการจะถูกลบออกจากตาราง และเลขใบนี้กลับมาใช้ใหม่ได้');
+}
+
+/**
+ * Excel ใบแจ้งหนี้ ADV — ใบที่แสดงอยู่ในตาราง (ช่วงวันที่ + ตัวกรอง + คำค้น ตามลำดับที่เรียงบนจอ)
+ * ชีต 1 ใบละแถว (ยอด/ชุดเอกสาร/สถานะเอกสาร/รับชำระ) • ชีต 2 รายการในใบ (ยอดก่อน VAT)
+ */
+function invAdvDmy(ymd){ var m=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(ymd||'')); return m ? m[3]+'/'+m[2]+'/'+m[1] : String(ymd||''); }
+function invAdvDocStatus(r){
+  if(r.docStatus === 'accepted') return 'ลูกค้ารับเอกสารแล้ว';
+  if(r.docStatus === 'waiting') return r.needsFix ? 'ต้องแก้'+(r.fixNote ? ': '+r.fixNote : '') : 'รอลูกค้ารับเอกสาร';
+  if(r.sentToKola) return 'ส่ง KOLA แล้ว';
+  return r.batchNo ? 'จัดชุดแล้ว รอส่ง' : 'ยังไม่จัดชุด';
+}
+function invAdvPayStatus(r){
+  var paid=Number(r.paidAmount)||0, total=Number(r.total)||0;
+  if(paid <= 0) return 'ค้างชำระ';
+  return paid + 0.005 >= total ? 'ชำระครบ' : 'ชำระบางส่วน';
+}
+function invAdvExcel(){
+  if(!window.XLSX){ alert('ตัวสร้างไฟล์ Excel ยังไม่โหลด (ต้องใช้อินเทอร์เน็ต)'); return; }
+  var list=(invState.listRows || []).slice();
+  if(!list.length){ alert('ไม่มีใบให้ส่งออก'); return; }
+  var MONEY='#,##0.00', r2=function(n){ return Math.round((Number(n)||0)*100)/100; };
+  var sum=function(k, f){ return r2(list.reduce(function(t, x){ return t+(f ? f(x) : (Number(x[k])||0)); }, 0)); };
+  var outstanding=function(r){ return Math.max(0, r2((Number(r.total)||0)-(Number(r.paidAmount)||0))); };
+  function sheet(aoa, headRow, moneyCols, widths){
+    var ws=XLSX.utils.aoa_to_sheet(aoa);
+    for(var r=headRow+1; r<aoa.length; r++) moneyCols.forEach(function(c){
+      var cell=ws[XLSX.utils.encode_cell({ r:r, c:c })]; if(cell && cell.t==='n') cell.z=MONEY;
+    });
+    ws['!cols']=widths.map(function(w){ return { wch:w }; });
+    return ws;
+  }
+  var from=$('invl-from').value, to=$('invl-to').value, q=$('invl-search').value.trim();
+  var range=ArReport.rangeText(from, to)+(q ? ' • ค้นหา "'+q+'"' : '');
+  var batchName=function(r){ return r.batchNo ? (r.batchName || ('ชุดที่ '+String(r.batchNo).padStart(2,'0')+'/'+String(r.batchPeriod||'').slice(4,6))) : ''; };
+
+  var aoa=[['ใบแจ้งหนี้ ADV (สำรองจ่าย) — '+range], [],
+    ['ลำดับ','เลขที่ใบแจ้งหนี้','วันที่','ประเภท','ลูกค้า','B/L','ยอดก่อน VAT','VAT 7%','ยอดรวม',
+     'ชุดเอกสาร','วันที่ฝากส่ง','สถานะเอกสาร','ชำระแล้ว','วันที่รับชำระ','ค้างชำระ','สถานะชำระ','เลขที่ใบเสร็จ','หมายเหตุ']];
+  list.forEach(function(r, i){
+    aoa.push([i+1, r.number, invAdvDmy(r.issueDate), r.kind==='NV' ? 'NON VAT' : 'VAT', r.customerName||'', r.bl||'',
+      r2(r.subtotal), r2(r.vat), r2(r.total), batchName(r), r.batchSentDate ? invAdvDmy(r.batchSentDate) : '', invAdvDocStatus(r),
+      r2(r.paidAmount), r.paidAt ? invAdvDmy(r.paidAt) : '', outstanding(r), invAdvPayStatus(r), r.receiptNo||'', r.note||'']);
+  });
+  if(list.length > 1) aoa.push(['', 'รวม '+list.length+' ใบ', '', '', '', '', sum('subtotal'), sum('vat'), sum('total'),
+    '', '', '', sum('paidAmount'), '', sum('', outstanding)]);
+  var ws1=sheet(aoa, 2, [6,7,8,12,14], [7,14,11,9,30,20,14,12,14,13,12,22,14,13,14,13,15,24]);
+
+  var detail=[['รายละเอียดใบแจ้งหนี้ ADV — '+range],
+    ['จำนวนเงินเป็นยอดก่อน VAT (รวมทุกแถวของใบ = ยอดก่อน VAT ของใบนั้น)'],
+    ['ลำดับ','เลขที่ใบแจ้งหนี้','วันที่ใบแจ้งหนี้','ประเภท','B/L','รายการ','จำนวน','ราคาต่อหน่วย','จำนวนเงิน','หมายเหตุ']];
+  var n=0, total=0;
+  list.forEach(function(r){
+    (r.items || []).forEach(function(it){
+      if(!it || (!String(it.label||'').trim() && !Number(it.amount))) return;
+      total+=Number(it.amount)||0;
+      detail.push([++n, r.number, invAdvDmy(r.issueDate), r.kind==='NV' ? 'NON VAT' : 'VAT', r.bl||'', it.label||'',
+        Number(it.qty) ? Number(it.qty) : '', Number(it.unitPrice) ? r2(it.unitPrice) : '', r2(it.amount), it.note||'']);
+    });
+  });
+  if(n) detail.push(['', 'รวม '+n+' รายการ', '', '', '', '', '', '', r2(total), '']);
+  var ws2=sheet(detail, 2, [7,8], [7,14,13,9,20,40,9,13,15,22]);
+
+  var wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws1, 'ใบแจ้งหนี้ ADV');
+  XLSX.utils.book_append_sheet(wb, ws2, 'รายละเอียดใบแจ้งหนี้ ADV');
+  var today=new Date(Date.now()+7*3600000).toISOString().slice(0,10);
+  XLSX.writeFile(wb, ('ใบแจ้งหนี้-ADV-'+(from||to ? (from||'')+'_'+(to||'') : today)+'.xlsx').replace(/[\\/:*?"<>|]/g,'-'));
 }
 
 /** เปิดหน้าต่างใหม่แล้ววาดใบแจ้งหนี้ตามฟอร์มในชีต — สั่งพิมพ์หรือ Save as PDF ได้เลย */
