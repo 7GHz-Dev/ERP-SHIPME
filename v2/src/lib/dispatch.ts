@@ -299,7 +299,7 @@ const handlers: Record<string, Handler> = {
     const session = await guard(body, ['admin', 'manager']);
     if (session.error) return session.error;
     if (!Array.isArray(body.items) || !body.items.length) return { ok: false, error: 'bad_request' };
-    return { ok: true, items: await saveClaimRates(body.items) };
+    return { ok: true, items: await saveClaimRates(body.items, session.user) };
   },
   saveClaim: async (body) => {
     const session = await guard(body);

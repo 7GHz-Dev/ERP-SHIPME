@@ -1,6 +1,6 @@
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '@/db';
-import { claimRates, claims } from '@/db/schema';
+import { appOptions, claimRates, claims } from '@/db/schema';
 import { AUTO_MIN_CONTAINERS, CLAIM_ITEM_DEFAULTS, CLAIM_MAX_EDITS } from './constants';
 import { appOptionsPayload, readAppOptions } from './options';
 import type { ApiResult } from './types';
@@ -15,12 +15,33 @@ export type ClaimItem = {
   note: string; reasons: ClaimReason[];
 };
 
+/**
+ * หัวข้อเบิกที่ admin ปิดใช้งาน — เก็บเป็นรายการ key ใน app_options (ไม่ต้องเพิ่มคอลัมน์)
+ * ปิดแล้วพนักงานจะไม่เห็นหัวข้อนั้นในใบเบิกใหม่ แต่ใบเดิมที่มีหัวข้อนี้อยู่แล้วยังแก้ต่อได้ ยอดไม่หาย
+ */
+const DISABLED_KEY = 'claimDisabled';
+
+async function readDisabledClaimKeys(): Promise<Set<string>> {
+  const [row] = await db.select({ valueJson: appOptions.valueJson }).from(appOptions)
+    .where(eq(appOptions.key, DISABLED_KEY)).limit(1);
+  const list = safeJson<unknown>(row?.valueJson, []);
+  return new Set(Array.isArray(list) ? list.map(String) : []);
+}
+
+async function writeDisabledClaimKeys(keys: Set<string>) {
+  const valueJson = JSON.stringify(CLAIM_ITEM_DEFAULTS.map((item) => item.key).filter((key) => keys.has(key)));
+  const updatedAt = nowIso();
+  await db.insert(appOptions).values({ key: DISABLED_KEY, valueJson, updatedAt })
+    .onConflictDoUpdate({ target: appOptions.key, set: { valueJson, updatedAt } });
+}
+
 export async function readClaimItems() {
-  const rows = await db.select().from(claimRates);
+  const [rows, disabled] = await Promise.all([db.select().from(claimRates), readDisabledClaimKeys()]);
   const saved = Object.fromEntries(rows.map((row) => [row.key, row]));
   return CLAIM_ITEM_DEFAULTS.map((item) => ({
     key: item.key,
     label: item.label,
+    active: !disabled.has(item.key),
     perContainer: item.perContainer,
     rate: Number(saved[item.key]?.rate) || Number(item.rate) || 0,
     primary: Boolean(item.primary),
@@ -35,8 +56,20 @@ export async function readClaimItems() {
   }));
 }
 
-export async function saveClaimRates(items: unknown) {
+export async function saveClaimRates(items: unknown, actor: { role: string } = { role: '' }) {
   const incoming = Array.isArray(items) ? items : [];
+  // เปิด/ปิดหัวข้อ — เฉพาะ admin (manager แก้อัตราได้ แต่สวิตช์นี้ไม่มีผล)
+  if (actor.role === 'admin' && incoming.some((raw) => typeof (raw as any)?.active === 'boolean')) {
+    const disabled = await readDisabledClaimKeys();
+    for (const raw of incoming) {
+      const key = String((raw as any)?.key || '');
+      const active = (raw as any)?.active;
+      if (!defaultOf(key) || typeof active !== 'boolean') continue;
+      if (active) disabled.delete(key); else disabled.add(key);
+    }
+    // ปิดหมดทุกหัวข้อ = พนักงานเบิกอะไรไม่ได้เลย ไม่บันทึกสวิตช์ชุดนี้
+    if (disabled.size < CLAIM_ITEM_DEFAULTS.length) await writeDisabledClaimKeys(disabled);
+  }
   // ทำในทรานแซกชันเดียว ไม่งั้นแก้อัตราค้างกลางคันแล้วยอดเพี้ยนคนละครึ่ง
   await db.transaction(async (tx) => {
     for (const raw of incoming) {
@@ -65,7 +98,8 @@ function autoQty(key: string, containers: number) {
   return min && containers < min ? 0 : containers;
 }
 
-export async function computeClaim(lines: unknown, containers: number) {
+/** keepKeys = หัวข้อที่มีอยู่แล้วในใบเดิม — ปิดใช้งานไปแล้วก็ยังคิดให้ ใบเก่าแก้ต่อได้โดยยอดไม่หาย */
+export async function computeClaim(lines: unknown, containers: number, keepKeys: Set<string> = new Set()) {
   const config = Object.fromEntries((await readClaimItems()).map((item) => [item.key, item]));
   const options = await readAppOptions();
   const items: ClaimItem[] = [];
@@ -74,6 +108,7 @@ export async function computeClaim(lines: unknown, containers: number) {
   for (const line of Array.isArray(lines) ? lines : []) {
     const itemConfig = config[String((line as any)?.key || '')];
     if (!itemConfig) continue;
+    if (!itemConfig.active && !keepKeys.has(itemConfig.key)) continue;
     const item: ClaimItem = {
       key: itemConfig.key, label: itemConfig.label, perContainer: itemConfig.perContainer,
       rate: 0, qty: 0, unit: '', amount: 0,
@@ -283,15 +318,18 @@ export async function saveClaim(
   if (!validYmd(inspectDate)) return { ok: false, error: 'missing_inspect_date' };
   if (!(containers > 0) || containers > 999) return { ok: false, error: 'invalid_containers' };
 
-  const calculated = await computeClaim(claim?.items, containers);
+  const claimId = String(claim?.id || '').trim();
+  const [row] = claimId ? await db.select().from(claims).where(eq(claims.id, claimId)).limit(1) : [];
+  if (claimId && !row) return { ok: false, error: 'claim_not_found' };
+  const oldItems = safeJson<unknown>(row?.itemsJson, []);
+  const keepKeys = new Set(Array.isArray(oldItems) ? oldItems.map((item: any) => String(item?.key || '')) : []);
+
+  const calculated = await computeClaim(claim?.items, containers, keepKeys);
   if (!calculated.items.length) return { ok: false, error: 'no_claim_items' };
 
   const now = nowIso();
-  const claimId = String(claim?.id || '').trim();
 
-  if (claimId) {
-    const [row] = await db.select().from(claims).where(eq(claims.id, claimId)).limit(1);
-    if (!row) return { ok: false, error: 'claim_not_found' };
+  if (row) {
     const isBoss = ['admin', 'manager'].includes(user.role);
     if (row.username.toLowerCase() !== user.username.toLowerCase() && !isBoss) {
       return { ok: false, error: 'forbidden' };

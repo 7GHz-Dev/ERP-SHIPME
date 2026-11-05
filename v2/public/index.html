@@ -1645,9 +1645,12 @@ function r2(n){ return Math.round((Number(n)||0)*100)/100; }
 // ---- แสดงผล ----
 // โชว์เฉพาะ 5 หัวข้อหลัก (LIFT ON, ค่าบริการเพิ่มเติม(ฟรีโซน), EXTRA MOVEMENT, LIFT OFF, เงินสำรอง)
 // ที่เหลือซ่อนไว้จนกดสวิตช์ "แสดงหัวข้อทั้งหมด" — หัวข้อที่ติ๊กไว้แล้วจะไม่ถูกซ่อน (กันข้อมูลหาย)
+// หัวข้อที่ admin ปิดใช้งาน — ไม่โชว์เลย ยกเว้นใบเดิมที่ติ๊กหัวข้อนี้ไว้แล้ว (แก้ต่อได้ ยอดไม่หาย)
+function claimActive(c){ return c.active!==false; }
 function claimVisible(c){
-  if(claim.showAll || c.primary) return true;
   var s=claim.form && claim.form.sel[c.key];
+  if(!claimActive(c)) return !!(s && s.on);
+  if(claim.showAll || c.primary) return true;
   return !!(s && s.on);
 }
 
@@ -1658,7 +1661,7 @@ function renderClaimItems(){
     return '<div class="cl-item'+(s.on?' on':'')+'" data-key="'+c.key+'">'+
       '<label class="cl-head">'+
         '<input type="checkbox" class="cl-chk"'+(s.on?' checked':'')+'>'+
-        '<span class="cl-name">'+esc(c.label)+'</span>'+
+        '<span class="cl-name">'+esc(c.label)+(claimActive(c)?'':' <small style="color:#b91c1c">(ปิดใช้งานแล้ว — ติ๊กออกแล้วเลือกใหม่ไม่ได้)</small>')+'</span>'+
         '<span class="cl-amt" id="amt-'+c.key+'">'+fmtM(itemAmount(c.key))+'</span>'+
       '</label>'+
       '<div class="cl-body'+(s.on?'':' hidden')+'">'+claimBodyHTML(c)+'</div>'+
@@ -1669,7 +1672,7 @@ function renderClaimItems(){
 }
 
 function updateClaimShowAllHint(){
-  var hidden=claim.cfg.filter(function(c){ return !c.primary && !(claim.form && claim.form.sel[c.key].on); }).length;
+  var hidden=claim.cfg.filter(function(c){ return claimActive(c) && !c.primary && !(claim.form && claim.form.sel[c.key].on); }).length;
   $('cl-showall-hint').textContent = claim.showAll
     ? '(แสดงครบทุกหัวข้อ)'
     : (hidden ? ('(ซ่อนอยู่ '+hidden+' หัวข้อ)') : '');
@@ -3049,7 +3052,7 @@ function setSlipStatus(kind, html){
 
 function resetSlip(){
   settle.slip=null;
-  settle.slipRaw=''; settle.slipMaxW=SLIP_W_START; settle.slipSize='';
+  settle.slipRaw=''; settle.slipSide=0; settle.slipSize='';
   clearTimeout(slipTimer);
   $('st-slip-hires-wrap').classList.add('hidden');
   $('st-slip-file').value='';
@@ -3269,7 +3272,7 @@ $('st-extra-file').addEventListener('change', function(){
   var reader=new FileReader();
   reader.onload=function(){
     setExtraStatus('wait','<span class="spinner"></span> กำลังอัปโหลดและอ่านสลิป…');
-    resizeImage(String(reader.result||''), SLIP_W_START, 0.92, false).then(function(out){
+    resizeImage(String(reader.result||''), SLIP_SIDE_START, SLIP_Q, false).then(function(out){
       return uploadLarge(dataUrlToBlob(out.dataUrl), { purpose:'slip', expectDate:date });
     }).then(function(up){
       settle.extraPending={ date:date, amount:amount, retried:false };
@@ -3341,23 +3344,27 @@ $('st-extra-confirm').addEventListener('click', function(){
     .catch(function(){ setExtraStatus('err','ส่งค่าไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต'); });
 });
 
-// ปรับขนาดรูปสลิปก่อนอัป — allowUpscale = ขยายให้ใหญ่กว่าต้นฉบับได้ (ใช้ตอนกดเพิ่มความละเอียดให้ OCR อ่านง่ายขึ้น)
-function resizeImage(dataUrl, maxW, quality, allowUpscale){
+// ปรับขนาดรูปสลิปก่อนอัป — maxSide = ด้านที่ยาวกว่า (กว้างหรือสูง) ไม่เกินเท่านี้
+// allowUpscale = ขยายให้ใหญ่กว่าต้นฉบับได้ (ใช้ตอนกดเพิ่มความละเอียดให้ OCR อ่านง่ายขึ้น)
+function resizeImage(dataUrl, maxSide, quality, allowUpscale){
   return new Promise(function(resolve){
     var img=new Image();
     img.onload=function(){
-      var w=img.width||0, h=img.height||0;
-      if(!w){ resolve({ dataUrl:dataUrl, w:0, h:0 }); return; }
-      var sc=maxW/w;
+      var w=img.naturalWidth||img.width||0, h=img.naturalHeight||img.height||0;
+      if(!w || !h){ resolve({ dataUrl:dataUrl, w:0, h:0 }); return; }
+      var sc=maxSide/Math.max(w, h);
       if(sc>1 && !allowUpscale) sc=1;
       var nw=Math.max(1, Math.round(w*sc)), nh=Math.max(1, Math.round(h*sc));
       try {
         var cv=document.createElement('canvas');
         cv.width=nw; cv.height=nh;
         var ctx=cv.getContext('2d');
+        // พื้นขาว — PNG ที่มีพื้นโปร่งใสแปลงเป็น JPEG แล้วจะไม่กลายเป็นพื้นดำ
+        ctx.fillStyle='#fff'; ctx.fillRect(0, 0, nw, nh);
+        ctx.imageSmoothingEnabled=true;
         if('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality='high';
         ctx.drawImage(img, 0, 0, nw, nh);
-        resolve({ dataUrl:cv.toDataURL('image/jpeg', quality||0.92), w:nw, h:nh });
+        resolve({ dataUrl:cv.toDataURL('image/jpeg', quality||SLIP_Q), w:nw, h:nh });
       } catch(e){ resolve({ dataUrl:dataUrl, w:w, h:h }); }
     };
     img.onerror=function(){ resolve({ dataUrl:dataUrl, w:0, h:0 }); };
@@ -3365,8 +3372,13 @@ function resizeImage(dataUrl, maxW, quality, allowUpscale){
   });
 }
 
-// ความกว้างที่ใช้อัปสลิป — กดปุ่มเพิ่มความละเอียดจะคูณ 2 ทีละครั้ง (มีเพดานกันมือถือแรงไม่พอ)
-var SLIP_W_START=1600, SLIP_W_CAP=4800;
+/**
+ * ความละเอียดสลิป (นับด้านที่ยาวกว่า)
+ * แนบครั้งแรก: ใช้ขนาดเดิมของรูป ย่อเฉพาะรูปที่ใหญ่เกิน 3,200 px (ไม่ขยายรูปเล็ก รูปจะไม่แตก)
+ * เดิมย่อเหลือกว้าง 1,600 px ทำให้รูปถ่ายสลิปจากกล้องตัวหนังสือเล็กเกินจนอ่านไม่ออก
+ * กดปุ่มเพิ่มความละเอียด = ขยายทีละ 2 เท่าจนถึงเพดาน 4,800 px (มีเพดานกันมือถือแรงไม่พอ)
+ */
+var SLIP_SIDE_START=3200, SLIP_SIDE_CAP=4800, SLIP_Q=0.95;
 
 // รูปต้นฉบับที่จะใช้ขยาย — ถ้าตัวแปรหลุด ยังดึงจากรูปตัวอย่างที่โชว์อยู่ได้ (เป็น data URL เหมือนกัน)
 function slipSourceImage(){
@@ -3375,14 +3387,14 @@ function slipSourceImage(){
   return /^data:image/.test(s) ? s : '';
 }
 
-function resizeSlipAndSend(maxW, quality){
+function resizeSlipAndSend(maxSide, quality, upscale){
   var f=settle.form, src=slipSourceImage();
   if(!f || !src){ toast('แนบสลิปก่อน'); return; }
   var bal=mainExpect(), date=f.returnedDate;
   if(!(bal>0) || !date){ toast('ต้องมียอดที่ต้องโอนคืนและวันที่โอนคืนก่อน'); return; }
-  settle.slipMaxW=maxW;
-  setSlipStatus('wait','<span class="spinner"></span> กำลังเตรียมรูป (กว้าง '+maxW+' px)…');
-  resizeImage(src, maxW, quality, true).then(function(out){
+  setSlipStatus('wait','<span class="spinner"></span> กำลังเตรียมรูป…');
+  resizeImage(src, maxSide, quality, !!upscale).then(function(out){
+    settle.slipSide = out.w ? Math.max(out.w, out.h) : maxSide;
     settle.slipSize = out.w ? (out.w+' × '+out.h+' px') : '';
     sendSlip(out.dataUrl, bal, date);
   });
@@ -3391,21 +3403,21 @@ function resizeSlipAndSend(maxW, quality){
 // โชว์/ซ่อนปุ่มเพิ่มความละเอียด — เรียกได้ทุกจังหวะที่สถานะสลิปเปลี่ยน
 function updateHiResButton(passed){
   var src=slipSourceImage();
-  var cur=settle.slipMaxW||SLIP_W_START;
-  var show = !passed && !!src && cur<SLIP_W_CAP;
+  var cur=settle.slipSide||SLIP_SIDE_START;
+  var show = !passed && !!src && cur<SLIP_SIDE_CAP;
   $('st-slip-hires-wrap').classList.toggle('hidden', !show);
   if(!show) return;
-  var nextW=Math.min(SLIP_W_CAP, cur*2);
-  $('st-slip-hires').textContent='🔍 เพิ่มความละเอียดรูป 2 เท่า (กว้าง '+nextW+' px)';
-  $('st-slip-size').textContent='ความละเอียดที่ส่งไปตอนนี้: '+(settle.slipSize||('กว้าง '+cur+' px'))+
+  var next=Math.min(SLIP_SIDE_CAP, cur*2);
+  $('st-slip-hires').textContent='🔍 เพิ่มความละเอียดรูป 2 เท่า (ด้านยาว '+next+' px)';
+  $('st-slip-size').textContent='ความละเอียดที่ส่งไปตอนนี้: '+(settle.slipSize||('ด้านยาว '+cur+' px'))+
     ' — เพิ่มแล้ว OCR มักอ่านตัวเลขได้ดีขึ้น';
 }
 
 // อ่านค่าในสลิปไม่ผ่าน → เพิ่มความละเอียดรูปเป็น 2 เท่า แล้วอัป+อ่านใหม่ (ไม่ต้องเลือกไฟล์ซ้ำ)
 $('st-slip-hires').addEventListener('click', function(){
-  var cur=settle.slipMaxW||SLIP_W_START;
-  if(cur>=SLIP_W_CAP){ toast('เพิ่มความละเอียดได้สูงสุดแล้ว (กว้าง '+cur+' px)'); return; }
-  resizeSlipAndSend(Math.min(SLIP_W_CAP, cur*2), 0.97);
+  var cur=settle.slipSide||SLIP_SIDE_START;
+  if(cur>=SLIP_SIDE_CAP){ toast('เพิ่มความละเอียดได้สูงสุดแล้ว (ด้านยาว '+cur+' px)'); return; }
+  resizeSlipAndSend(Math.min(SLIP_SIDE_CAP, cur*2), 0.97, true);
 });
 
 $('st-slip-file').addEventListener('change', function(){
@@ -3423,7 +3435,8 @@ $('st-slip-file').addEventListener('change', function(){
     $('st-slip-img').src=raw;
     $('st-slip-prev').classList.remove('hidden');
     settle.slipRaw=raw;                       // เก็บรูปต้นฉบับไว้ เผื่อกดเพิ่มความละเอียดภายหลัง
-    resizeSlipAndSend(SLIP_W_START, 0.92);
+    settle.slipSide=0;
+    resizeSlipAndSend(SLIP_SIDE_START, SLIP_Q, false);
   };
   reader.onerror=function(){ toast('อ่านไฟล์รูปไม่สำเร็จ'); };
   reader.readAsDataURL(file);

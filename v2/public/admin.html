@@ -222,6 +222,10 @@
 .inv-row-actions{display:grid;gap:8px;min-width:112px}.inv-source-table .pill{display:block;margin-bottom:5px}
 /* ---- แพลนงานตรวจปล่อย (job-plan.js) ---- */
 .wrap:has(#tab-plan:not(.hidden)){max-width:1780px}
+/* ตั้งค่ารายการเบิก: สวิตช์ใช้งาน */
+.rate-sw{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;cursor:pointer}
+.rate-sw input{width:18px;height:18px;margin:0}
+#rate-body tr.rate-off td:not(:nth-child(2)){opacity:.5}
 /* ใบแจ้งหนี้: แยกส่วน ADV / ค่าบริการ */
 .inv-groups{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}
 .inv-grp{border:1.5px solid var(--line);background:#fff;border-radius:12px;padding:10px 18px;font:700 15px inherit;font-family:inherit;color:#334155;cursor:pointer}
@@ -597,12 +601,13 @@
         <h3 class="sec">อัตราค่าใช้จ่าย (ใบเบิก)</h3>
         <p class="muted" style="margin:0 0 14px">
           หัวข้อที่ <b>คิดจากจำนวนตู้</b> จะคำนวณให้อัตโนมัติ (อัตรา × จำนวนตู้) พนักงานแก้ยอดเองไม่ได้ •
-          หัวข้อที่ <b>กรอกเอง</b> พนักงานกรอกจำนวนเงินที่ใช้จริง ค่าที่ตั้งไว้ตรงนี้ใช้เป็นค่าตั้งต้นให้เท่านั้น
+          หัวข้อที่ <b>กรอกเอง</b> พนักงานกรอกจำนวนเงินที่ใช้จริง ค่าที่ตั้งไว้ตรงนี้ใช้เป็นค่าตั้งต้นให้เท่านั้น •
+          <b>ใช้งาน</b> = admin ปิดหัวข้อได้ — ปิดแล้วพนักงานจะไม่เห็นหัวข้อนั้นในใบเบิกใหม่ (ใบเดิมที่มีหัวข้อนี้แล้วยังแก้ต่อได้ ยอดไม่หาย)
         </p>
         <div class="tbl-wrap">
           <table class="grid">
-            <thead><tr><th style="width:44px">#</th><th>หัวข้อค่าใช้จ่าย</th><th>วิธีคิด</th><th>อัตรา / ค่าตั้งต้น (บาท)</th></tr></thead>
-            <tbody id="rate-body"><tr><td colspan="4"><div class="center-load"><span class="spinner"></span> กำลังโหลด…</div></td></tr></tbody>
+            <thead><tr><th style="width:44px">#</th><th style="width:92px">ใช้งาน</th><th>หัวข้อค่าใช้จ่าย</th><th>วิธีคิด</th><th>อัตรา / ค่าตั้งต้น (บาท)</th></tr></thead>
+            <tbody id="rate-body"><tr><td colspan="5"><div class="center-load"><span class="spinner"></span> กำลังโหลด…</div></td></tr></tbody>
           </table>
         </div>
         <div style="display:flex; gap:10px; align-items:center; margin:14px 0 28px">
@@ -2203,14 +2208,14 @@ $('rate-reload').addEventListener('click', loadRates);
 $('rate-save').addEventListener('click', saveRates);
 
 function loadRates(){
-  $('rate-body').innerHTML='<tr><td colspan="4"><div class="center-load"><span class="spinner"></span> กำลังโหลด…</div></td></tr>';
+  $('rate-body').innerHTML='<tr><td colspan="5"><div class="center-load"><span class="spinner"></span> กำลังโหลด…</div></td></tr>';
   api({action:'claimConfig', token:state.token}).then(function(res){
     if(!guard(res)) return;
-    if(!res.ok){ $('rate-body').innerHTML='<tr><td colspan="4" style="padding:16px;color:#dc2626">'+errTH(res.error)+'</td></tr>'; return; }
+    if(!res.ok){ $('rate-body').innerHTML='<tr><td colspan="5" style="padding:16px;color:#dc2626">'+errTH(res.error)+'</td></tr>'; return; }
     claimCfg=res.items||[];
     renderRates();
     $('rate-hint').textContent='';
-  }).catch(function(){ $('rate-body').innerHTML='<tr><td colspan="4" style="padding:16px">โหลดไม่สำเร็จ</td></tr>'; });
+  }).catch(function(){ $('rate-body').innerHTML='<tr><td colspan="5" style="padding:16px">โหลดไม่สำเร็จ</td></tr>'; });
 }
 
 function reasonRowHTML(r){
@@ -2248,9 +2253,24 @@ function renderRates(){
     } else {
       cell = '<input type="number" class="rate-in" data-key="'+esc(c.key)+'" min="0" step="1" value="'+(Number(c.rate)||0)+'" style="width:140px;text-align:right">';
     }
-    return '<tr><td>'+(i+1)+'</td><td class="name" style="text-align:left">'+esc(c.label)+'</td><td>'+type+'</td><td style="text-align:left">'+cell+'</td></tr>';
+    // สวิตช์ใช้งาน — admin กดได้ คนอื่นเห็นสถานะอย่างเดียว
+    var on = c.active!==false, admin = isAdminUser();
+    var sw = '<label class="rate-sw" title="'+(admin?'ติ๊กออก = ปิดหัวข้อนี้ พนักงานจะไม่เห็นในใบเบิกใหม่':'เฉพาะ admin เปิด/ปิดได้')+'">'+
+      '<input type="checkbox" class="rate-active" data-key="'+esc(c.key)+'"'+(on?' checked':'')+(admin?'':' disabled')+'> '+
+      '<span class="pill '+(on?'approved':'rejected')+'">'+(on?'เปิด':'ปิด')+'</span></label>';
+    return '<tr class="'+(on?'':'rate-off')+'"><td>'+(i+1)+'</td><td>'+sw+'</td><td class="name" style="text-align:left">'+esc(c.label)+'</td><td>'+type+'</td><td style="text-align:left">'+cell+'</td></tr>';
   }).join('');
 }
+
+// สลับสวิตช์ใช้งาน — เปลี่ยนป้ายทันที บันทึกจริงตอนกด "บันทึกอัตรา"
+$('rate-body').addEventListener('change', function(e){
+  var cb=e.target;
+  if(!cb.classList || !cb.classList.contains('rate-active')) return;
+  var tr=cb.closest('tr'), pill=cb.parentNode.querySelector('.pill');
+  if(tr) tr.classList.toggle('rate-off', !cb.checked);
+  if(pill){ pill.className='pill '+(cb.checked?'approved':'rejected'); pill.textContent=cb.checked?'เปิด':'ปิด'; }
+  $('rate-hint').textContent='มีการเปลี่ยนแปลง — กด "บันทึกอัตรา" เพื่อบันทึก';
+});
 
 // เพิ่ม/ลบแถวเหตุผลของ "ค่าบริการเพิ่มเติมพิเศษ" โดยไม่ล้างค่าที่กำลังพิมพ์ในช่องอื่น
 $('rate-body').addEventListener('click', function(e){
@@ -2269,20 +2289,33 @@ $('rate-body').addEventListener('click', function(e){
 
 function saveRates(){
   if(!claimCfg.length){ toast('ยังไม่มีข้อมูลอัตรา'); return; }
+  var activeOf=function(key){
+    var cb=document.querySelector('.rate-active[data-key="'+key+'"]');
+    return cb ? cb.checked : true;
+  };
+  var admin=isAdminUser();
   var items=claimCfg.map(function(c){
-    if(c.key==='special'){
-      var rs=[];
-      Array.prototype.forEach.call(document.querySelectorAll('#sp-rows .sp-row'), function(row){
-        var label=row.querySelector('.sp-label').value.trim();
-        if(!label) return;
-        rs.push({ label:label, rate:Math.max(0, Number(row.querySelector('.sp-rate').value)||0) });
-      });
-      return { key:c.key, rate:0, reasons:rs };
-    }
-    var el=document.querySelector('.rate-in[data-key="'+c.key+'"]');
-    return { key:c.key, rate: el ? Math.max(0, Number(el.value)||0) : (Number(c.rate)||0) };
+    var it=claimRateItem(c);
+    if(admin) it.active=activeOf(c.key);
+    return it;
   });
-
+  if(admin && !items.some(function(it){ return it.active; })){ toast('ต้องเปิดใช้งานอย่างน้อย 1 หัวข้อ'); return; }
+  saveRateItems(items);
+}
+function claimRateItem(c){
+  if(c.key==='special'){
+    var rs=[];
+    Array.prototype.forEach.call(document.querySelectorAll('#sp-rows .sp-row'), function(row){
+      var label=row.querySelector('.sp-label').value.trim();
+      if(!label) return;
+      rs.push({ label:label, rate:Math.max(0, Number(row.querySelector('.sp-rate').value)||0) });
+    });
+    return { key:c.key, rate:0, reasons:rs };
+  }
+  var el=document.querySelector('.rate-in[data-key="'+c.key+'"]');
+  return { key:c.key, rate: el ? Math.max(0, Number(el.value)||0) : (Number(c.rate)||0) };
+}
+function saveRateItems(items){
   var b=$('rate-save'); b.disabled=true; b.textContent='กำลังบันทึก…';
   api({action:'saveClaimConfig', token:state.token, items:items}).then(function(res){
     b.disabled=false; b.textContent='บันทึกอัตรา';
@@ -2736,10 +2769,15 @@ function crResize(file){
     fr.onload=function(){
       var img=new Image();
       img.onload=function(){
-        var s=Math.min(1, 1600/(img.width||1)), c=document.createElement('canvas');
-        c.width=Math.round(img.width*s); c.height=Math.round(img.height*s);
-        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-        c.toBlob(function(b){ b ? resolve(b) : reject({error:'upload_failed'}); }, 'image/jpeg', 0.92);
+        // ด้านยาวไม่เกิน 3,200 px ไม่ขยายรูปเล็ก (เดิมย่อเหลือกว้าง 1,600 px ตัวหนังสือในรูปถ่ายเล็กจนอ่านไม่ออก)
+        var w=img.naturalWidth||img.width||1, h=img.naturalHeight||img.height||1;
+        var s=Math.min(1, 3200/Math.max(w, h)), c=document.createElement('canvas');
+        c.width=Math.max(1, Math.round(w*s)); c.height=Math.max(1, Math.round(h*s));
+        var ctx=c.getContext('2d');
+        ctx.fillStyle='#fff'; ctx.fillRect(0, 0, c.width, c.height);
+        if('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality='high';
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        c.toBlob(function(b){ b ? resolve(b) : reject({error:'upload_failed'}); }, 'image/jpeg', 0.95);
       };
       img.onerror=function(){ reject({error:'bad_image'}); };
       img.src=String(fr.result||'');
