@@ -1,9 +1,9 @@
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '@/db';
-import { appOptions, claimRates, claims } from '@/db/schema';
+import { appOptions, claimRates, claims, settlements } from '@/db/schema';
 import { AUTO_MIN_CONTAINERS, CLAIM_ITEM_DEFAULTS, CLAIM_MAX_EDITS } from './constants';
 import { appOptionsPayload, readAppOptions } from './options';
-import type { ApiResult } from './types';
+import type { ApiBody, ApiResult } from './types';
 import { fmtBaht, fmtDateStr, id, nowIso, round2, safeJson, validYmd } from './utils';
 
 const defaultOf = (key: string) => CLAIM_ITEM_DEFAULTS.find((item) => item.key === key);
@@ -395,4 +395,20 @@ export async function claimConfig(user: { role: string }) {
     options: await appOptionsPayload(),
     canEditRates: ['admin', 'manager'].includes(user.role)
   };
+}
+
+/**
+ * ยกเลิกใบเบิก (เฉพาะ admin) = ลบทิ้ง — วันนั้นว่าง พนักงานทำใบเบิกใหม่ได้ และหายจากยอดเบิกทุกหน้า
+ * ห้ามยกเลิกถ้าปิดบัญชีวันนั้นไปแล้ว เพราะยอดเบิกถูกบันทึกลงใบปิดบัญชีแล้ว (ยอดจะไม่ตรงกัน)
+ */
+export async function cancelClaim(body: ApiBody): Promise<ApiResult> {
+  const claimId = String(body.id || '').trim();
+  if (!claimId) return { ok: false, error: 'bad_request' };
+  const [row] = await db.select().from(claims).where(eq(claims.id, claimId)).limit(1);
+  if (!row) return { ok: false, error: 'claim_not_found' };
+  const [settled] = await db.select({ id: settlements.id }).from(settlements)
+    .where(and(eq(settlements.username, row.username), eq(settlements.inspectDate, row.inspectDate))).limit(1);
+  if (settled) return { ok: false, error: 'claim_settled' };
+  await db.delete(claims).where(eq(claims.id, claimId));
+  return { ok: true, id: claimId };
 }

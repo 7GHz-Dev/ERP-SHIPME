@@ -42,7 +42,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { checkins, geocodeCache, settlements, users } from '@/db/schema';
 import { guard, login } from './auth';
-import { claimConfig, listClaims, saveClaim, saveClaimRates } from './claims';
+import { cancelClaim, claimConfig, listClaims, saveClaim, saveClaimRates } from './claims';
 import { ACCOUNT_ROLES, AUTO_MIN_CONTAINERS } from './constants';
 import { env } from './env';
 import {
@@ -300,6 +300,11 @@ const handlers: Record<string, Handler> = {
     if (session.error) return session.error;
     if (!Array.isArray(body.items) || !body.items.length) return { ok: false, error: 'bad_request' };
     return { ok: true, items: await saveClaimRates(body.items, session.user) };
+  },
+  // ยกเลิกใบเบิกของพนักงาน — เฉพาะ admin
+  cancelClaim: async (body) => {
+    const session = await guard(body, ['admin']);
+    return session.error || cancelClaim(body);
   },
   saveClaim: async (body) => {
     const session = await guard(body);

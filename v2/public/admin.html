@@ -1464,6 +1464,7 @@ var ERR_TH={ server_busy:'ระบบไม่ว่างชั่วครา
   windows_required:'เข้างานได้จากคอมพิวเตอร์ Windows เท่านั้น', mobile_required:'สิทธิ์ของคุณเข้างานผ่านคอมพิวเตอร์ Windows ไม่ได้', checkin_not_allowed:'บัญชีนี้ไม่มีสิทธิ์เช็คชื่อเข้างาน',
   missing_inspect_date:'กรุณาเลือกวันที่ตรวจปล่อย', invalid_containers:'จำนวนตู้ไม่ถูกต้อง', no_claim_items:'ยังไม่ได้เลือกค่าใช้จ่าย', claim_not_found:'ไม่พบใบเบิกนี้', bad_request:'ข้อมูลไม่ครบถ้วน',
   claim_edit_limit:'ใบเบิกนี้แก้ไขครบ 5 ครั้งแล้ว กรุณาติดต่อผู้ดูแลระบบ',
+  claim_settled:'พนักงานปิดบัญชีของวันนี้ไปแล้ว ยกเลิกใบเบิกไม่ได้ เพราะยอดเบิกบันทึกอยู่ในใบปิดบัญชีแล้ว',
   receipt_not_allowed:'บัญชีนี้ไม่มีสิทธิ์ส่งใบเสร็จ', receipt_photo_save_failed:'บันทึกรูปใบเสร็จบนเซิร์ฟเวอร์ไม่สำเร็จ' };
 function errTH(c){ return ERR_TH[c]||('ข้อผิดพลาด: '+c); }
 function guard(res){ if(res && !res.ok && (res.error==='session_expired'||res.error==='invalid_token'||res.error==='forbidden')){ logout(); return false; } return true; }
@@ -2376,6 +2377,7 @@ function renderClaims(){
       '<td style="white-space:nowrap">'+
         '<button class="btn btn-ghost btn-sm" onclick="cmView('+i+')">ดู</button> '+
         '<button class="btn btn-ghost btn-sm" onclick="cmCopy('+i+')">คัดลอก</button>'+
+        (isAdminUser() ? ' <button class="btn btn-danger btn-sm" onclick="cmCancel('+i+', this)">ยกเลิก</button>' : '')+
       '</td></tr>';
   }).join('');
 }
@@ -2391,6 +2393,23 @@ function claimRevisions(r){
   return out;
 }
 
+// ยกเลิกใบเบิก (admin) — ลบทิ้ง พนักงานทำใบใหม่ของวันนั้นได้ • ปิดบัญชีวันนั้นแล้วยกเลิกไม่ได้
+window.cmCancel=function(i, btn){
+  var r=claimRows[i]; if(!r) return;
+  var msg='ยกเลิกใบเบิกนี้?\n\n'+r.name+' • วันที่ตรวจปล่อย '+fmtD(r.inspectDate)+'\n'+r.containers+' ตู้ • ยอดรวม '+fmtM(r.total)+' บาท'+
+    '\n\nใบเบิกจะถูกลบออกจากระบบ (ยอดเบิกหายจากทุกหน้า) และพนักงานทำใบเบิกใหม่ของวันนั้นได้ — ย้อนกลับไม่ได้';
+  if(!confirm(msg)) return;
+  btn.disabled=true;
+  api({action:'cancelClaim', token:state.token, id:r.id}).then(function(res){
+    if(!res.ok){
+      btn.disabled=false;
+      if(res.error==='session_expired'||res.error==='invalid_token'){ guard(res); return; }
+      alert('ยกเลิกไม่สำเร็จ: '+errTH(res.error)); return;
+    }
+    toast('ยกเลิกใบเบิกแล้ว ✓');
+    loadClaims();
+  }).catch(function(){ btn.disabled=false; toast('ยกเลิกไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต'); });
+};
 window.cmView=function(i){
   var r=claimRows[i]; if(!r) return;
   $('cm-detail').textContent=r.detailAll||r.detail||'(ไม่มีรายละเอียด)';
