@@ -66,6 +66,8 @@ export async function lookupTransport(date: string, user: LookupUser) {
       customer: group.customer,
       // มีคอลัมน์จำนวนตู้ใช้อันนั้น ไม่มีก็นับเบอร์ตู้ที่ไม่ซ้ำ ไม่มีอีกก็นับจำนวนแถว
       containers: Math.round(group.quantity || group.containers.size || group.rowCount),
+      // เลขตู้ของ BL — หน้าปิดบัญชีใช้ให้เลือกตู้ที่มีค่ายางเกิน / สำแดงเท็จ
+      containerNos: [...group.containers],
       sheet: group.sheet,
       file: group.file,
       source: group.source,

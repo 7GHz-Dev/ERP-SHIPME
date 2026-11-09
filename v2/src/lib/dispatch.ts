@@ -54,7 +54,7 @@ import {
 import { listReceipts, myReceipts, saveReceipt } from './receipts';
 import {
   listSettlements, saveCompanyRefund, saveSettleRates, saveSettlement, saveSettlementImage,
-  settleConfig, signSettlementImage
+  settleConfig, signSettlementImage, signSpecialPhoto
 } from './settlements';
 import { ocrDiagnostics, signSlipUpload, verifySlip } from './slip';
 import { saveDataImage } from './storage';
@@ -395,6 +395,8 @@ const handlers: Record<string, Handler> = {
     if (session.error) return session.error;
     const purpose = String(body.purpose || '');
     if (purpose === 'settlement') return signSettlementImage(body.id, session.user);
+    // รูปหลักฐานรายตู้ของ ยางเกิน / สำแดงเท็จ ในใบปิดบัญชี
+    if (purpose === 'special') return signSpecialPhoto(session.user);
     if (purpose === 'slip') return signSlipUpload(String(body.expectDate || ''), session.user);
     return { ok: false, error: 'bad_request' };
   },

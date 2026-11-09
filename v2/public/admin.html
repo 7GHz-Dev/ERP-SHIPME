@@ -1366,6 +1366,7 @@
     <pre id="sm-detail" style="white-space:pre-wrap; word-break:break-word; font-family:inherit; font-size:13px; background:#f7f9fb; border:1px solid var(--line); border-radius:10px; padding:14px; margin:0 0 12px; max-height:46vh; overflow:auto"></pre>
     <div id="sm-slip" class="muted" style="margin:0 0 10px; background:#f7f9fb; border:1px solid var(--line); border-radius:10px; padding:12px"></div>
     <div id="sm-insp" class="muted" style="margin:0 0 10px; background:#f7f9fb; border:1px solid var(--line); border-radius:10px; padding:12px"></div>
+    <div id="sm-sp" class="muted hidden" style="margin:0 0 10px; background:#f7f9fb; border:1px solid var(--line); border-radius:10px; padding:12px"></div>
     <div id="sm-image" class="muted" style="margin:0 0 14px"></div>
     <!-- บริษัทโอนคืนชิปปิ้ง: คงเหลือติดลบ หรือพนักงานโอนคืนไปแล้วแต่ค่าใช้จ่ายจริงเพิ่มทีหลัง -->
     <div id="sm-refund" class="hidden" style="margin:0 0 12px; border:1px solid #fecaca; background:#fff7f7; border-radius:10px; padding:12px">
@@ -2894,6 +2895,20 @@ window.smView=function(i){
   $('sm-insp').innerHTML = (r.inspectionFiles||[]).length
     ? ('📑 <b>หลักฐานการตรวจปล่อย</b><br>'+inspLinks(r, '<br>'))
     : '📑 ไม่มีไฟล์หลักฐานการตรวจปล่อย (ใบที่บันทึกก่อนเปิดใช้ DocScan)';
+  // ยางเกิน / สำแดงเท็จ รายตู้ พร้อมรูปที่พนักงานแนบ
+  var spLines=[];
+  (r.rows||[]).forEach(function(row){
+    (row.specials||[]).forEach(function(sp){
+      (sp.items||[]).forEach(function(it){
+        spLines.push('<div style="margin-top:6px"><b>'+esc(sp.label)+'</b> • BL '+esc(row.bl||'-')+' • ตู้ <b>'+esc(it.container)+'</b> = <b>'+fmtM(it.amount)+'</b> บาท<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">'+
+          (it.photos||[]).map(function(u, k){
+            return '<a href="'+esc(u)+'" target="_blank"'+vwAttr('img', u, sp.label+' — ตู้ '+it.container)+'><img src="'+esc(u)+'" alt="รูป '+(k+1)+'" loading="lazy" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--line)"></a>';
+          }).join('')+'</div></div>');
+      });
+    });
+  });
+  $('sm-sp').classList.toggle('hidden', !spLines.length);
+  $('sm-sp').innerHTML = spLines.length ? ('📷 <b>รูปค่าบริการเพิ่มเติมพิเศษ (รายตู้)</b>'+spLines.join('')) : '';
   $('sm-image').innerHTML = r.imageUrl
     ? ('🖼️ รูปใบปิดบัญชีบนเซิร์ฟเวอร์: <a href="'+esc(r.imageUrl)+'" target="_blank"'+vwAttr('img', photoFull(r.imageUrl), 'ใบปิดบัญชี')+'>เปิดไฟล์</a>')
     : 'ยังไม่มีรูปใบปิดบัญชีบนเซิร์ฟเวอร์ (พนักงานกด "สร้างใบปิดบัญชี" แล้วระบบจะอัปโหลดให้)';

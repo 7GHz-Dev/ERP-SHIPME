@@ -91,10 +91,38 @@ export async function settleConfig(user: { username: string; role: string }) {
   };
 }
 
+/** ค่าใช้จ่ายรายตู้ของหัวข้อพิเศษ (ยางเกิน / สำแดงเท็จ) — ยอดของหัวข้อ = ผลรวมของทุกตู้ และต้องมีรูปทุกตู้ */
+export type SpecialItem = { container: string; amount: number; photos: string[] };
+type SettleSpecial = { label: string; amount: number; items?: SpecialItem[] };
 type SettleRow = {
   port: string; customer: string; bl: string; containers: number; otherDetail: string; source: string;
-  costs: Record<string, number>; specials: { label: string; amount: number }[]; total: number;
+  containerNos: string[];
+  costs: Record<string, number>; specials: SettleSpecial[]; total: number;
 };
+
+/** หัวข้อพิเศษที่ต้องกรอกตามตู้พร้อมแนบรูป — ช่องยอดเงินกรอกเองไม่ได้ */
+export const SPECIAL_PER_CONTAINER = ['ยางเกิน', 'สำแดงเท็จ'];
+const MAX_SPECIAL_ITEMS = 60;
+const MAX_SPECIAL_PHOTOS = 10;
+// รับเฉพาะไฟล์ที่เซิร์ฟเวอร์ออกที่อยู่ให้ (signUpload purpose=special) ไม่รับลิงก์ภายนอก
+const SPECIAL_PHOTO = /^\/files\/specials\/[A-Za-z0-9ก-๙._%-]{1,200}$/;
+
+function cleanSpecialItems(input: unknown): SpecialItem[] {
+  const out: SpecialItem[] = [];
+  const seen = new Set<string>();
+  for (const raw of Array.isArray(input) ? input.slice(0, MAX_SPECIAL_ITEMS) : []) {
+    const container = String((raw as any)?.container || '').trim().toUpperCase().slice(0, 30);
+    const amount = Math.max(0, round2((raw as any)?.amount));
+    const photos = (Array.isArray((raw as any)?.photos) ? (raw as any).photos : [])
+      .map((url: unknown) => String(url || '').trim())
+      .filter((url: string) => SPECIAL_PHOTO.test(url))
+      .slice(0, MAX_SPECIAL_PHOTOS);
+    if (!container || !amount || seen.has(container)) continue;
+    seen.add(container);
+    out.push({ container, amount, photos });
+  }
+  return out;
+}
 
 function normalizeRow(input: any): SettleRow {
   const row: SettleRow = {
@@ -104,6 +132,10 @@ function normalizeRow(input: any): SettleRow {
     containers: Math.max(0, Number.parseInt(input?.containers, 10) || 0),
     otherDetail: String(input?.otherDetail || '').trim().slice(0, 300),
     source: String(input?.source || '').trim().slice(0, 40),
+    // เลขตู้ของ BL จากชีตงานขนส่ง — เก็บไว้ให้เปิดแก้ใบเดิมแล้วยังเลือกตู้ได้
+    containerNos: [...new Set((Array.isArray(input?.containerNos) ? input.containerNos : [])
+      .map((value: unknown) => String(value || '').trim().toUpperCase().slice(0, 30))
+      .filter(Boolean))].slice(0, 100) as string[],
     costs: {}, specials: [], total: 0
   };
   let total = 0;
@@ -114,9 +146,14 @@ function normalizeRow(input: any): SettleRow {
   }
   for (const special of Array.isArray(input?.specials) ? input.specials : []) {
     const label = String(special?.label || '').trim().slice(0, 120);
-    const amount = Math.max(0, round2(special?.amount));
+    const perContainer = SPECIAL_PER_CONTAINER.includes(label);
+    const items = perContainer ? cleanSpecialItems(special?.items) : [];
+    // หัวข้อรายตู้: ยอดคิดจากรายตู้เสมอ ไม่เชื่อยอดรวมที่หน้าเว็บส่งมา (ใบเก่าที่ยังไม่มีรายตู้ใช้ยอดเดิม)
+    const amount = items.length
+      ? round2(items.reduce((sum, item) => sum + item.amount, 0))
+      : Math.max(0, round2(special?.amount));
     if (!label || !amount) continue;
-    row.specials.push({ label, amount });
+    row.specials.push(items.length ? { label, amount, items } : { label, amount });
     total += amount;
   }
   row.total = round2(total);
@@ -161,7 +198,10 @@ function detail(record: SettleRecord) {
       }
       if (row.specials.length) {
         lines.push(`   ${SPECIAL_LABEL} = ${fmtBaht(row.specials.reduce((sum, item) => sum + item.amount, 0))}`);
-        for (const item of row.specials) lines.push(`      - ${item.label} = ${fmtBaht(item.amount)}`);
+        for (const item of row.specials) {
+          lines.push(`      - ${item.label} = ${fmtBaht(item.amount)}`);
+          for (const unit of item.items || []) lines.push(`         ตู้ ${unit.container} = ${fmtBaht(unit.amount)} (รูป ${unit.photos.length})`);
+        }
       }
       if (row.otherDetail) lines.push(`   รายละเอียดค่าใช้จ่ายอื่นๆ: ${row.otherDetail}`);
       lines.push(`   รวม = ${fmtBaht(row.total)}`);
@@ -448,6 +488,13 @@ export async function saveSettlement(
   const rows = (Array.isArray(input?.rows) ? input.rows : []).map(normalizeRow)
     .filter((row: SettleRow) => row.bl || row.total || row.otherDetail || row.containers);
   if (!rows.length) return { ok: false, error: 'no_settle_rows' };
+  // ยางเกิน / สำแดงเท็จ รายตู้ — ทุกตู้ที่มียอดต้องมีรูปอย่างน้อย 1 รูป
+  for (const row of rows as SettleRow[]) {
+    for (const special of row.specials) {
+      const missing = (special.items || []).find((item) => !item.photos.length);
+      if (missing) return { ok: false, error: 'special_photo_required', bl: row.bl, label: special.label, container: missing.container };
+    }
+  }
 
   const totalExpense = round2(rows.reduce((sum: number, row: SettleRow) => sum + row.total, 0));
   const now = nowIso();
@@ -568,6 +615,12 @@ async function settlementFor(settlementId: unknown, user: { username: string; ro
 /** ชื่อไฟล์รูปใบปิดบัญชี — คิดจากฝั่งเซิร์ฟเวอร์เสมอ ไม่รับ path จากเบราว์เซอร์ */
 export const settlementImageBase = (row: { inspectDate: string; username: string }) =>
   `${row.inspectDate}_${row.username}`;
+
+/** ที่อยู่อัปรูปหลักฐานรายตู้ (ยางเกิน / สำแดงเท็จ) — ชื่อไฟล์ออกจากเซิร์ฟเวอร์ ขึ้นต้นด้วย username */
+export async function signSpecialPhoto(user: { username: string }): Promise<ApiResult> {
+  const file = await createSignedUpload('specials', `${user.username}_${id('')}`, 'jpg');
+  return { ok: true, key: file.key, url: file.url, uploadUrl: file.uploadUrl, uploadToken: file.uploadToken };
+}
 
 export async function signSettlementImage(
   settlementId: unknown,

@@ -203,6 +203,28 @@
   .st-sprow .spn { flex:1; font-size:13px; }
   .st-sprow input[type=text] { flex:1; min-width:0; margin:0; padding:8px; font-size:14px; }
   .st-sprow input[type=number] { width:92px; flex:0 0 auto; margin:0; padding:8px; font-size:14px; text-align:right; }
+  .st-sprow input.st-spamt[readonly] { background:#f1f5f9; color:#0f172a; font-weight:700; }
+  .st-sprow .st-spph { border:1px solid #93c5fd; background:#eff6ff; color:#1d4ed8; border-radius:10px; padding:7px 10px; font-size:13px; font-weight:700; cursor:pointer; flex:0 0 auto; white-space:nowrap; }
+  .st-sprow .st-spph.has { background:#dcfce7; border-color:#86efac; color:#166534; }
+  /* ---- ยางเกิน / สำแดงเท็จ รายตู้ (popup) ---- */
+  .spm-c { border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin-bottom:8px; background:#fff; }
+  .spm-c.on { border-color:#93c5fd; background:#f8fbff; }
+  .spm-h { display:flex; align-items:center; gap:10px; cursor:pointer; margin:0; }
+  .spm-h input { width:21px; height:21px; margin:0; flex:0 0 auto; accent-color:var(--blue2); }
+  .spm-h b { flex:1; font-size:15px; word-break:break-all; }
+  .spm-h .v { font-weight:800; color:var(--blue); white-space:nowrap; font-size:14px; }
+  .spm-b { margin-top:10px; }
+  .spm-ph { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  .spm-ph .t { position:relative; width:72px; height:72px; font-size:11px; }
+  .spm-ph .t a { display:block; width:72px; height:72px; overflow:hidden; border-radius:8px; background:#e2e8f0; }
+  .spm-ph .t img { width:72px; height:72px; object-fit:cover; border-radius:8px; border:1px solid var(--line); display:block; }
+  .spm-ph .t button { position:absolute; top:-6px; right:-6px; width:24px; height:24px; border:0; border-radius:50%; background:#dc2626; color:#fff; font-size:12px; cursor:pointer; }
+  .spm-add { display:inline-flex; align-items:center; justify-content:center; width:72px; height:72px; border:1px dashed #93c5fd; border-radius:8px; color:#1d4ed8; font-size:12px; font-weight:700; text-align:center; cursor:pointer; background:#eff6ff; }
+  .spm-busy { font-size:12px; color:var(--muted); margin-top:6px; }
+  .spm-b label.l { display:block; font-size:12px; color:var(--muted); margin:10px 0 4px; }
+  .spm-b input.spm-amt { width:100%; margin:0; padding:9px; font-size:15px; text-align:right; }
+  .spm-newc { display:flex; gap:8px; margin-top:6px; }
+  .spm-newc input { flex:1; min-width:0; margin:0; padding:9px; font-size:14px; }
   .st-sprow .spdel { border:0; background:#fee2e2; color:#991b1b; border-radius:8px; width:30px; height:32px; flex:0 0 auto; cursor:pointer; }
   /* ---- ปิดบัญชี: รายการ BL ให้ติ๊กเลือก ---- */
   .st-pi { display:flex; align-items:center; gap:10px; padding:11px 12px; border:1px solid #e2e8f0; border-radius:11px; margin-bottom:8px; cursor:pointer; }
@@ -609,6 +631,25 @@
     </div>
   </div>
 
+  <!-- ======= ยางเกิน / สำแดงเท็จ: เลือกตู้ แนบรูป กรอกยอดรายตู้ ======= -->
+  <div id="spm-modal" class="modal-bg hidden">
+    <div class="sheet-box">
+      <div class="sheet-head">
+        <b id="spm-title">รายตู้</b>
+        <button id="spm-close" class="btn-x" type="button" aria-label="ปิด">✕</button>
+      </div>
+      <p class="muted" style="margin:0 0 10px">ติ๊กตู้ที่มีค่าใช้จ่าย → แนบรูป (หลายรูปได้) → กรอกยอดเงินของตู้นั้น • ยอดรวมจะไปอยู่ในใบปิดบัญชีให้เอง</p>
+      <div id="spm-old" class="status wait hidden" style="margin:0 0 10px"></div>
+      <div class="sheet-img" id="spm-list" style="background:#fff; padding:0"></div>
+      <div class="spm-newc">
+        <input id="spm-newc" type="text" maxlength="30" placeholder="เลขตู้ที่ไม่มีในรายการ เช่น ABCU1234567" autocomplete="off">
+        <button id="spm-addc" type="button" class="btn btn-ghost" style="width:auto; flex:0 0 auto; padding:9px 12px">＋ เพิ่มตู้</button>
+      </div>
+      <div class="slip-row" style="margin-top:10px; font-size:15px"><span>รวม</span><b id="spm-total">0.00</b></div>
+      <div class="sheet-act"><button id="spm-save" type="button" class="btn btn-primary">✔️ ใช้ยอดนี้</button></div>
+    </div>
+  </div>
+
   <!-- ======= คู่มือเปิดสิทธิ์ตำแหน่ง (ขึ้นเมื่อรอพิกัดเกิน 7 วินาที) ======= -->
   <div id="gps-modal" class="modal-bg hidden">
     <div class="sheet-box">
@@ -898,6 +939,7 @@ var ERR_TH = { server_busy:'ระบบไม่ว่างชั่วคร�
   slip_folder_unavailable:'เปิดพื้นที่เก็บสลิปไม่ได้ — แจ้งผู้ดูแล',
   slip_manual_not_allowed:'สลิปนี้ระบบอ่านได้อยู่แล้ว ไม่ต้องกรอกเอง',
   slip_ocr_unavailable:'ยังไม่ได้ตั้งค่าบริการ OCR — กรุณากรอกค่าจากสลิปเอง',
+  special_photo_required:'ยางเกิน / สำแดงเท็จ: ทุกตู้ที่มียอดต้องแนบรูปอย่างน้อย 1 รูป',
   slip_ocr_scope:'บริการ OCR ยังไม่ได้รับสิทธิ์ — แจ้งผู้ดูแลระบบ',
   slip_ocr_rate:'บริการ OCR เต็มชั่วคราว — รอสักครู่แล้วลองอีกครั้ง',
   slip_ocr_failed:'อ่านสลิปไม่สำเร็จ',
@@ -2459,7 +2501,7 @@ function newSettleForm(rec){
     f.refunded=r2((rec.companySlips||[]).reduce(function(t,x){ return t+(Number(x.amount)||0); },0));
     f.rows=(rec.rows||[]).map(function(r){
       return { bl:r.bl||'', port:r.port||'', customer:r.customer||'', containers:Number(r.containers)||0,
-               otherDetail:r.otherDetail||'', costs:cloneCosts(r.costs),
+               containerNos:(r.containerNos||[]).slice(), otherDetail:r.otherDetail||'', costs:cloneCosts(r.costs),
                specials:mergeSpecials(r.specials), auto:{}, other:{}, src:'', source:r.source||'' };
     });
   }
@@ -2631,13 +2673,14 @@ function mergeSpecials(saved){
     var lb=String(s.label||'').trim(); if(!lb) return;
     var at=-1;
     for(var i=0;i<out.length;i++) if(out[i].label===lb) at=i;
-    if(at>=0) out[at].amount=Number(s.amount)||0;
+    var items=(s.items||[]).map(function(it){ return { container:it.container, amount:Number(it.amount)||0, photos:(it.photos||[]).slice() }; });
+    if(at>=0){ out[at].amount=Number(s.amount)||0; if(items.length) out[at].items=items; }
     else out.push({ label:lb, amount:Number(s.amount)||0, preset:false });
   });
   return out;
 }
 function emptyRow(){
-  return { bl:'', port:'', customer:'', containers:0, otherDetail:'',
+  return { bl:'', port:'', customer:'', containers:0, containerNos:[], otherDetail:'',
            costs:cloneCosts({}), specials:mergeSpecials([]), auto:{}, other:{}, src:'', source:'' };
 }
 // ช่องที่คิดจากจำนวนตู้ให้อัตโนมัติ — เฉพาะหัวข้อที่เบิกไว้ และช่องที่ผู้ใช้ยังไม่ได้พิมพ์ทับ
@@ -2732,12 +2775,14 @@ function fetchBL(refresh){
       var src=r.sheet||'';
       if(r.file) src = r.file + (src?(' › '+src):'');
       return { bl:r.bl||'', port:r.port||'', customer:r.customer||'', containers:Number(r.containers)||0,
-               src:src, source:r.source||'', style:r.style||'' };
+               containerNos:(r.containerNos||[]).slice(), src:src, source:r.source||'', style:r.style||'' };
     });
     // การ์ดที่โหลดมาจากใบเดิม (ยังไม่รู้ที่มา) — เทียบด้วยเลข BL แล้วเติมที่มาให้ เพื่อให้กรอบสีถูกต้อง
     f.rows.forEach(function(row){
-      if(row.source) return;
       var hit=f.available.filter(function(a){ return blKey(a.bl)===blKey(row.bl); })[0];
+      // ใบเดิมที่บันทึกก่อนมีเลขตู้ — เติมเลขตู้จากชีตให้ เพื่อให้เลือกตู้ของยางเกิน / สำแดงเท็จได้
+      if(hit && !(row.containerNos||[]).length) row.containerNos=(hit.containerNos||[]).slice();
+      if(row.source) return;
       if(hit){ row.source=hit.source; if(!row.src) row.src=hit.src; }
     });
     renderSettleRows();
@@ -2813,7 +2858,7 @@ function toggleBl(i, on){
     if(restored){ f.rows.push(restored); }
     else {
       var nr={ bl:cand.bl, port:cand.port, customer:cand.customer, containers:cand.containers,
-               otherDetail:'', costs:cloneCosts({}), specials:mergeSpecials([]), auto:{}, other:{},
+               containerNos:(cand.containerNos||[]).slice(), otherDetail:'', costs:cloneCosts({}), specials:mergeSpecials([]), auto:{}, other:{},
                src:cand.src, source:cand.source||'' };
       applyAutoRates(nr);                 // เติมค่าที่คิดจากจำนวนตู้ให้เลย
       f.rows.push(nr);
@@ -2950,7 +2995,9 @@ function renderSettleRows(){
             var isKnock = sp.preset && sp.label===settleKnockLabel();
             var kvals = settle.options.knockValues||[];
             var typing = isKnock && (sp.other || isOffList(kvals, sp.amount));
-            var money = isKnock
+            var money = spPerContainer(sp)
+              ? spPerContainerHTML(sp)
+              : isKnock
               ? settleSelectHTML(kvals, sp.amount, 'st-spsel', '', '— เลือก —')+
                 '<input type="number" class="st-spamt'+(typing?'':' hidden')+'" inputmode="decimal" min="0" step="1" placeholder="พิมพ์เอง" value="'+(sp.amount?sp.amount:'')+'">'
               : '<input type="number" class="st-spamt" inputmode="decimal" min="0" step="1" placeholder="0" value="'+(sp.amount?sp.amount:'')+'">';
@@ -2969,6 +3016,143 @@ function renderSettleRows(){
     '</div>';
   }).join('');
 }
+
+// ---- ยางเกิน / สำแดงเท็จ: กรอกตามตู้ พร้อมรูป — ช่องยอดเงินกรอกเองไม่ได้ ยอด = ผลรวมรายตู้ ----
+var SP_PER_CONTAINER=['ยางเกิน','สำแดงเท็จ'], SPM_MAX_PHOTOS=10;
+function spPerContainer(sp){ return !!(sp && sp.preset && SP_PER_CONTAINER.indexOf(sp.label)>=0); }
+function spPerContainerHTML(sp){
+  var n=(sp.items||[]).length;
+  return '<input type="number" class="st-spamt" readonly tabindex="-1" placeholder="0" title="ยอดคิดจากรายตู้ — กดปุ่มรูปเพื่อแก้" value="'+(sp.amount?sp.amount:'')+'">'+
+    '<button type="button" class="st-spph'+(n?' has':'')+'">'+(n?('📷 '+n+' ตู้'):'📷 เพิ่มรูป')+'</button>';
+}
+var spm={ ri:-1, si:-1, list:[], sel:{} };
+function spmTotal(){
+  return r2(spm.list.reduce(function(t,c){ var s=spm.sel[c]; return t+((s&&s.on)?(Number(s.amount)||0):0); }, 0));
+}
+function openSpModal(ri, si){
+  var r=settle.form && settle.form.rows[ri], sp=r && r.specials[si];
+  if(!sp) return;
+  var list=(r.containerNos||[]).slice();
+  spm={ ri:ri, si:si, list:list, sel:{} };
+  (sp.items||[]).forEach(function(it){
+    if(list.indexOf(it.container)<0) list.push(it.container);
+    spm.sel[it.container]={ on:true, amount:Number(it.amount)||0, photos:(it.photos||[]).slice(), busy:0 };
+  });
+  $('spm-title').textContent=sp.label+' — BL '+(r.bl||'-');
+  // ใบเก่าที่กรอกยอดรวมไว้ก่อนมีรายตู้
+  var old=!(sp.items||[]).length && Number(sp.amount)>0;
+  $('spm-old').classList.toggle('hidden', !old);
+  if(old) $('spm-old').textContent='ใบนี้กรอกยอดรวมไว้ '+fmtM(sp.amount)+' บาท (ก่อนมีรายตู้) — กด "ใช้ยอดนี้" แล้วยอดจะเปลี่ยนเป็นผลรวมของตู้ที่เลือก';
+  $('spm-newc').value='';
+  renderSpModal();
+  $('spm-modal').classList.remove('hidden');
+}
+function renderSpModal(){
+  var box=$('spm-list');
+  if(!spm.list.length){
+    box.innerHTML='<div class="muted" style="padding:12px">ไม่พบเลขตู้ของ BL นี้ในชีตงานขนส่ง — พิมพ์เลขตู้ในช่องด้านล่างแล้วกด "＋ เพิ่มตู้"</div>';
+  } else {
+    box.innerHTML=spm.list.map(function(c, ci){
+      var s=spm.sel[c]||{ on:false, amount:0, photos:[], busy:0 };
+      var h='<div class="spm-c'+(s.on?' on':'')+'" data-ci="'+ci+'">'+
+        '<label class="spm-h"><input type="checkbox" class="spm-chk"'+(s.on?' checked':'')+'><b>'+esc(c)+'</b>'+
+        '<span class="v">'+(s.on && s.amount ? fmtM(s.amount) : '')+'</span></label>';
+      if(s.on){
+        h+='<div class="spm-b"><div class="spm-ph">'+
+          s.photos.map(function(u, pi){
+            return '<div class="t"><a href="'+esc(u)+'" target="_blank"'+vwAttr('img', u, c)+'><img src="'+esc(u)+'" alt="รูป '+(pi+1)+'" loading="lazy"></a>'+
+              '<button type="button" class="spm-phdel" data-pi="'+pi+'" aria-label="ลบรูป">✕</button></div>';
+          }).join('')+
+          (s.photos.length+s.busy<SPM_MAX_PHOTOS ? '<label class="spm-add">📷<br>เพิ่มรูป<input type="file" class="spm-file" accept="image/*" multiple hidden></label>' : '')+
+          '</div>'+
+          (s.busy ? '<div class="spm-busy"><span class="spinner"></span> กำลังอัปโหลด '+s.busy+' รูป…</div>' : '')+
+          (!s.photos.length && !s.busy ? '<div class="spm-busy" style="color:#b91c1c">ยังไม่มีรูป — แนบอย่างน้อย 1 รูป</div>' : '')+
+          '<label class="l">ยอดเงินของตู้นี้ (บาท)</label>'+
+          '<input type="number" class="spm-amt" inputmode="decimal" min="0" step="1" placeholder="0" value="'+(s.amount?s.amount:'')+'">'+
+        '</div>';
+      }
+      return h+'</div>';
+    }).join('');
+  }
+  $('spm-total').textContent=fmtM(spmTotal());
+}
+function spmCont(t){ var el=t.closest && t.closest('.spm-c'); return el ? spm.list[Number(el.getAttribute('data-ci'))] : null; }
+function spmUpload(c, files){
+  var s=spm.sel[c]; if(!s) return;
+  var room=SPM_MAX_PHOTOS-s.photos.length-s.busy;
+  var list=Array.prototype.slice.call(files||[], 0, Math.max(0, room));
+  if(files && files.length>list.length) toast('แนบได้ไม่เกิน '+SPM_MAX_PHOTOS+' รูปต่อตู้');
+  list.forEach(function(file){
+    if(!/^image\//.test(file.type||'')){ toast('ไฟล์ '+file.name+' ไม่ใช่รูปภาพ'); return; }
+    if(file.size>15*1024*1024){ toast('รูป '+file.name+' ใหญ่เกิน 15MB'); return; }
+    s.busy++;
+    var reader=new FileReader();
+    reader.onload=function(){
+      resizeImage(String(reader.result||''), 2400, 0.9, false).then(function(out){
+        return uploadLarge(dataUrlToBlob(out.dataUrl), { purpose:'special' });
+      }).then(function(up){
+        s.busy--; s.photos.push(up.url); renderSpModal();
+      }).catch(function(err){
+        s.busy--; renderSpModal();
+        toast('อัปโหลดรูปไม่สำเร็จ'+((err&&err.error)?(': '+errTH(err.error)):' ตรวจสอบอินเทอร์เน็ต'));
+      });
+    };
+    reader.onerror=function(){ s.busy--; renderSpModal(); toast('อ่านไฟล์รูปไม่สำเร็จ'); };
+    reader.readAsDataURL(file);
+  });
+  renderSpModal();
+}
+$('spm-list').addEventListener('change', function(e){
+  var t=e.target, c=spmCont(t); if(!c) return;
+  if(t.classList.contains('spm-chk')){
+    var s=spm.sel[c]||(spm.sel[c]={ on:false, amount:0, photos:[], busy:0 });
+    s.on=t.checked;
+    renderSpModal();
+    return;
+  }
+  if(t.classList.contains('spm-file')){ var fl=t.files; spmUpload(c, fl); t.value=''; }
+});
+$('spm-list').addEventListener('input', function(e){
+  var t=e.target, c=spmCont(t); if(!c || !t.classList.contains('spm-amt')) return;
+  var s=spm.sel[c]; if(!s) return;
+  s.amount=Math.max(0, Number(t.value)||0);
+  var v=t.closest('.spm-c').querySelector('.spm-h .v'); if(v) v.textContent=s.amount?fmtM(s.amount):'';
+  $('spm-total').textContent=fmtM(spmTotal());
+});
+$('spm-list').addEventListener('click', function(e){
+  var del=e.target.closest && e.target.closest('.spm-phdel'); if(!del) return;
+  e.preventDefault();
+  var c=spmCont(del), s=c && spm.sel[c]; if(!s) return;
+  s.photos.splice(Number(del.getAttribute('data-pi'))||0, 1);
+  renderSpModal();
+});
+$('spm-addc').addEventListener('click', function(){
+  var c=$('spm-newc').value.trim().toUpperCase().replace(/\s+/g,'');
+  if(!c){ toast('พิมพ์เลขตู้ก่อน'); return; }
+  if(spm.list.indexOf(c)<0) spm.list.push(c);
+  spm.sel[c]=spm.sel[c]||{ on:true, amount:0, photos:[], busy:0 };
+  spm.sel[c].on=true;
+  $('spm-newc').value='';
+  renderSpModal();
+});
+$('spm-close').addEventListener('click', function(){ $('spm-modal').classList.add('hidden'); });
+$('spm-save').addEventListener('click', function(){
+  var r=settle.form && settle.form.rows[spm.ri], sp=r && r.specials[spm.si];
+  if(!sp){ $('spm-modal').classList.add('hidden'); return; }
+  var items=[];
+  for(var i=0;i<spm.list.length;i++){
+    var c=spm.list[i], s=spm.sel[c];
+    if(!s || !s.on) continue;
+    if(s.busy){ toast('รออัปโหลดรูปของตู้ '+c+' ให้เสร็จก่อน'); return; }
+    if(!s.photos.length){ toast('ตู้ '+c+' ยังไม่มีรูป — แนบอย่างน้อย 1 รูป'); return; }
+    if(!(Number(s.amount)>0)){ toast('กรอกยอดเงินของตู้ '+c); return; }
+    items.push({ container:c, amount:r2(s.amount), photos:s.photos.slice() });
+  }
+  sp.items=items;
+  sp.amount=r2(items.reduce(function(t,it){ return t+it.amount; }, 0));
+  $('spm-modal').classList.add('hidden');
+  renderSettleRows(); updateSettleSummary();
+});
 
 function rowSpecialTotal(r){
   return r2((r.specials||[]).reduce(function(t,s){
@@ -3656,6 +3840,13 @@ $('st-rows').addEventListener('click', function(e){
     return;
   }
 
+  // ยางเกิน / สำแดงเท็จ — เปิด popup เลือกตู้ แนบรูป กรอกยอดรายตู้
+  var ph=e.target.closest('.st-spph');
+  if(ph){
+    var phr=ph.closest('.st-sprow');
+    if(ri>=0 && phr) openSpModal(ri, Number(phr.getAttribute('data-si'))||0);
+    return;
+  }
   // เพิ่ม/ลบหัวข้อย่อยของค่าบริการเพิ่มเติมพิเศษ
   if(e.target.closest('.st-spadd')){
     if(ri<0) return;
@@ -3724,7 +3915,10 @@ function settleText(editCountOverride){
       var sps=(r.specials||[]).filter(function(s){ return String(s.label||'').trim() && (Number(s.amount)||0)>0; });
       if(sps.length){
         L.push('   '+settle.specialLabel+' = '+fmtM(rowSpecialTotal(r)));
-        sps.forEach(function(s){ L.push('      - '+String(s.label).trim()+' = '+fmtM(s.amount)); });
+        sps.forEach(function(s){
+          L.push('      - '+String(s.label).trim()+' = '+fmtM(s.amount));
+          (s.items||[]).forEach(function(it){ L.push('         ตู้ '+it.container+' = '+fmtM(it.amount)+' (รูป '+(it.photos||[]).length+')'); });
+        });
       }
       if(r.otherDetail) L.push('   รายละเอียดค่าใช้จ่ายอื่นๆ: '+r.otherDetail);
       L.push('   รวม = '+fmtM(rowTotal(r)));
