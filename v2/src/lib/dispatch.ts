@@ -38,6 +38,7 @@ import {
   listInvoiceBatches, listPendingDocs, listReceivables, matchReceivables, renameInvoiceBatch,
   resetInvoices, sendBatchToKola, settleReceivables, unbatchInvoices, unsettleReceivables, addToInvoiceBatch
 } from './invoice-batches';
+import { pushKolaSpecials } from './kola-specials';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { checkins, geocodeCache, settlements, users } from '@/db/schema';
@@ -789,6 +790,11 @@ const handlers: Record<string, Handler> = {
   sendBatchToKola: async (body) => {
     const session = await guard(body, ACCOUNT_ROLES);
     return session.error || sendBatchToKola(body);
+  },
+  // ค่าบริการเพิ่มเติมพิเศษของ BL ในชุด → ฝ่ายขาย ERP KOLA (หน้าเว็บเรียกต่อจากจัดชุด / กดส่งซ้ำ)
+  pushKolaSpecials: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || pushKolaSpecials(body);
   },
   listPendingDocs: async (body) => {
     const session = await guard(body, ACCOUNT_ROLES);

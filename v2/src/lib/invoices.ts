@@ -6,6 +6,7 @@ import {
   INVOICE_COMPANY, INVOICE_CUSTOMER, INVOICE_NO_VAT_ITEMS, INVOICE_VAT_ITEMS,
   INVOICE_VAT_EXEMPT_LABELS, INVOICE_DIVISOR, VAT_RATE
 } from './constants';
+import { kolaBlKey, kolaSpecialStates } from './kola-specials';
 import { blKey, invoiceOccurrences, jobKey, reusedBls } from './bl-occurrence';
 import { id, nowIso, validYmd, ymd } from './utils';
 import type { ApiBody, ApiResult } from './types';
@@ -479,11 +480,14 @@ export async function listInvoices(body: ApiBody, actor: { username: string; rol
     .orderBy(desc(invoices.issueDate), desc(invoices.seq), desc(invoices.number))
     .limit(500);
 
+  // สถานะส่งค่าพิเศษให้ฝ่ายขาย KOLA ของแต่ละ BL (ดู kola-specials.ts)
+  const kola = await kolaSpecialStates(rows.map((row) => row.bl));
   return {
     ok: true,
     canApprove,
     rows: rows.map((row) => ({
       ...row,
+      kolaSpc: kola.get(kolaBlKey(row.bl)) || null,
       items: (() => { try { return JSON.parse(row.itemsJson); } catch { return []; } })()
     }))
   };

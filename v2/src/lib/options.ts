@@ -1,3 +1,4 @@
+import { inArray } from 'drizzle-orm';
 import { db } from '@/db';
 import { appOptions } from '@/db/schema';
 import { KNOCK_LABEL, SHEET_COL_DEFS, SHEET_FONT_DEFS } from './constants';
@@ -133,7 +134,9 @@ function normalize<K extends OptionKey>(key: K, value: unknown, current: AppOpti
 }
 
 export async function readAppOptions(): Promise<AppOptions> {
-  const rows = await db.select({ key: appOptions.key, valueJson: appOptions.valueJson }).from(appOptions);
+  // อ่านเฉพาะคีย์ตั้งค่า — ตารางนี้มีคีย์อื่นปนด้วย (สถานะส่ง KOLA รายBL, ตั้งค่าเบิก, LINE ฯลฯ)
+  const rows = await db.select({ key: appOptions.key, valueJson: appOptions.valueJson }).from(appOptions)
+    .where(inArray(appOptions.key, Object.keys(APP_OPTION_DEFAULTS)));
   const saved = Object.fromEntries(rows.map((row) => [row.key, safeJson<unknown>(row.valueJson, undefined)]));
 
   const out = {} as AppOptions;
