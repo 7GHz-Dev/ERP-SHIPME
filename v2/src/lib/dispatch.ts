@@ -39,6 +39,7 @@ import {
   resetInvoices, sendBatchToKola, settleReceivables, unbatchInvoices, unsettleReceivables, addToInvoiceBatch
 } from './invoice-batches';
 import { pushKolaSpecials } from './kola-specials';
+import { listWhtRecords } from './invoice-wht';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { checkins, geocodeCache, settlements, users } from '@/db/schema';
@@ -795,6 +796,11 @@ const handlers: Record<string, Handler> = {
   pushKolaSpecials: async (body) => {
     const session = await guard(body, ACCOUNT_ROLES);
     return session.error || pushKolaSpecials(body);
+  },
+  // ใบหัก ณ ที่จ่าย 3% กระทำการแทน ที่บันทึกตอนออกใบแจ้งหนี้ ADV
+  listWhtRecords: async (body) => {
+    const session = await guard(body, ACCOUNT_ROLES);
+    return session.error || listWhtRecords(body);
   },
   listPendingDocs: async (body) => {
     const session = await guard(body, ACCOUNT_ROLES);

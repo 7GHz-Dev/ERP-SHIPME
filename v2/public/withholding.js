@@ -36,6 +36,7 @@ function initWithholding(){
   $('wht-load').addEventListener('click', whtLoad);
   $('wht-filter').addEventListener('change', function(){ whtState.filter = this.value; whtRenderLines(); });
   $('wht-csv').addEventListener('click', whtExport);
+  $('wht-excel').addEventListener('click', whtExcel);
   whtBindSettings();
 }
 
@@ -151,4 +152,60 @@ function whtBindSettings(){
       $('wht-'+k+'-'+c.key).addEventListener('input', function(){ if(whtState.data) whtRender(); });
     });
   });
+}
+
+/**
+ * Excel จัดรูปแบบ — ชีต "สรุป" (ต่อหมวด ตามตัวหาร/อัตราที่ตั้งบนจอ) + ชีต "รายการ" (ทุกหมวด 1 แถว = 1 รายการ)
+ * ใช้ PrettyExcel (pretty-excel.js)
+ */
+function whtExcel(){
+  var d = whtState.data;
+  if(!d || !d.lines.length){ $('wht-msg').textContent = 'ยังไม่มีข้อมูลให้ส่งออก — กด "ดึงข้อมูล" ก่อน'; return; }
+  var catLabel = {}; WHT_CATS.forEach(function(c){ catLabel[c.key] = c.label; });
+  var count = function(l){ return l.count==null ? 1 : l.count; };
+  var sum = WHT_CATS.map(function(c){
+    var list = d.lines.filter(function(l){ return l.category === c.key; }), st = whtSetting(c.key);
+    return { cat:c.label, count:list.reduce(function(s, l){ return s+count(l); }, 0),
+      amount:whtRound2(list.reduce(function(s, l){ return s+l.amount; }, 0)),
+      divisor:st.divisor, rate:whtRound2(st.rate*100)+'%',
+      base:whtRound2(list.reduce(function(s, l){ return s+whtBase(l); }, 0)),
+      wht:whtRound2(list.reduce(function(s, l){ return s+whtAmount(l); }, 0)) };
+  });
+  var total = function(list, k){ return whtRound2(list.reduce(function(s, x){ return s+Number(x[k]); }, 0)); };
+  var lines = d.lines.map(function(l, i){
+    return { no:i+1, cat:catLabel[l.category], date:l.date, source:l.source, bl:l.bl, vessel:l.vessel||'', detail:l.detail,
+      count:count(l), amount:l.amount, base:whtBase(l), wht:whtAmount(l) };
+  });
+  var range = 'วันที่ตรวจปล่อย '+whtDmy(d.from)+' – '+whtDmy(d.to)+' (DO ตามวันที่จ่ายในชีตค่าแลกดีโอ)';
+  var btn = $('wht-excel'); btn.disabled = true;
+  PrettyExcel.download({
+    fileName: 'ใบหัก-ณ-ที่จ่าย-กระทำการแทน-จากชีต_'+d.from+'_'+d.to+'.xlsx',
+    company: 'บริษัท ชิป มี โลจิสติกส์ จำกัด',
+    sheets: [{
+      name: 'สรุป', title: 'สรุปใบหัก ณ ที่จ่าย (กระทำการแทน)', portrait: true,
+      subtitle: [range, 'ฐานภาษี = ยอดในชีต ÷ ตัวหาร • ยอดหัก = ฐานภาษี × อัตรา'],
+      columns: [
+        { header:'หมวด', key:'cat', width:44 }, { header:'จำนวนใบ', key:'count', width:10, type:'int' },
+        { header:'ยอดในชีต', key:'amount', width:15, type:'money' }, { header:'ตัวหาร', key:'divisor', width:8, type:'center' },
+        { header:'อัตรา', key:'rate', width:8, type:'center' }, { header:'ฐานภาษี', key:'base', width:15, type:'money' },
+        { header:'ยอดหัก ณ ที่จ่าย', key:'wht', width:15, type:'money' }
+      ],
+      rows: sum,
+      totals: { count:total(sum,'count'), amount:total(sum,'amount'), base:total(sum,'base'), wht:total(sum,'wht') }
+    }, {
+      name: 'รายการ', title: 'รายการใบหัก ณ ที่จ่าย (กระทำการแทน)',
+      subtitle: [range, d.lines.length+' รายการ'],
+      columns: [
+        { header:'ลำดับ', key:'no', width:6, type:'int' }, { header:'หมวด', key:'cat', width:24 },
+        { header:'วันที่', key:'date', width:12, type:'date' }, { header:'ที่มา', key:'source', width:16 },
+        { header:'BL', key:'bl', width:20, type:'center' }, { header:'VESSEL', key:'vessel', width:14 },
+        { header:'รายละเอียด', key:'detail', width:34 }, { header:'จำนวนใบ', key:'count', width:9, type:'int' },
+        { header:'ยอดในชีต', key:'amount', width:14, type:'money' }, { header:'ฐานภาษี', key:'base', width:14, type:'money' },
+        { header:'ยอดหัก ณ ที่จ่าย', key:'wht', width:14, type:'money' }
+      ],
+      rows: lines,
+      totals: { count:total(lines,'count'), amount:total(lines,'amount'), base:total(lines,'base'), wht:total(lines,'wht') },
+      totalLabelKey: 'detail', totalLabel: 'รวม'
+    }]
+  }).catch(function(e){ alert(e.message || e); }).then(function(){ btn.disabled = false; });
 }

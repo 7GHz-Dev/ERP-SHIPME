@@ -1,6 +1,7 @@
-import { inArray } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, lte, ne } from 'drizzle-orm';
 import { db } from '@/db';
-import { invoiceWht } from '@/db/schema';
+import { invoiceWht, invoices } from '@/db/schema';
+import type { ApiBody, ApiResult } from './types';
 import { id, nowIso, validYmd } from './utils';
 
 /**
@@ -81,4 +82,35 @@ export async function whtByInvoice(numbers: string[]) {
     map.set(row.invoiceNumber, list);
   }
   return map;
+}
+
+/**
+ * เมนู "ใบหัก ณ ที่จ่าย (บันทึกเอง)" — ใบหักที่กรอกตอนออกใบแจ้งหนี้ ADV
+ * กรองตามวันที่ตรวจปล่อย (by = inspect) หรือวันที่ใบหัก (by = cert)
+ */
+export async function listWhtRecords(body: ApiBody): Promise<ApiResult> {
+  const from = realDate(String(body.from ?? '')) ? String(body.from) : '';
+  const to = realDate(String(body.to ?? '')) ? String(body.to) : '';
+  const byCert = body.by === 'cert';
+  const field = byCert ? invoiceWht.certDate : invoiceWht.inspectDate;
+  const clauses = [ne(invoices.status, 'cancelled')];
+  if (from) clauses.push(gte(field, from));
+  if (to) clauses.push(lte(field, to));
+  const rows = await db.select({
+    inspectDate: invoiceWht.inspectDate, bl: invoiceWht.bl, invoiceNumber: invoiceWht.invoiceNumber,
+    seq: invoiceWht.seq, certNo: invoiceWht.certNo, certDate: invoiceWht.certDate,
+    itemsJson: invoiceWht.itemsJson, base: invoiceWht.base, amount: invoiceWht.amount
+  }).from(invoiceWht)
+    .innerJoin(invoices, eq(invoices.number, invoiceWht.invoiceNumber))
+    .where(and(...clauses))
+    .orderBy(asc(field), asc(invoiceWht.bl), asc(invoiceWht.seq))
+    .limit(5000);
+  return {
+    ok: true, from, to, by: byCert ? 'cert' : 'inspect',
+    rows: rows.map(({ itemsJson, ...row }) => {
+      let items: WhtCert['items'] = [];
+      try { items = JSON.parse(itemsJson); } catch { items = []; }
+      return { ...row, items };
+    })
+  };
 }
