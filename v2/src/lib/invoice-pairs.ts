@@ -4,6 +4,7 @@ import { invoices, settlements } from '@/db/schema';
 import { INVOICE_CUSTOMER, INVOICE_DEPOSIT_LABEL } from './constants';
 import { blKey, invoiceOccurrences, jobKey, reusedBls } from './bl-occurrence';
 import { MAX_INVOICE_SEQ, canonicalInvoiceNumber, invoiceSeqOf, invoiceTotals, type InvoiceItem } from './invoices';
+import { cleanWhtCerts, insertWhtCerts, type WhtCert } from './invoice-wht';
 import { nowIso, validYmd } from './utils';
 import type { ApiBody, ApiResult } from './types';
 
@@ -18,8 +19,13 @@ export async function saveInvoicePairs(body: ApiBody, actor: { username: string;
   const clean = (value: unknown, limit: number) => String(value ?? '').trim().slice(0, limit);
   const prepared: { kind: string; number: string; seq: number; settlementId: string; bl: string; items: InvoiceItem[] }[] = [];
   const seen = new Set<string>();
+  // ใบหัก ณ ที่จ่ายกระทำการแทนของแต่ละ BL — บันทึกพร้อมใบแจ้งหนี้ในธุรกรรมเดียวกัน
+  const whtTargets: { settlementId: string; bl: string; certs: WhtCert[] }[] = [];
   for (const target of body.targets) {
     const settlementId = clean(target.settlementId, 60), bl = clean(target.bl, 120);
+    const wht = cleanWhtCerts(target.wht);
+    if (!wht.ok) return { ok: false, error: wht.error, bl };
+    if (wht.certs.length) whtTargets.push({ settlementId, bl, certs: wht.certs });
     // ใบคู่ต้องใช้เลขรันเดียวกัน — V20260905 คู่กับ NV20260905 เท่านั้น
     // เก็บ seq ของ V ไว้แล้วบังคับให้ NV ตรงกัน ไม่งั้นคู่ที่ออกพร้อมกันจะได้คนละเลข
     let pairSeq = 0;
@@ -140,7 +146,19 @@ export async function saveInvoicePairs(body: ApiBody, actor: { username: string;
           createdBy: actor.username, createdAt: nowIso(), updatedAt: nowIso() });
         created.push(record);
       }
-      return { ok: true, created, count: created.length };
+      // ใบหักผูกกับใบ V ของ BL (ไม่มี V ใช้ NV) — ยกเลิกใบแจ้งหนี้ ใบหักหายตาม
+      let whtCount = 0;
+      for (const target of whtTargets) {
+        const mine = created.filter((doc) => doc.settlementId === target.settlementId && doc.bl === target.bl);
+        const owner = mine.find((doc) => doc.kind === 'V') || mine.find((doc) => doc.kind === 'NV') || mine[0];
+        if (!owner) continue;
+        await insertWhtCerts(tx, target.certs, {
+          invoiceNumber: owner.number, bl: target.bl, settlementId: target.settlementId,
+          inspectDate: sourceDate.get(target.settlementId) || '', username: actor.username
+        });
+        whtCount += target.certs.length;
+      }
+      return { ok: true, created, count: created.length, whtCount };
     });
   } catch (error: any) {
     if (error?.code === '23505' || error?.cause?.code === '23505') return { ok: false, error: 'invoice_number_used' };

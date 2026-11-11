@@ -129,6 +129,7 @@ function initInvoiceWorkspace(){
     (invState.visible||[]).forEach(function(row){row.picked=checked;});
     $('inv-src-body').querySelectorAll('.inv-pick').forEach(function(cb){cb.checked=checked;}); updateInvoicePicked();
   });
+  invWhtBind();
   $('inv-preview-picked').addEventListener('click',function(){runInvoicePair(false,pickedInvoiceRows());});
   $('inv-create-picked').addEventListener('click',function(){runInvoicePair(true,pickedInvoiceRows());});
 }
@@ -200,7 +201,7 @@ function renderInvoiceSources(){
   $('inv-src-body').innerHTML=rows.map(function(row,i){
     var issued=INV_KINDS.map(function(kind){return row.issued&&row.issued[kind]?'<span class="pill approved">'+esc(row.issued[kind])+'</span>':'';}).join('');
     return '<tr><td><input type="checkbox" class="inv-pick" data-row="'+i+'"'+(row.picked?' checked':'')+'></td><td>'+esc(row.inspectDate)+'</td><td>'+esc(row.name||row.username)+'</td><td><b>'+esc(row.bl)+'</b></td><td class="right">'+(row.containers||0)+'</td>'
-      +'<td>'+renderInlineInvoiceItems(row,i,'V')+'</td><td>'+renderInlineInvoiceItems(row,i,'NV')+renderDepositBlock(row,i)+'</td><td>'+(issued||'<span class="muted">ยังไม่ออก</span>')+'</td>'
+      +'<td>'+renderInlineInvoiceItems(row,i,'V')+'</td><td>'+renderInlineInvoiceItems(row,i,'NV')+'<div class="inv-wht" id="inv-wht-'+i+'">'+invWhtRender(row,i)+'</div></td><td>'+(issued||'<span class="muted">ยังไม่ออก</span>')+'</td>'
       +'<td><div class="inv-row-actions"><button class="btn btn-ghost btn-sm inv-row-preview" data-row="'+i+'">Preview</button><button class="btn btn-primary btn-sm inv-row-create" data-row="'+i+'"'+(invoiceRowIssued(row)?' disabled':'')+'>สร้างใบแจ้งหนี้</button></div></td></tr>';
   }).join('')||'<tr><td colspan="9" class="muted">ไม่มีรายการ</td></tr>';
   $('inv-src-body').querySelectorAll('.inv-pick').forEach(function(cb){cb.onchange=function(){rows[Number(cb.dataset.row)].picked=cb.checked;updateInvoicePicked();};});
@@ -211,6 +212,7 @@ function renderInvoiceSources(){
       else if(input.type==='text') item.label=input.value;
       else item.amount=input.value===''?NaN:Number(input.value);
       updateInlineInvoiceTotal(row,Number(input.dataset.row),input.dataset.kind);
+      if(input.dataset.kind==='V') invWhtRefresh(Number(input.dataset.row));
     });
   });
   // แก้เลขที่ใบแจ้งหนี้เองได้รายแถว — normalize ให้เป็นรูปแบบเดียวกับที่เซิร์ฟเวอร์รับ
@@ -360,6 +362,11 @@ async function runInvoicePair(save,rows){
   // เปิดใบมัดจำตู้ไว้แต่ยังไม่กรอกยอด — บอกให้ชัด ดีกว่าปล่อยให้ใบหายไปเงียบ ๆ
   var noDeposit=rows.find(function(row){return row.deposit&&!(row.issued&&row.issued.D)&&!(Number(row.deposit.amount)>0);});
   if(noDeposit){$('inv-inline-msg').textContent=noDeposit.bl+' — กรอกยอดค่ามัดจำตู้ หรือกด "ลบใบมัดจำตู้"';return;}
+  if(save){
+    var whtBad=null;
+    rows.some(function(row){ var why=invWhtProblem(row); if(why){ whtBad=row.bl+' — '+why; return true; } return false; });
+    if(whtBad){$('inv-inline-msg').textContent=whtBad;return;}
+  }
   var docs;
   try{ docs=await invoicePairDocuments(rows); }
   catch(error){ $('inv-inline-msg').textContent='ไม่สำเร็จ: '+error.message; return; }
@@ -441,7 +448,7 @@ async function runInvoicePair(save,rows){
         // ส่งเฉพาะฝั่งที่มีจริง — BL ที่ไม่มีค่า NON VAT จะมีแค่ใบ V
         var numbers={},items={};
         pair.forEach(function(doc){numbers[doc.kind]=doc.number;items[doc.kind]=doc.items;});
-        return {settlementId:row.settlementId,bl:row.bl,numbers:numbers,items:items};
+        return {settlementId:row.settlementId,bl:row.bl,numbers:numbers,items:items,wht:invWhtPayload(row)};
       })});
       if(!res.ok){
         if(res.error==='invoice_number_used') throw new Error('เลขใบแจ้งหนี้ซ้ำ: '+(res.numbers||[]).join(', ')+' — กด "โหลดใหม่" แล้วเปลี่ยนเลขเริ่มต้น');
@@ -457,7 +464,8 @@ async function runInvoicePair(save,rows){
         $('inv-start').value='V'+invoicePeriod()+String(Math.max(max+1,invoiceStart()||1)).padStart(2,'0');
       }
       renderInvoiceSources();loadInvoiceList();
-      $('inv-inline-msg').textContent='บันทึกใบแจ้งหนี้แล้ว '+res.created.length+' ใบ — เลขที่ '+res.created.map(function(doc){return doc.number;}).join(', ')+' (กด Preview เพื่อดูไฟล์)';
+      $('inv-inline-msg').textContent='บันทึกใบแจ้งหนี้แล้ว '+res.created.length+' ใบ — เลขที่ '+res.created.map(function(doc){return doc.number;}).join(', ')
+        +(res.whtCount?' • ใบหัก ณ ที่จ่ายกระทำการแทน '+res.whtCount+' ใบ':'')+' (กด Preview เพื่อดูไฟล์)';
       return;
     }
     var blob=await InvoicePDF.create(docs,invState.cfg.company);
@@ -476,6 +484,9 @@ function invSaveError(res){
   if(res.error==='deposit_seq_mismatch') return 'ใบมัดจำตู้ของ '+(res.bl||'')+' ต้องใช้เลขรันเดียวกับใบ V/NV ('+String(res.expected||'').padStart(2,'0')+')';
   if(res.error==='bad_deposit') return 'ใบมัดจำตู้ของ '+(res.bl||'')+' ต้องมียอดมากกว่า 0';
   if(res.error==='bad_invoice_number') return 'เลขที่ใบไม่ถูกต้อง: '+(res.number||'');
+  if(res.error==='bad_wht_date') return (res.bl||'')+' — วันที่ใบหัก ณ ที่จ่ายไม่ถูกต้อง';
+  if(res.error==='bad_wht_item') return (res.bl||'')+' — รายการใบหัก ณ ที่จ่ายต้องมีชื่อและยอดมากกว่า 0';
+  if(res.error==='bad_wht') return (res.bl||'')+' — ข้อมูลใบหัก ณ ที่จ่ายไม่ถูกต้อง';
   return res.error;
 }
 
@@ -515,4 +526,166 @@ async function runDepositOnly(row){
   }catch(error){
     $('inv-inline-msg').textContent='ไม่สำเร็จ: '+error.message;
   }finally{invState.saving=false;updateInvoicePicked();}
+}
+
+/* ---------- หัก ณ ที่จ่าย 3% กระทำการแทน (ใต้ช่อง NON VAT) ----------
+ * หัวข้อในใบ V ที่ต้องออกใบหัก: ค่าแลก DO (VAT) / LIFT ON / LIFT OFF / EXTRA MOVEMENT / STORAGE — เฉพาะที่มียอด
+ * ฐาน = ยอดก่อน VAT ในใบ V • เริ่มต้นหัวข้อละ 1 ใบ เลือก "ใบที่" เพื่อรวมหลายหัวข้อเป็นใบเดียว • เพิ่มรายการเองได้
+ * บันทึกอย่างเดียว ไม่เปลี่ยนยอดใบแจ้งหนี้ — เซิร์ฟเวอร์คิด 3% ใหม่เอง (invoice-wht.ts)
+ */
+var INV_WHT_RATE=0.03;
+var INV_WHT_LABEL=/ค่าแลก\s*DO\s*\(VAT\)|LIFT\s*-?\s*ON|LIFT\s*-?\s*OFF|EXTRA\s*MOVEMENT|STORAGE/i;
+function invWhtRound(n){ return Math.round(n*100)/100; }
+function invWhtState(row){
+  if(!row.wht) row.wht={group:{},certs:{},manual:[],next:1};
+  return row.wht;
+}
+/** รายการที่ต้องหัก — จากใบ V (เลือกไว้และมียอด) + ที่เพิ่มเอง */
+function invWhtLines(row){
+  var st=invWhtState(row), out=[];
+  ((row.invoiceItems||{}).V||[]).forEach(function(item){
+    var base=invWhtRound(Number(item.amount));
+    if(!item.selected||!(base>0)||!INV_WHT_LABEL.test(item.label||'')||/NON\s*VAT/i.test(item.label)) return;
+    out.push({key:'v:'+item.label.trim(),label:item.label.trim(),base:base});
+  });
+  st.manual.forEach(function(m,i){
+    out.push({key:'m:'+m.id,label:m.label,base:invWhtRound(Number(m.base)),manual:true,mi:i});
+  });
+  // หัวข้อที่เพิ่งโผล่ = ใบใหม่ของตัวเอง (หัวข้อละ 1 ใบ)
+  out.forEach(function(line){
+    if(!st.group[line.key]){ st.group[line.key]=st.next++; }
+    var g=st.group[line.key];
+    if(!st.certs[g]) st.certs[g]={no:'',date:row.inspectDate||''};
+    line.g=g;
+  });
+  return out;
+}
+/** ใบตามลำดับที่โผล่ — [{g, lines, base, amount}] */
+function invWhtCerts(row){
+  var lines=invWhtLines(row), order=[], map={};
+  lines.forEach(function(line){
+    if(!map[line.g]){ map[line.g]={g:line.g,lines:[]}; order.push(map[line.g]); }
+    map[line.g].lines.push(line);
+  });
+  order.forEach(function(c){
+    c.base=invWhtRound(c.lines.reduce(function(s,l){return s+(Number.isFinite(l.base)?l.base:0);},0));
+    c.amount=invWhtRound(c.lines.reduce(function(s,l){return s+(Number.isFinite(l.base)?invWhtRound(l.base*INV_WHT_RATE):0);},0));
+  });
+  return order;
+}
+function invWhtRender(row,index){
+  var st=invWhtState(row), certs=invWhtCerts(row);
+  var locked=invoiceRowIssued(row)?' disabled':'';
+  var total=invWhtRound(certs.reduce(function(s,c){return s+c.amount;},0));
+  var html='<div class="inv-wht-head"><b>หัก ณ ที่จ่าย 3% กระทำการแทน</b>'
+    +(certs.length?'<span class="inv-wht-sum">'+certs.length+' ใบ · หักรวม '+baht(total)+'</span>':'')+'</div>';
+  if(!certs.length){
+    html+='<div class="muted inv-wht-empty">ไม่มีหัวข้อที่ต้องหัก (DO (VAT), LIFT ON, LIFT OFF, EXTRA MOVEMENT, STORAGE)</div>';
+  }
+  certs.forEach(function(c,n){
+    var cert=st.certs[c.g];
+    html+='<div class="inv-wht-cert"><div class="inv-wht-certhead"><b>ใบที่ '+(n+1)+'</b>'
+      +'<label>วันที่ <input type="date" class="wht-date" data-row="'+index+'" data-g="'+c.g+'" value="'+esc(cert.date)+'"'+locked+' aria-label="วันที่ใบหัก ณ ที่จ่าย ใบที่ '+(n+1)+'"></label>'
+      +'<input type="text" class="wht-no" data-row="'+index+'" data-g="'+c.g+'" value="'+esc(cert.no)+'" maxlength="40" placeholder="เลขที่ใบหัก"'+locked+' aria-label="เลขที่ใบหัก ณ ที่จ่าย ใบที่ '+(n+1)+'">'
+      +'<span class="inv-wht-amt">หัก '+baht(c.amount)+'</span></div>';
+    c.lines.forEach(function(line){
+      var opts='';
+      certs.forEach(function(o,k){ opts+='<option value="'+o.g+'"'+(o.g===c.g?' selected':'')+'>ใบที่ '+(k+1)+'</option>'; });
+      opts+='<option value="new">แยกเป็นใบใหม่</option>';
+      var label=line.manual
+        ? '<input type="text" class="wht-mlabel" data-row="'+index+'" data-mi="'+line.mi+'" value="'+esc(line.label)+'" placeholder="ชื่อรายการ" maxlength="200"'+locked+' aria-label="ชื่อรายการหัก ณ ที่จ่าย">'
+        : '<span class="inv-wht-label">'+esc(line.label.replace(/^ADV\s*-\s*/,''))+'</span>';
+      var base=line.manual
+        ? '<input type="number" min="0" step="0.01" class="wht-mbase" data-row="'+index+'" data-mi="'+line.mi+'" value="'+(Number.isFinite(line.base)&&line.base?line.base:'')+'" placeholder="ฐาน" title="ยอดก่อน VAT"'+locked+' aria-label="ยอดก่อน VAT ของรายการที่เพิ่มเอง">'
+        : '<span class="inv-wht-base" title="ยอดก่อน VAT ในใบ V">'+baht(line.base)+'</span>';
+      html+='<div class="inv-wht-line">'+label+base
+        +'<span class="inv-wht-3">3% = '+(Number.isFinite(line.base)?baht(invWhtRound(line.base*INV_WHT_RATE)):'—')+'</span>'
+        +(certs.length>1||c.lines.length>1?'<select class="wht-move" data-row="'+index+'" data-key="'+esc(line.key)+'"'+locked+' aria-label="ย้ายไปใบที่">'+opts+'</select>':'')
+        +(line.manual?'<button type="button" class="btn btn-ghost btn-sm wht-mdel" data-row="'+index+'" data-mi="'+line.mi+'"'+locked+' aria-label="ลบรายการนี้">✕</button>':'')
+        +'</div>';
+    });
+    html+='</div>';
+  });
+  html+='<div class="inv-wht-acts"><button type="button" class="btn btn-ghost btn-sm wht-add" data-row="'+index+'"'+locked+'>+ เพิ่มรายการเอง</button>'
+    +(certs.length>1?'<button type="button" class="btn btn-ghost btn-sm wht-merge" data-row="'+index+'"'+locked+' title="รวมทุกหัวข้อเป็นใบหักใบเดียว">รวมเป็นใบเดียว</button>':'')
+    +(certs.some(function(c){return c.lines.length>1;})?'<button type="button" class="btn btn-ghost btn-sm wht-split" data-row="'+index+'"'+locked+' title="กลับเป็นหัวข้อละ 1 ใบ">แยกหัวข้อละใบ</button>':'')
+    +'</div>';
+  return html;
+}
+function invWhtRefresh(index){
+  var el=$('inv-wht-'+index), row=(invState.visible||[])[index];
+  if(el&&row) el.innerHTML=invWhtRender(row,index);
+}
+/** ตั้ง handler ครั้งเดียวที่ตาราง (ตารางวาดใหม่บ่อย) */
+function invWhtBind(){
+  var body=$('inv-src-body');
+  function rowOf(el){ return (invState.visible||[])[Number(el.dataset.row)]; }
+  body.addEventListener('input',function(e){
+    var el=e.target, row=rowOf(el); if(!row||!el.classList) return;
+    var st=invWhtState(row);
+    if(el.classList.contains('wht-no')) st.certs[el.dataset.g].no=el.value.trim();
+    else if(el.classList.contains('wht-mlabel')) st.manual[Number(el.dataset.mi)].label=el.value;
+    else if(el.classList.contains('wht-mbase')) st.manual[Number(el.dataset.mi)].base=el.value===''?NaN:Number(el.value);
+  });
+  body.addEventListener('change',function(e){
+    var el=e.target, row=rowOf(el); if(!row||!el.classList) return;
+    var st=invWhtState(row), index=Number(el.dataset.row);
+    if(el.classList.contains('wht-date')){ st.certs[el.dataset.g].date=el.value; return; }
+    if(el.classList.contains('wht-mbase')){ invWhtRefresh(index); return; }
+    if(el.classList.contains('wht-move')){
+      if(el.value==='new'){ var g=st.next++; st.certs[g]={no:'',date:row.inspectDate||''}; st.group[el.dataset.key]=g; }
+      else st.group[el.dataset.key]=Number(el.value);
+      invWhtRefresh(index);
+    }
+  });
+  body.addEventListener('click',function(e){
+    var el=e.target.closest&&e.target.closest('.wht-add,.wht-merge,.wht-split,.wht-mdel');
+    if(!el) return;
+    var row=rowOf(el); if(!row) return;
+    var st=invWhtState(row), index=Number(el.dataset.row), certs=invWhtCerts(row);
+    if(el.classList.contains('wht-add')){
+      st.manual.push({id:st.next+'_'+Date.now(),label:'',base:NaN});
+      invWhtRefresh(index);
+      var inputs=$('inv-wht-'+index).querySelectorAll('.wht-mlabel');
+      if(inputs.length) inputs[inputs.length-1].focus();
+    } else if(el.classList.contains('wht-merge')){
+      var first=certs[0].g;
+      certs.forEach(function(c){ c.lines.forEach(function(line){ st.group[line.key]=first; }); });
+      invWhtRefresh(index);
+    } else if(el.classList.contains('wht-split')){
+      // ใบแรกของแต่ละกลุ่มเก็บวันที่/เลขเดิมไว้ หัวข้อที่เหลือได้ใบใหม่
+      certs.forEach(function(c){ c.lines.slice(1).forEach(function(line){
+        var g=st.next++; st.certs[g]={no:'',date:st.certs[c.g].date}; st.group[line.key]=g;
+      }); });
+      invWhtRefresh(index);
+    } else if(el.classList.contains('wht-mdel')){
+      var m=st.manual[Number(el.dataset.mi)];
+      if(m) delete st.group['m:'+m.id];
+      st.manual.splice(Number(el.dataset.mi),1);
+      invWhtRefresh(index);
+    }
+  });
+}
+/** ส่งให้เซิร์ฟเวอร์ — ใบละ {certNo, certDate, items:[{label, base}]} */
+function invWhtPayload(row){
+  if(invoiceRowIssued(row)) return [];
+  var st=invWhtState(row);
+  return invWhtCerts(row).map(function(c){
+    return {certNo:st.certs[c.g].no||'',certDate:st.certs[c.g].date||'',
+      items:c.lines.map(function(line){return {label:String(line.label||'').trim(),base:line.base};})};
+  });
+}
+function invWhtProblem(row){
+  if(invoiceRowIssued(row)) return '';
+  var st=invWhtState(row), certs=invWhtCerts(row);
+  for(var n=0;n<certs.length;n++){
+    var c=certs[n];
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(st.certs[c.g].date||'')) return 'ใบหัก ณ ที่จ่ายใบที่ '+(n+1)+' ยังไม่มีวันที่';
+    for(var k=0;k<c.lines.length;k++){
+      var line=c.lines[k];
+      if(!String(line.label||'').trim()) return 'ใบหัก ณ ที่จ่ายใบที่ '+(n+1)+' — กรอกชื่อรายการที่เพิ่มเอง หรือกด ✕ ลบ';
+      if(!(line.base>0)) return 'ใบหัก ณ ที่จ่ายใบที่ '+(n+1)+' — '+line.label+' ต้องมียอดมากกว่า 0';
+    }
+  }
+  return '';
 }

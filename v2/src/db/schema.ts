@@ -363,6 +363,33 @@ export const invoices = pgTable('invoices', {
   index('invoices_created_idx').on(t.createdBy, t.issueDate)
 ]);
 
+/**
+ * ใบหัก ณ ที่จ่าย 3% กระทำการแทนลูกค้า — กรอกตอนออกใบแจ้งหนี้ ADV (บันทึกอย่างเดียว ไม่กระทบยอดใบแจ้งหนี้)
+ * 1 แถว = 1 ใบหัก ซึ่งรวมได้หลายหัวข้อ (DO (VAT) / LIFT ON / LIFT OFF / EXTRA MOVEMENT / STORAGE / เพิ่มเอง)
+ * ฐาน = ยอดก่อน VAT ในใบ V (ค่าใช้จ่ายในใบปิดบัญชี ÷ 1.04 = ฐาน × (1 + VAT 7% − หัก 3%))
+ * ผูกกับใบแจ้งหนี้ของ BL — ยกเลิกใบ (ลบแถว invoices) ใบหักหายตาม
+ */
+export const invoiceWht = pgTable('invoice_wht', {
+  id: text('id').primaryKey(),
+  invoiceNumber: text('invoice_number').notNull()
+    .references(() => invoices.number, { onUpdate: 'cascade', onDelete: 'cascade' }),
+  bl: text('bl').notNull(),
+  settlementId: text('settlement_id').notNull().default(''),
+  inspectDate: text('inspect_date').notNull().default(''),
+  seq: integer('seq').notNull(),                       // ใบที่ 1, 2, … ของ BL นี้
+  certNo: text('cert_no').notNull().default(''),       // เลขที่ใบหัก ณ ที่จ่าย
+  certDate: text('cert_date').notNull(),               // yyyy-MM-dd (ตั้งต้น = วันที่ตรวจปล่อย)
+  itemsJson: text('items_json').notNull(),             // [{label, base, amount}]
+  base: doublePrecision('base').notNull().default(0),
+  amount: doublePrecision('amount').notNull().default(0), // ยอดหัก 3%
+  createdBy: citext('created_by').notNull(),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull()
+}, (t) => [
+  index('invoice_wht_invoice_idx').on(t.invoiceNumber),
+  index('invoice_wht_date_idx').on(t.certDate)
+]);
+
 // ============ แพลนงานตรวจปล่อย + SMS คนขับรถ ============
 
 /**

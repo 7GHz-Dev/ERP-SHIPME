@@ -183,6 +183,24 @@
     .toolbar > * { flex:1 1 100%; }
   }
   td.mono .kola-spc{font-family:Sarabun,sans-serif}
+  .inv-wht{margin-top:12px;padding-top:10px;border-top:1px dashed #cbd5e1;font-size:13px}
+  .inv-wht-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+  .inv-wht-sum{color:#0f766e;font-weight:600}
+  .inv-wht-empty{font-size:12px;margin-bottom:6px}
+  .inv-wht-cert{border:1px solid #e2e8f0;border-radius:8px;padding:8px;margin-bottom:8px;background:#f8fafc}
+  .inv-wht-certhead{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px}
+  .inv-wht-certhead label{display:flex;align-items:center;gap:4px;font-size:12px;color:#475569}
+  .inv-wht-certhead input{padding:5px 8px;font-size:13px}
+  .inv-wht-certhead .wht-no{width:130px}
+  .inv-wht-amt{margin-left:auto;font-weight:700;color:#0f766e}
+  .inv-wht-line{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto auto;align-items:center;gap:6px;padding:3px 0}
+  .inv-wht-line input,.inv-wht-line select{padding:4px 6px;font-size:12px}
+  .inv-wht-line .wht-mbase{width:96px}
+  .inv-wht-line .wht-mlabel{width:100%;min-width:0}
+  .inv-wht-base,.inv-wht-3{white-space:nowrap;font-variant-numeric:tabular-nums}
+  .inv-wht-3{color:#475569}
+  .inv-wht-acts{display:flex;gap:6px;flex-wrap:wrap}
+  .invl-wht{margin-top:3px;font-size:12px;color:#0f766e}
 </style>
 <style>
 .inv-number-toolbar{display:flex;align-items:end;gap:16px;flex-wrap:wrap;padding:16px;background:#f1f5f9;border-radius:10px;margin-bottom:14px}
@@ -826,7 +844,7 @@
             <thead><tr>
               <th style="width:34px"><input type="checkbox" id="inv-all" title="เลือกทั้งหมดที่เห็น"></th>
               <th>วันที่ตรวจปล่อย</th><th>พนักงาน</th><th>เลข BL</th>
-              <th class="right">ตู้</th><th class="inv-cost-heading">VAT</th><th class="inv-cost-heading">NON VAT / มัดจำตู้</th><th>ออกใบแล้ว</th><th>เอกสาร</th>
+              <th class="right">ตู้</th><th class="inv-cost-heading">VAT</th><th class="inv-cost-heading">NON VAT · หัก ณ ที่จ่ายแทน</th><th>ออกใบแล้ว</th><th>เอกสาร</th>
             </tr></thead>
             <tbody id="inv-src-body"><tr><td colspan="9" class="muted">กำลังโหลด…</td></tr></tbody>
           </table>
@@ -4964,6 +4982,18 @@ function invMatchesBatch(r, bq){
   return Number(String(r.batchPeriod || '').slice(4, 6)) === bq.month;
 }
 
+/** ใบหัก ณ ที่จ่ายกระทำการแทนที่บันทึกพร้อมใบ — ชี้เพื่อดูรายละเอียด */
+function invWhtNote(r){
+  var list = r.wht || [];
+  if(!list.length || r.status === 'cancelled') return '';
+  var total = list.reduce(function(s, c){ return s + (Number(c.amount) || 0); }, 0);
+  var tip = list.map(function(c){
+    return 'ใบที่ ' + c.seq + (c.certNo ? ' เลขที่ ' + c.certNo : '') + ' วันที่ ' + c.certDate + ' หัก ' + baht(c.amount)
+      + ' (' + (c.items || []).map(function(i){ return String(i.label).replace(/^ADV\s*-\s*/, ''); }).join(', ') + ')';
+  }).join(String.fromCharCode(10));
+  return '<div class="invl-wht" title="' + esc(tip) + '">หัก ณ ที่จ่ายแทน ' + list.length + ' ใบ · ' + baht(Math.round(total * 100) / 100) + '</div>';
+}
+
 /* ---------- ค่าบริการเพิ่มเติมพิเศษ → ฝ่ายขาย ERP KOLA ---------- */
 var KOLA_SPC_ERR = { forbidden:'ไม่มีสิทธิ์', bad_request:'ข้อมูลไม่ครบ' };
 /** ป้ายใต้ BL — เฉพาะ BL ที่มีค่าพิเศษและเคยส่ง */
@@ -5072,7 +5102,7 @@ function renderInvoiceList(){
       + (r.kind==='V' ? ' + VAT '+baht(r.vat) : ' (ไม่มี VAT)') + '</div>';
     return '<tr>'
       + '<td><input type="checkbox" class="invl-pick" data-i="'+i+'"'+((Number(r.paidAmount)>0)?' disabled title="รับชำระแล้ว"':'')+'></td>'
-      + '<td><b class="mono">'+esc(r.number)+'</b><div class="sub">'+esc(r.issueDate)+'</div></td>'
+      + '<td><b class="mono">'+esc(r.number)+'</b><div class="sub">'+esc(r.issueDate)+'</div>'+invWhtNote(r)+'</td>'
       + '<td class="mono">'+esc(r.bl||'—')+kolaSpcBadge(r)+'</td>'
       + '<td class="num">'+money+'</td>'
       + '<td>'+batch+'</td>'
