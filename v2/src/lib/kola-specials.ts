@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { and, inArray, ne, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { appOptions, invoices, settlements } from '@/db/schema';
+import { pushKolaCosts } from './kola-costs';
 import { SPECIAL_PER_CONTAINER } from './settlements';
 import { signedUrlFor } from './storage';
 import type { ApiBody, ApiResult } from './types';
@@ -16,6 +17,7 @@ import { fmtDateStr, nowIso, round2, safeJson } from './utils';
  *   KOLA_SPECIALS_URL = ไม่ต้องตั้ง ถ้าใช้ https://erp-kola.vercel.app/api/shipme/special-charges
  *
  * ส่งตอนฝ่ายบัญชีจัดชุด/เพิ่มใบเข้าชุด (หน้าเว็บเรียก pushKolaSpecials ต่อทันที) และกดส่งซ้ำเองได้
+ * ค่าใช้จ่ายทั้งหมดของ BL (Total cost ของฝ่ายบัญชี KOLA) ส่งไปพร้อมกันในรอบเดียวกัน — ดู kola-costs.ts
  * BL ละ 1 ชุดที่ KOLA — batchId = SHIPME-<BL> ส่งซ้ำได้ (KOLA แทนชุดเดิมถ้ายังไม่เริ่มเจรจา)
  * ถ้าเริ่มเจรจาแล้ว (409) แต่รายการเปลี่ยน → ส่งเป็นชุดใหม่ SHIPME-<BL>-2, -3 …
  * สถานะล่าสุดเก็บใน app_options คีย์ kolaSpc:<BL> (ไม่ต้อง migration)
@@ -280,11 +282,15 @@ export async function pushKolaSpecials(body: ApiBody): Promise<ApiResult> {
       }
     }
   };
-  await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+  // Total cost ของฝ่ายบัญชี KOLA ส่งไปพร้อมกัน (ทุก BL ในชุด ไม่ว่าจะมีค่าพิเศษหรือไม่) — ยิงครั้งเดียวทั้งชุด
+  const [costs] = await Promise.all([
+    pushKolaCosts([...byBl.entries()].map(([key, e]) => ({ key, bl: e.bl, batchName: e.batchName })), cfg.key),
+    ...Array.from({ length: CONCURRENCY }, worker),
+  ]);
 
   const count = (status: string) => results.filter((r) => r.status === status).length;
   return {
-    ok: true, configured: true, results,
+    ok: true, configured: true, results, costs,
     summary: { sent: count('sent'), negotiating: count('negotiating'), none: count('none'),
       error: count('error'), pending: count('pending') }
   };

@@ -862,7 +862,7 @@
           <select id="invl-add-batch" title="ชุดที่มีอยู่แล้ว"></select>
           <button id="invl-add-to-batch" class="btn btn-ghost btn-sm" disabled title="เพิ่มใบที่เลือก (ยังไม่จัดชุด) เข้าชุดที่มีอยู่แล้ว">➕ เพิ่มเข้าชุดนี้</button>
           <button id="invl-unbatch" class="btn btn-ghost btn-sm" disabled>ยกเลิกจัดชุด</button>
-          <button id="invl-kola-spc" class="btn btn-ghost btn-sm" disabled title="ส่งค่าบริการเพิ่มเติมพิเศษ (ยางเกิน สำแดงเท็จ ฯลฯ ไม่รวมค่าน็อคตู้) พร้อมรูป ของ BL ที่เลือกให้ฝ่ายขาย KOLA อีกครั้ง — ปกติระบบส่งให้เองตอนจัดชุด">💰 ส่งค่าพิเศษ KOLA</button>
+          <button id="invl-kola-spc" class="btn btn-ghost btn-sm" disabled title="ส่งค่าบริการเพิ่มเติมพิเศษ (ยางเกิน สำแดงเท็จ ฯลฯ ไม่รวมค่าน็อคตู้) พร้อมรูป ให้ฝ่ายขาย KOLA และค่าใช้จ่ายทั้งหมดของ BL (Total cost) ให้ฝ่ายบัญชี KOLA อีกครั้ง — ปกติระบบส่งให้เองตอนจัดชุด">💰 ส่งค่าพิเศษ KOLA</button>
           <span class="grow"></span>
           <button id="invl-reset" class="btn btn-danger btn-sm hidden" disabled
             title="ลบใบทิ้งทั้งลูกหนี้และชุด แล้วส่ง BL กลับไปหน้าออกใบใหม่">↩ ถอยกลับไปออกใบใหม่</button>
@@ -5004,6 +5004,11 @@ function kolaSpcPush(scope, force){
     if(noJob.length) html += '<div>KOLA ยังไม่พบงานของ BL: ' + noJob.map(function(x){ return esc(x.bl); }).join(', ') + ' (รับไว้แล้ว ฝ่ายขายเลือกงานเอง)</div>';
     var cut = (res.results||[]).filter(function(x){ return x.status === 'sent' && x.photos > x.sentPhotos; });
     if(cut.length) html += '<div>รูปเกิน 10 รูป ส่งได้ 10: ' + cut.map(function(x){ return esc(x.bl) + ' (' + x.sentPhotos + '/' + x.photos + ')'; }).join(', ') + '</div>';
+    // ค่าใช้จ่ายราย BL → เมนู Total cost ของฝ่ายบัญชี KOLA (ส่งรอบเดียวกัน)
+    var c = res.costs;
+    if(c) html += c.ok
+      ? '<div>📊 Total cost → KOLA: ส่งแล้ว ' + c.sent + ' BL' + (c.noJob && c.noJob.length ? ' (KOLA ยังไม่พบงาน: ' + c.noJob.map(esc).join(', ') + ')' : '') + '</div>'
+      : '<div style="color:var(--danger,#b42318)">⚠ Total cost → KOLA ไม่สำเร็จ: ' + esc(c.error || 'ผิดพลาด') + ' — เลือกใบแล้วกด "💰 ส่งค่าพิเศษ KOLA" อีกครั้ง</div>';
     box.innerHTML = html;
     loadInvoiceList();
   }).catch(function(){ box.textContent = '💰 ส่งค่าพิเศษ KOLA: เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ — กดส่งอีกครั้งภายหลัง'; });
@@ -5012,7 +5017,7 @@ $('invl-kola-spc').addEventListener('click', function(){
   var picked = invlPickedRows().filter(function(r){ return r.batchNo && r.status !== 'cancelled'; });
   if(!picked.length) return;
   var bls = picked.map(function(r){ return r.bl; }).filter(function(b, i, a){ return b && a.indexOf(b) === i; });
-  if(!confirm('ส่งค่าบริการเพิ่มเติมพิเศษ (ไม่รวมค่าน็อคตู้) พร้อมรูป ของ ' + bls.length + ' BL ให้ฝ่ายขาย KOLA อีกครั้ง?'
+  if(!confirm('ส่งค่าบริการเพิ่มเติมพิเศษ (ไม่รวมค่าน็อคตู้) พร้อมรูป ให้ฝ่ายขาย KOLA และค่าใช้จ่ายทั้งหมด (Total cost) ให้ฝ่ายบัญชี KOLA ของ ' + bls.length + ' BL อีกครั้ง?'
     + String.fromCharCode(10,10) + 'BL ที่ฝ่ายขายยังไม่เริ่มเจรจา ข้อมูลเดิมจะถูกแทนด้วยข้อมูลล่าสุด')) return;
   var btn = $('invl-kola-spc'); btn.disabled = true;
   kolaSpcPush({ numbers:picked.map(function(r){ return r.number; }) }, true).then(function(){ btn.disabled = false; });
