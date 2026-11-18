@@ -537,7 +537,8 @@ var INV_WHT_RATE=0.03;
 var INV_WHT_LABEL=/ค่าแลก\s*DO\s*\(VAT\)|LIFT\s*-?\s*ON|LIFT\s*-?\s*OFF|EXTRA\s*MOVEMENT|STORAGE/i;
 function invWhtRound(n){ return Math.round(n*100)/100; }
 function invWhtState(row){
-  if(!row.wht) row.wht={group:{},certs:{},manual:[],next:1};
+  if(!row.wht) row.wht={group:{},certs:{},manual:[],next:1,removed:{}};
+  if(!row.wht.removed) row.wht.removed={};
   return row.wht;
 }
 /** รายการที่ต้องหัก — จากใบ V (เลือกไว้และมียอด) + ที่เพิ่มเอง */
@@ -546,7 +547,9 @@ function invWhtLines(row){
   ((row.invoiceItems||{}).V||[]).forEach(function(item){
     var base=invWhtRound(Number(item.amount));
     if(!item.selected||!(base>0)||!INV_WHT_LABEL.test(item.label||'')||/NON\s*VAT/i.test(item.label)) return;
-    out.push({key:'v:'+item.label.trim(),label:item.label.trim(),base:base});
+    var key='v:'+item.label.trim();
+    if(st.removed[key]) return;   // ผู้ใช้กด ✕ ไม่ต้องออกใบหักหัวข้อนี้
+    out.push({key:key,label:item.label.trim(),base:base});
   });
   st.manual.forEach(function(m,i){
     out.push({key:'m:'+m.id,label:m.label,base:invWhtRound(Number(m.base)),manual:true,mi:i});
@@ -584,10 +587,12 @@ function invWhtRender(row,index){
   }
   certs.forEach(function(c,n){
     var cert=st.certs[c.g];
+    // แถวบน: ใบที่ · ยอดหัก · ลบทั้งใบ / แถวล่าง: วันที่ · เลขที่ใบหัก (ช่อง NON VAT แคบ ใส่แถวเดียวไม่พอ)
     html+='<div class="inv-wht-cert"><div class="inv-wht-certhead"><b>ใบที่ '+(n+1)+'</b>'
-      +'<label>วันที่ <input type="date" class="wht-date" data-row="'+index+'" data-g="'+c.g+'" value="'+esc(cert.date)+'"'+locked+' aria-label="วันที่ใบหัก ณ ที่จ่าย ใบที่ '+(n+1)+'"></label>'
-      +'<input type="text" class="wht-no" data-row="'+index+'" data-g="'+c.g+'" value="'+esc(cert.no)+'" maxlength="40" placeholder="เลขที่ใบหัก"'+locked+' aria-label="เลขที่ใบหัก ณ ที่จ่าย ใบที่ '+(n+1)+'">'
-      +'<span class="inv-wht-amt">หัก '+baht(c.amount)+'</span></div>';
+      +'<span class="inv-wht-amt">หัก '+baht(c.amount)+'</span>'
+      +'<button type="button" class="btn btn-ghost btn-sm wht-cdel" data-row="'+index+'" data-g="'+c.g+'"'+locked+' title="ลบใบหักใบนี้ทั้งใบ" aria-label="ลบใบหัก ใบที่ '+(n+1)+' ทั้งใบ">🗑</button></div>'
+      +'<div class="inv-wht-certfields"><label>วันที่ <input type="date" class="wht-date" data-row="'+index+'" data-g="'+c.g+'" value="'+esc(cert.date)+'"'+locked+' aria-label="วันที่ใบหัก ณ ที่จ่าย ใบที่ '+(n+1)+'"></label>'
+      +'<label>เลขที่ <input type="text" class="wht-no" data-row="'+index+'" data-g="'+c.g+'" value="'+esc(cert.no)+'" maxlength="40" placeholder="เลขที่ใบหัก"'+locked+' aria-label="เลขที่ใบหัก ณ ที่จ่าย ใบที่ '+(n+1)+'"></label></div>';
     c.lines.forEach(function(line){
       var opts='';
       certs.forEach(function(o,k){ opts+='<option value="'+o.g+'"'+(o.g===c.g?' selected':'')+'>ใบที่ '+(k+1)+'</option>'; });
@@ -601,7 +606,7 @@ function invWhtRender(row,index){
       html+='<div class="inv-wht-line">'+label+base
         +'<span class="inv-wht-3">3% = '+(Number.isFinite(line.base)?baht(invWhtRound(line.base*INV_WHT_RATE)):'—')+'</span>'
         +(certs.length>1||c.lines.length>1?'<select class="wht-move" data-row="'+index+'" data-key="'+esc(line.key)+'"'+locked+' aria-label="ย้ายไปใบที่">'+opts+'</select>':'')
-        +(line.manual?'<button type="button" class="btn btn-ghost btn-sm wht-mdel" data-row="'+index+'" data-mi="'+line.mi+'"'+locked+' aria-label="ลบรายการนี้">✕</button>':'')
+        +'<button type="button" class="btn btn-ghost btn-sm wht-ldel" data-row="'+index+'" data-key="'+esc(line.key)+'"'+locked+' title="ลบรายการนี้ออกจากใบหัก" aria-label="ลบ '+esc(line.label)+' ออกจากใบหัก">✕</button>'
         +'</div>';
     });
     html+='</div>';
@@ -609,8 +614,16 @@ function invWhtRender(row,index){
   html+='<div class="inv-wht-acts"><button type="button" class="btn btn-ghost btn-sm wht-add" data-row="'+index+'"'+locked+'>+ เพิ่มรายการเอง</button>'
     +(certs.length>1?'<button type="button" class="btn btn-ghost btn-sm wht-merge" data-row="'+index+'"'+locked+' title="รวมทุกหัวข้อเป็นใบหักใบเดียว">รวมเป็นใบเดียว</button>':'')
     +(certs.some(function(c){return c.lines.length>1;})?'<button type="button" class="btn btn-ghost btn-sm wht-split" data-row="'+index+'"'+locked+' title="กลับเป็นหัวข้อละ 1 ใบ">แยกหัวข้อละใบ</button>':'')
+    +(invWhtRemovedCount(row)?'<button type="button" class="btn btn-ghost btn-sm wht-restore" data-row="'+index+'"'+locked+' title="เอาหัวข้อจากใบ V ที่ลบไว้กลับมา">↩ คืนรายการที่ลบ ('+invWhtRemovedCount(row)+')</button>':'')
     +'</div>';
   return html;
+}
+/** หัวข้อจากใบ V ที่ลบออกไว้ และยังมียอดอยู่ในใบ V */
+function invWhtRemovedCount(row){
+  var st=invWhtState(row);
+  return ((row.invoiceItems||{}).V||[]).filter(function(item){
+    return item.selected&&Number(item.amount)>0&&st.removed['v:'+String(item.label||'').trim()];
+  }).length;
 }
 function invWhtRefresh(index){
   var el=$('inv-wht-'+index), row=(invState.visible||[])[index];
@@ -639,7 +652,7 @@ function invWhtBind(){
     }
   });
   body.addEventListener('click',function(e){
-    var el=e.target.closest&&e.target.closest('.wht-add,.wht-merge,.wht-split,.wht-mdel');
+    var el=e.target.closest&&e.target.closest('.wht-add,.wht-merge,.wht-split,.wht-ldel,.wht-cdel,.wht-restore');
     if(!el) return;
     var row=rowOf(el); if(!row) return;
     var st=invWhtState(row), index=Number(el.dataset.row), certs=invWhtCerts(row);
@@ -658,12 +671,28 @@ function invWhtBind(){
         var g=st.next++; st.certs[g]={no:'',date:st.certs[c.g].date}; st.group[line.key]=g;
       }); });
       invWhtRefresh(index);
-    } else if(el.classList.contains('wht-mdel')){
-      var m=st.manual[Number(el.dataset.mi)];
-      if(m) delete st.group['m:'+m.id];
-      st.manual.splice(Number(el.dataset.mi),1);
+    } else if(el.classList.contains('wht-ldel')){
+      invWhtRemove(st,[el.dataset.key]);
+      invWhtRefresh(index);
+    } else if(el.classList.contains('wht-cdel')){
+      var cert=certs.filter(function(c){return String(c.g)===el.dataset.g;})[0];
+      if(cert) invWhtRemove(st,cert.lines.map(function(line){return line.key;}));
+      invWhtRefresh(index);
+    } else if(el.classList.contains('wht-restore')){
+      // หัวข้อที่คืนมาได้ใบใหม่ของตัวเอง (หัวข้อละ 1 ใบ เหมือนตอนเริ่ม)
+      Object.keys(st.removed).forEach(function(key){ delete st.group[key]; });
+      st.removed={};
       invWhtRefresh(index);
     }
+  });
+}
+/** ลบรายการออกจากใบหัก — หัวข้อจากใบ V จำไว้ว่าลบ (คืนได้) / รายการที่เพิ่มเองลบทิ้ง */
+function invWhtRemove(st,keys){
+  keys.forEach(function(key){
+    delete st.group[key];
+    if(key.indexOf('m:')===0){
+      st.manual=st.manual.filter(function(m){return 'm:'+m.id!==key;});
+    } else st.removed[key]=true;
   });
 }
 /** ส่งให้เซิร์ฟเวอร์ — ใบละ {certNo, certDate, items:[{label, base}]} */
