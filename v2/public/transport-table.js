@@ -140,7 +140,7 @@
         }
         st.tabs=res.tabs||[]; st.rows=res.rows||[];
         if(res.q){ st.searching=true; st.q=res.q; st.truncated=!!res.truncated; }
-        else { st.searching=false; st.q=''; st.source=res.source; st.sheet=res.sheet; }
+        else { st.searching=false; st.q=''; st.source=res.source; st.sheet=res.sheet; st.system=!!res.system; }
         st.ship='';
         renderBar(); render();
       }).catch(function(){ st.loading=false; info('โหลดไม่สำเร็จ ตรวจสอบอินเทอร์เน็ตแล้วกด "โหลดใหม่"'); });
@@ -185,7 +185,8 @@
         ? 'ผลค้นหา "<b>'+esc(st.q)+'</b>" ทุกเดือน • '+rows.length+' BL'+(st.truncated?' (แสดง 300 BL แรก — พิมพ์ให้เจาะจงขึ้น)':'')+' • <a href="#" class="tt-back">กลับไปดูรายเดือน</a>'
         : '<b>'+esc(st.source)+' — '+esc(st.sheet)+'</b> • '+rows.length+(rows.length!==st.rows.length?' จาก '+st.rows.length:'')+' BL • '+boxes.toLocaleString('en-US')+' ตู้'
           +(tab&&tab.from?' • วันที่ '+dmy(tab.from)+' – '+dmy(tab.to):'')
-          +(tab&&tab.syncedAt?' • อัปเดตจากชีตล่าสุด '+stamp(tab.syncedAt):'');
+          +(st.system?' • <b style="color:#047857">ข้อมูลจากระบบ</b> (Transport Request + ใบปิดบัญชี + ใบแจ้งหนี้)':'')
+          +(tab&&tab.syncedAt?(st.system?' • อัปเดตล่าสุด ':' • อัปเดตจากชีตล่าสุด ')+stamp(tab.syncedAt):'');
       info(head);
       var back=$('.tt-back'); if(back) back.addEventListener('click',function(e){ e.preventDefault(); $('.tt-q').value=''; load({ source:st.source, sheet:st.sheet }); });
       if(!rows.length){

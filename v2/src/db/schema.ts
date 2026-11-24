@@ -364,6 +364,54 @@ export const invoices = pgTable('invoices', {
 ]);
 
 /**
+ * ตารางขนส่งของระบบ — 1 แถว = 1 BL (แทนชีตงานขนส่งตั้งแต่งาน ธ.ค. 69)
+ * ข้อมูลมาจากหลายส่วน:
+ *   ส่วน 1 Transport Request (Import ที่เมนูแพลนงาน / ต่อไปรับจาก ERP KOLA): วันที่ ชิปเปอร์ สายเรือ BL ตู้ ท่า ชิปปิ้ง
+ *   ส่วน 2 DO / DEM จาก ERP KOLA (MAY → รอแลก DO) — ยังไม่เชื่อม
+ *   ส่วน 3 เมนูบันทึกและตรวจข้อมูลปิดบัญชี: EXTRA MOVEMENT … ค่าซ่อมตู้ — ยังไม่ทำ (คอลัมน์เตรียมไว้)
+ *   ส่วน 4 ค่านายตรวจ / ER / น็อคตู้ / ยางเกิน / สำแดงเท็จ — อ่านสดจากใบปิดบัญชีชิปปิ้ง (ไม่เก็บซ้ำ)
+ *   ส่วน 5 เลขที่ใบแจ้งหนี้ — อ่านสดจากใบแจ้งหนี้ (ไม่เก็บซ้ำ)
+ */
+export const transportRecords = pgTable('transport_records', {
+  id: text('id').primaryKey(),
+  transportDate: text('transport_date').notNull(),         // yyyy-MM-dd (ETA ใน Transport Request)
+  source: text('source').notNull().default('MAESOT FREEZONE'),  // MAESOT FREEZONE | TRANSIT
+  customer: text('customer').notNull().default(''),        // ชิปเปอร์
+  vessel: text('vessel').notNull().default(''),            // สายเรือ (SHIPLINE) — ช่อง VESSEL ของชีตเดิม
+  vesselName: text('vessel_name').notNull().default(''),   // ชื่อเรือจริง (VESSEL ใน Transport Request)
+  bl: text('bl').notNull(),
+  blKey: text('bl_key').notNull(),                         // BL ตัวใหญ่ ไม่มีช่องว่าง — กันนำเข้าซ้ำ
+  containersJson: text('containers_json').notNull().default('[]'),
+  quantity: integer('quantity').notNull().default(0),
+  port: text('port').notNull().default(''),
+  username: citext('username').notNull().default(''),       // ชิปปิ้ง (จากชิปปิ้งประจำท่าของเดือนนั้น)
+  // ---- ส่วน 2 ----
+  doFee: doublePrecision('do_fee').notNull().default(0),
+  dem: doublePrecision('dem').notNull().default(0),
+  // ---- ส่วน 3 ----
+  extraMovement: doublePrecision('extra_movement').notNull().default(0),
+  storage: doublePrecision('storage').notNull().default(0),
+  liftOn: doublePrecision('lift_on').notNull().default(0),
+  liftOff: doublePrecision('lift_off').notNull().default(0),
+  overtime: doublePrecision('overtime').notNull().default(0),
+  sealFee: doublePrecision('seal_fee').notNull().default(0),
+  prb: doublePrecision('prb').notNull().default(0),
+  prbService: doublePrecision('prb_service').notNull().default(0),
+  detention: doublePrecision('detention').notNull().default(0),
+  repairFee: doublePrecision('repair_fee').notNull().default(0),
+  note: text('note').notNull().default(''),
+  docSentDate: text('doc_sent_date').notNull().default(''),
+  importedFrom: text('imported_from').notNull().default(''),  // import | kola
+  createdBy: citext('created_by').notNull().default(''),
+  createdAt: text('created_at').notNull(),
+  updatedBy: citext('updated_by').notNull().default(''),
+  updatedAt: text('updated_at').notNull()
+}, (t) => [
+  uniqueIndex('transport_records_bl_date_idx').on(t.blKey, t.transportDate),
+  index('transport_records_date_idx').on(t.transportDate)
+]);
+
+/**
  * ใบหัก ณ ที่จ่าย 3% กระทำการแทนลูกค้า — กรอกตอนออกใบแจ้งหนี้ ADV (บันทึกอย่างเดียว ไม่กระทบยอดใบแจ้งหนี้)
  * 1 แถว = 1 ใบหัก ซึ่งรวมได้หลายหัวข้อ (DO (VAT) / LIFT ON / LIFT OFF / EXTRA MOVEMENT / STORAGE / เพิ่มเอง)
  * ฐาน = ยอดก่อน VAT ในใบ V (ค่าใช้จ่ายในใบปิดบัญชี ÷ 1.04 = ฐาน × (1 + VAT 7% − หัก 3%))

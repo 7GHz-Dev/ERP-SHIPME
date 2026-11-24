@@ -63,6 +63,7 @@ import { saveDataImage } from './storage';
 import { lookupTransport, transportDiagnostics } from './transport';
 import { pruneTransportSheets, syncTransportSheet, transportSyncStatus } from './transport-sync';
 import { TRANSPORT_VIEW_ROLES, transportTable } from './transport-table';
+import { deleteTransportRecord, importTransportRequest, transportRecordsDay } from './transport-records';
 import {
   checkInvoiceNumber, decideInvoice, getInvoice, invoiceConfig, invoicePreview, invoiceSources, listInvoices, updateInvoice,
   saveInvoice, saveInvoiceBatch
@@ -462,6 +463,19 @@ const handlers: Record<string, Handler> = {
   transportTable: async (body) => {
     const session = await guard(body, TRANSPORT_VIEW_ROLES);
     return session.error || transportTable(body);
+  },
+  // Transport Request (ส่วน 1 ของตารางขนส่งของระบบ) — นำเข้าที่เมนูแพลนงาน
+  importTransportRequest: async (body) => {
+    const session = await guard(body, ['admin', 'manager']);
+    return session.error || importTransportRequest(body, session.user);
+  },
+  transportRecordsDay: async (body) => {
+    const session = await guard(body, ['admin', 'manager']);
+    return session.error || transportRecordsDay(body);
+  },
+  deleteTransportRecord: async (body) => {
+    const session = await guard(body, ['admin', 'manager']);
+    return session.error || deleteTransportRecord(body);
   },
 
   // ---- แพลนงานตรวจปล่อย (ผู้จัดการ) ----

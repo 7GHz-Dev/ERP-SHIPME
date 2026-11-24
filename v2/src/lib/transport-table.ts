@@ -1,7 +1,8 @@
 import { and, asc, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import { db } from '@/db';
-import { transportJobs } from '@/db/schema';
+import { transportJobs, transportRecords } from '@/db/schema';
 import { noteExtras } from './service-invoices';
+import { monthTabName, systemRows, systemTabs } from './transport-records';
 import { prbAmount } from './shipping-reconcile';
 import type { ApiBody, ApiResult } from './types';
 import { round2 } from './utils';
@@ -23,6 +24,11 @@ const MAX_TAB_ROWS = 5000;
 const MAX_SEARCH_BLS = 300;
 // แท็บสำเนาในชีต (ลองรูปแบบ/สูตร) ไม่ใช่งานจริง — ไม่แสดงในตาราง
 const COPY_SHEET = /^\s*(สำเนา|copy\s+of\b)/i;
+/**
+ * งานตั้งแต่วันนี้ใช้ตารางของระบบ (transport_records) แทนชีต — แท็บเดือนในชีตที่เริ่มตั้งแต่วันนี้ไม่แสดง
+ * เดือนก่อนหน้านี้ที่มีข้อมูลในระบบด้วย (นำเข้าทดลอง) แสดงเป็นแท็บแยก "<เดือน> (ระบบ)" เทียบกับชีตได้
+ */
+export const SYSTEM_FROM = '2026-12-01';
 
 const columns = {
   id: transportJobs.id, transportDate: transportJobs.transportDate, shipping: transportJobs.shipping,
@@ -120,7 +126,14 @@ async function listTabs() {
     const i = SOURCE_ORDER.indexOf(source);
     return i < 0 ? SOURCE_ORDER.length : i;
   };
-  return rows.filter((tab) => !COPY_SHEET.test(tab.sheet))
+  const sheetTabs = rows
+    .filter((tab) => !COPY_SHEET.test(tab.sheet) && !(String(tab.from || '') >= SYSTEM_FROM))
+    .map((tab) => ({ ...tab, system: false, month: '' }));
+  const sys = (await systemTabs()).map((tab) => ({
+    source: tab.source, rows: tab.rows, bls: tab.rows, from: tab.from, to: tab.to, syncedAt: tab.syncedAt,
+    sheet: monthTabName(tab.month) + (`${tab.month}-01` < SYSTEM_FROM ? ' (ระบบ)' : ''), system: true, month: tab.month
+  }));
+  return [...sheetTabs, ...sys]
     .sort((a, b) => rank(a.source) - rank(b.source) || String(b.to || '').localeCompare(String(a.to || '')));
 }
 
@@ -131,7 +144,7 @@ async function listTabs() {
  */
 export async function transportTable(body: ApiBody): Promise<ApiResult> {
   const tabs = await listTabs();
-  const realSheets = [...new Set(tabs.map((tab) => tab.sheet))];
+  const realSheets = [...new Set(tabs.filter((tab) => !tab.system).map((tab) => tab.sheet))];
   const q = String(body.q ?? '').trim().slice(0, 60);
   if (q) {
     if (q.length < 3) return { ok: false, error: 'search_too_short' };
@@ -152,7 +165,12 @@ export async function transportTable(body: ApiBody): Promise<ApiResult> {
       inArray(transportJobs.sourceSheet, realSheets),
       inArray(sql`upper(regexp_replace(${transportJobs.bl}, '\\s+', '', 'g'))`, pick)
     )).orderBy(asc(transportJobs.id)) : [];
-    const rows = groupByBl(raw).sort((a, b) => String(b.transportDate).localeCompare(String(a.transportDate)));
+    // ตารางของระบบ: BL / ชิปเปอร์ / สายเรือ / เลขตู้
+    const sys = await systemRows(or(
+      ilike(transportRecords.bl, like), ilike(transportRecords.customer, like), ilike(transportRecords.vessel, like),
+      ilike(transportRecords.containersJson, like)
+    ));
+    const rows = [...groupByBl(raw), ...sys].sort((a, b) => String(b.transportDate).localeCompare(String(a.transportDate)));
     return { ok: true, tabs, q, rows, truncated };
   }
 
@@ -162,6 +180,11 @@ export async function transportTable(body: ApiBody): Promise<ApiResult> {
     const pick = tabs.find((tab) => tab.source === source) || tabs[0];
     source = pick?.source || '';
     sheet = pick?.sheet || '';
+  }
+  const tab = tabs.find((t) => t.source === source && t.sheet === sheet);
+  if (tab?.system) {
+    const rows = await systemRows(and(eq(transportRecords.source, source), sql`${transportRecords.transportDate} like ${tab.month + '-%'}`));
+    return { ok: true, tabs, source, sheet, system: true, rows };
   }
   const raw = source ? await selectRows(and(eq(transportJobs.sourceName, source), eq(transportJobs.sourceSheet, sheet)))
     .orderBy(asc(transportJobs.id)).limit(MAX_TAB_ROWS) : [];

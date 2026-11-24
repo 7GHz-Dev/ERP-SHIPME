@@ -362,6 +362,7 @@
 <script src="/service-invoice.js"></script>
 <script src="/withholding.js"></script>
 <script src="/transport-table.js"></script>
+<script src="/transport-import.js"></script>
 <script src="/wht-records.js"></script>
 <script src="/pretty-excel.js"></script>
 <script src="/shipping-income.js"></script>
@@ -535,7 +536,13 @@
     </section>
 
     <!-- แพลนงานตรวจปล่อย (admin + manager) — เนื้อหาสร้างจาก job-plan.js ตอนเปิดแท็บ -->
+    <!-- แพลนงาน: เมนูย่อย แพลนงาน (job-plan.js) | รับ Transport Request (transport-import.js) -->
+    <div id="planx" class="subnav hidden" style="margin-bottom:12px">
+      <button class="subbtn active" data-psub="plan">แพลนงาน</button>
+      <button class="subbtn" data-psub="tr">📥 รับ Transport Request</button>
+    </div>
     <section id="tab-plan" class="hidden"></section>
+    <section id="tab-tr" class="hidden"></section>
     <!-- ถามชิปปิ้งทาง LINE ว่างานตรวจปล่อยเสร็จครบหรือยัง (admin + manager) — สร้างจาก shipping-ask.js -->
     <section id="tab-shipask" class="hidden"></section>
 
@@ -1587,10 +1594,24 @@ function enterApp(){
 Array.prototype.forEach.call(document.querySelectorAll('.navbtn'), function(t){
   t.addEventListener('click', function(){ switchTab(t.getAttribute('data-tab')); });
 });
+/** แพลนงาน ↔ รับ Transport Request */
+function planSub(which){
+  window.__planSub = which;
+  Array.prototype.forEach.call(document.querySelectorAll('#planx .subbtn'), function(b){ b.classList.toggle('active', b.getAttribute('data-psub')===which); });
+  $('tab-plan').classList.toggle('hidden', which!=='plan');
+  $('tab-tr').classList.toggle('hidden', which!=='tr');
+  if(which==='tr') initTransportImport();
+}
+Array.prototype.forEach.call(document.querySelectorAll('#planx .subbtn'), function(b){
+  b.addEventListener('click', function(){ planSub(b.getAttribute('data-psub')); });
+});
 function switchTab(name){
   Array.prototype.forEach.call(document.querySelectorAll('.navbtn'), function(t){ t.classList.toggle('active', t.getAttribute('data-tab')===name); });
   ['checkin','dash','attend','claim','settle','plan','shipask','transport','invoice','wht','whtrec','income','reconcile','ledger','receipt','leave','emp','settings'].forEach(function(s){ $('tab-'+s).classList.toggle('hidden', s!==name); });
-  if(name==='plan') initPlanTab();
+  // เมนูย่อยของแพลนงาน — tab-tr ไม่อยู่ในรายการแท็บหลัก จึงซ่อน/แสดงเอง
+  $('planx').classList.toggle('hidden', name!=='plan');
+  $('tab-tr').classList.add('hidden');
+  if(name==='plan'){ initPlanTab(); planSub(window.__planSub||'plan'); }
   if(name==='shipask') initShipAsk();
   if(name==='checkin') initCheckin();   // ขอสิทธิ์ตำแหน่งเฉพาะตอนเปิดแท็บเข้างานจริง ๆ
   if(name==='claim') initClaimTab();    // โหลดใบเบิกของพนักงานตอนเปิดแท็บครั้งแรก
