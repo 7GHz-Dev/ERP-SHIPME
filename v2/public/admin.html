@@ -361,6 +361,7 @@
 <script src="/invoice-workspace.js"></script>
 <script src="/service-invoice.js"></script>
 <script src="/withholding.js"></script>
+<script src="/transport-table.js"></script>
 <script src="/wht-records.js"></script>
 <script src="/pretty-excel.js"></script>
 <script src="/shipping-income.js"></script>
@@ -391,6 +392,7 @@
     <button class="navbtn" data-tab="settle">ปิดบัญชี</button>
     <button class="navbtn hidden" data-tab="plan">แพลนงาน</button>
     <button class="navbtn hidden" data-tab="shipask">📨 ถามชิปปิ้ง (LINE)</button>
+    <button class="navbtn" data-tab="transport">ตารางขนส่ง</button>
     <button class="navbtn" data-tab="invoice">ใบแจ้งหนี้</button>
     <button class="navbtn" data-tab="wht">ใบหัก ณ ที่จ่าย</button>
     <button class="navbtn" data-tab="whtrec">ใบหัก ณ ที่จ่าย (บันทึกเอง)</button>
@@ -1163,6 +1165,16 @@
       </div>
     </section>
 
+    <!-- ---------- ตารางขนส่ง (อ่านอย่างเดียว) — ข้อมูลจากชีตงานขนส่ง (transport-table.js) ---------- -->
+    <section id="tab-transport" class="hidden">
+      <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:0 0 10px">
+        <h2 style="margin:0">ตารางขนส่ง</h2>
+        <span class="muted">ข้อมูลจากชีตงานขนส่ง (MAESOT FREEZONE / TRANSIT) ที่ sync เข้าระบบ • อ่านอย่างเดียว แก้ที่ชีตแล้วระบบอัปเดตตาม</span>
+        <a href="/transport?from=admin" target="_blank" rel="noopener" class="muted" style="margin-left:auto">เปิดเต็มจอ ↗</a>
+      </div>
+      <div id="tt-root"></div>
+    </section>
+
     <!-- ---------- ใบหัก ณ ที่จ่าย (บันทึกเอง) — จากหน้าออกใบแจ้งหนี้ ADV (wht-records.js) ---------- -->
     <section id="tab-whtrec" class="hidden">
       <h2 style="margin:0 0 6px">ใบหัก ณ ที่จ่าย (บันทึกเอง)</h2>
@@ -1545,7 +1557,7 @@ function enterApp(){
     // ปิดบัญชี: ดูใบปิดบัญชี + แนบสลิปบริษัทโอนคืนชิปปิ้ง
     Array.prototype.forEach.call(document.querySelectorAll('.navbtn'), function(btn){
       var tab = btn.getAttribute('data-tab');
-      btn.classList.toggle('hidden', ['checkin','settle','invoice','wht','whtrec','income','reconcile','ledger'].indexOf(tab)<0);
+      btn.classList.toggle('hidden', ['checkin','settle','transport','invoice','wht','whtrec','income','reconcile','ledger'].indexOf(tab)<0);
     });
   } else {
     // เมนูเข้างานมีเฉพาะผู้จัดการ (admin ไม่ต้องลงเวลา) และเปิดเป็นแท็บแรกให้เลย
@@ -1577,7 +1589,7 @@ Array.prototype.forEach.call(document.querySelectorAll('.navbtn'), function(t){
 });
 function switchTab(name){
   Array.prototype.forEach.call(document.querySelectorAll('.navbtn'), function(t){ t.classList.toggle('active', t.getAttribute('data-tab')===name); });
-  ['checkin','dash','attend','claim','settle','plan','shipask','invoice','wht','whtrec','income','reconcile','ledger','receipt','leave','emp','settings'].forEach(function(s){ $('tab-'+s).classList.toggle('hidden', s!==name); });
+  ['checkin','dash','attend','claim','settle','plan','shipask','transport','invoice','wht','whtrec','income','reconcile','ledger','receipt','leave','emp','settings'].forEach(function(s){ $('tab-'+s).classList.toggle('hidden', s!==name); });
   if(name==='plan') initPlanTab();
   if(name==='shipask') initShipAsk();
   if(name==='checkin') initCheckin();   // ขอสิทธิ์ตำแหน่งเฉพาะตอนเปิดแท็บเข้างานจริง ๆ
@@ -1587,6 +1599,8 @@ function switchTab(name){
   if(name==='invoice') initInvoiceTab();
   if(name==='wht') initWithholding();
   if(name==='whtrec') initWhtRecords();
+  // ตารางขนส่ง — โหลดครั้งแรกตอนเปิดแท็บ (transport-table.js)
+  if(name==='transport' && !window.__ttMounted){ window.__ttMounted = TransportTable.mount($('tt-root'), { api: api, token: state.token }); }
   if(name==='income') initShippingIncome();
   if(name==='reconcile') initShippingReconcile();
   if(name==='ledger') initLedger();

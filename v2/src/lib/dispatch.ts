@@ -62,6 +62,7 @@ import { ocrDiagnostics, signSlipUpload, verifySlip } from './slip';
 import { saveDataImage } from './storage';
 import { lookupTransport, transportDiagnostics } from './transport';
 import { pruneTransportSheets, syncTransportSheet, transportSyncStatus } from './transport-sync';
+import { TRANSPORT_VIEW_ROLES, transportTable } from './transport-table';
 import {
   checkInvoiceNumber, decideInvoice, getInvoice, invoiceConfig, invoicePreview, invoiceSources, listInvoices, updateInvoice,
   saveInvoice, saveInvoiceBatch
@@ -456,6 +457,11 @@ const handlers: Record<string, Handler> = {
   transportSyncStatus: async (body) => {
     const session = await guard(body, ['admin', 'manager']);
     return session.error || transportSyncStatus();
+  },
+  // ตารางขนส่ง (อ่านอย่างเดียว) — ทุก role ยกเว้นพาร์ทเนอร์คนขับ
+  transportTable: async (body) => {
+    const session = await guard(body, TRANSPORT_VIEW_ROLES);
+    return session.error || transportTable(body);
   },
 
   // ---- แพลนงานตรวจปล่อย (ผู้จัดการ) ----

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#1f3a5f">
+<title>ตารางขนส่ง — ERP SHIPME</title>
+<link rel="icon" href="/brand/mark.svg?v=4" type="image/svg+xml">
+<style>
+  html, body { margin:0; background:#f1f5f9; color:#0f172a; font-family:-apple-system,'Segoe UI',Roboto,'Noto Sans Thai',sans-serif; }
+  header { position:sticky; top:0; z-index:5; display:flex; align-items:center; gap:10px; padding:10px 16px; background:#1f3a5f; color:#fff;
+           padding-top:max(10px, env(safe-area-inset-top)); }
+  header a { color:#fff; text-decoration:none; background:rgba(255,255,255,.14); border-radius:10px; padding:8px 12px; font-weight:600; font-size:14px; white-space:nowrap; }
+  header .t { flex:1; min-width:0; }
+  header .t b { display:block; font-size:16px; }
+  header .t span { display:block; font-size:12px; opacity:.85; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  main { padding:14px 16px 24px; }
+  .gate { max-width:420px; margin:60px auto; background:#fff; border-radius:14px; padding:24px; text-align:center; box-shadow:0 1px 3px rgba(15,23,42,.08); }
+  .gate a { display:inline-block; margin-top:12px; background:#1f3a5f; color:#fff; border-radius:10px; padding:10px 18px; text-decoration:none; font-weight:600; }
+</style>
+</head>
+<body>
+<header>
+  <a id="back" href="/">← กลับ</a>
+  <div class="t"><b>ตารางขนส่ง</b><span id="who">ข้อมูลจากชีตงานขนส่ง (อ่านอย่างเดียว)</span></div>
+</header>
+<main id="main"></main>
+<script src="/transport-table.js"></script>
+<script>
+(function(){
+  // ใช้ session เดียวกับหน้าที่เปิดมา: หน้าพนักงาน (ci_sess) หรือหน้า admin (admin_sess)
+  var fromAdmin = /[?&]from=admin\b/.test(location.search);
+  function read(key){ try { var s = JSON.parse(localStorage.getItem(key) || 'null'); return s && s.token ? s : null; } catch(e){ return null; } }
+  var sess = fromAdmin ? (read('admin_sess') || read('ci_sess')) : (read('ci_sess') || read('admin_sess'));
+  var back = document.getElementById('back');
+  back.href = fromAdmin ? '/admin' : '/';
+  if(!sess){
+    document.getElementById('main').innerHTML = '<div class="gate"><b>กรุณาเข้าสู่ระบบก่อน</b><div style="margin-top:6px;color:#64748b;font-size:14px">เปิดตารางขนส่งจากหน้าหลักหลังเข้าสู่ระบบ</div><a href="/">ไปหน้าเข้าสู่ระบบ</a></div>';
+    return;
+  }
+  if(sess.user && sess.user.name) document.getElementById('who').textContent = sess.user.name + ' • ข้อมูลจากชีตงานขนส่ง (อ่านอย่างเดียว)';
+  function api(payload){
+    return fetch('/api', { method:'POST', headers:{ 'Content-Type':'application/json;charset=utf-8' }, body: JSON.stringify(payload) })
+      .then(function(r){ return r.json(); });
+  }
+  TransportTable.mount(document.getElementById('main'), { api: api, token: sess.token });
+})();
+</script>
+</body>
+</html>

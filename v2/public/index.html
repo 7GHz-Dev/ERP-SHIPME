@@ -317,6 +317,7 @@
         <button id="btn-goclaim" class="btn-link hidden">เบิก</button>
         <button id="btn-goreceipt" class="btn-link hidden">ส่งใบเสร็จ</button>
         <button id="btn-gohistory" class="btn-link">ประวัติ</button>
+        <button id="btn-gotransport" class="btn-link" title="ตารางขนส่ง (ข้อมูลจากชีตงานขนส่ง)">ตารางขนส่ง</button>
         <button id="btn-goreport" class="btn-link hidden">รายงาน</button>
         <button id="btn-logout" class="btn-link">ออก</button>
       </div>
@@ -1454,6 +1455,8 @@ function renderReport(){
 
 // ---------- HISTORY (ประวัติการเข้างานของตัวเอง) ----------
 $('btn-gohistory').addEventListener('click', openHistory);
+// ตารางขนส่ง — หน้าเต็มจอแยก (ตารางกว้าง) ใช้ session เดียวกัน
+$('btn-gotransport').addEventListener('click', function(){ location.href='/transport'; });
 $('btn-history-back').addEventListener('click', resumeCheckin);
 
 function openHistory(){
