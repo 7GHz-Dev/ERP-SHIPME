@@ -32,3 +32,57 @@ test('validDocInput rejects non-pdf, >20MB, bad kind', () => {
   assert.equal(validDocInput(ok), null);
   assert.equal(validDocInput({ ...ok, kind: 'EOFFICE', fileName: 'AMP0572751A E-744810.PDF' }), null);
 });
+
+import { fetchKolaDo, kolaDocStatusUrl } from '../src/lib/doc-status-kola';
+
+const cfg = { key: 'k', url: 'https://kola.example/api/shipme/special-charges' };
+
+test('kolaDocStatusUrl uses the KOLA origin of KOLA_SPECIALS_URL', () => {
+  assert.equal(kolaDocStatusUrl(cfg.url, ['A1', 'B 2']), 'https://kola.example/api/shipme/doc-status?bl=A1&bl=B+2');
+});
+
+test('fetchKolaDo returns null on network error', async () => {
+  const r = await fetchKolaDo(['A1'], cfg, async () => { throw new Error('down'); });
+  assert.equal(r, null);
+});
+
+test('fetchKolaDo returns null on 401', async () => {
+  const r = await fetchKolaDo(['A1'], cfg, async () => new Response('{"ok":false}', { status: 401 }));
+  assert.equal(r, null);
+});
+
+test('fetchKolaDo returns null without a key', async () => {
+  let called = false;
+  const r = await fetchKolaDo(['A1'], { key: '', url: cfg.url }, async () => { called = true; return new Response('{}'); });
+  assert.equal(r, null);
+  assert.equal(called, false);
+});
+
+test('fetchKolaDo maps found/doExchangedAt', async () => {
+  const body = { ok: true, items: { A1: { found: true, doExchangedAt: '2026-11-20T00:00:00Z' }, B2: { found: true, doExchangedAt: null }, C3: { found: false } } };
+  const r = await fetchKolaDo(['A1', 'B2', 'C3'], cfg, async () => new Response(JSON.stringify(body)));
+  assert.equal(r?.get('A1'), 'yes');
+  assert.equal(r?.get('B2'), 'no');
+  assert.equal(r?.get('C3'), 'notfound');
+});
+
+test('fetchKolaDo chunks at 300 keys', async () => {
+  let calls = 0;
+  const keys = Array.from({ length: 301 }, (_, i) => `K${i}`);
+  await fetchKolaDo(keys, cfg, async () => { calls++; return new Response('{"ok":true,"items":{}}'); });
+  assert.equal(calls, 2);
+});
+
+import fs from 'node:fs';
+import vm from 'node:vm';
+
+test('docBadges shows ? when KOLA could not be asked, and links files', () => {
+  const ctx: Record<string, any> = {};
+  vm.runInNewContext(fs.readFileSync(new URL('../public/doc-badges.js', import.meta.url), 'utf8'), ctx);
+  const docs = { AMP0572751A: { do: 'unknown', decl: { id: '1', url: 'https://x/a.pdf', fileName: 'A031.pdf' }, eoffice: null } };
+  const html: string = ctx.docBadges(docs, 'amp 0572751a');
+  assert.match(html, /\? DO/);
+  assert.match(html, /href="https:\/\/x\/a\.pdf"[^>]*>✓ ใบขน/);
+  assert.match(html, /✗ E-Office/);
+  assert.equal(ctx.docBadges(docs, 'NOPE'), '');
+});

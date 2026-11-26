@@ -1,8 +1,9 @@
 import { and, asc, desc, eq, gte, lte, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import {
-  jobPlanItems, jobPlans, portAssignments, smsMessages, transportJobs, users
+  jobPlanItems, jobPlans, portAssignments, smsMessages, transportJobs, transportRecords, users
 } from '@/db/schema';
+import { docStatusFor } from './doc-status';
 import { TRANSPORT_SOURCE_ORDER } from './constants';
 import { portKey, readAppOptions } from './options';
 import { meetingMapsList, smsConfig, smsRowView } from './sms';
@@ -110,6 +111,25 @@ async function transportRowsFor(date: string, shippers: Shipper[]) {
   };
   const seen = new Set<string>();
   const out = [];
+  /*
+   * ตารางขนส่งของระบบ (transport_records — Transport Request ที่นำเข้า / ERP-KOLA ส่งมา) ของวันนั้น แตกเป็นแถวละตู้
+   * ใส่ก่อนแถวจากชีต — งานเดียวกัน (BL + ตู้เดิม) ที่มีทั้งสองที่จะเหลือแถวของระบบ
+   */
+  const records = await db.select().from(transportRecords)
+    .where(eq(transportRecords.transportDate, date)).orderBy(asc(transportRecords.createdAt), asc(transportRecords.bl));
+  for (const r of records) {
+    let boxes: string[] = [];
+    try { boxes = JSON.parse(r.containersJson); } catch { boxes = []; }
+    for (const containerNo of boxes.length ? boxes : ['']) {
+      const key = `${r.bl.toUpperCase()}|${containerNo.toUpperCase().replace(/[^A-Z0-9]/g, '') || r.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        bl: r.bl, containerNo, port: r.port, customer: r.customer,
+        source: r.source, sheetShipping: '', sheetUser: String(r.username || ''), sheetDriver: ''
+      });
+    }
+  }
   for (const row of [...rows].sort((a, b) => rank(a.sourceFile) - rank(b.sourceFile) || a.id - b.id)) {
     const container = row.containerNo.toUpperCase().replace(/[^A-Z0-9]/g, '');
     const key = `${row.bl.toUpperCase()}|${container || row.id}`;
@@ -153,6 +173,8 @@ export async function planLoad(body: ApiBody): Promise<ApiResult> {
     jobs, shippers, ports: options.ports,
     assignments: assignments.map((row) => ({ ...row, username: String(row.username) })),
     sms: sms.map(smsRowView),
+    // ป้ายเอกสาร DO · ใบขน · E-Office ต่อ BL (doc-status.ts)
+    docs: await docStatusFor([...items, ...jobs].map((row) => row.bl)),
     recent
   };
 }
@@ -267,7 +289,8 @@ export async function myReleaseJobs(body: ApiBody, user: { username: string }): 
     ok: true, today, date, dates,
     plan: plan ? { status: plan.status, confirmedAt: plan.confirmedAt, confirmCount: plan.confirmCount } : null,
     items: items.map((row) => ({ ...row, username: String(row.username) })),
-    sms, maps, smsConfig: smsConfig()
+    sms, maps, smsConfig: smsConfig(),
+    docs: await docStatusFor(items.map((row) => row.bl))
   };
 }
 

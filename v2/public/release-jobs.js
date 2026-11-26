@@ -162,7 +162,7 @@ function rlRenderList(){
       '<label class="rl-top"><input type="checkbox" data-id="'+esc(it.id)+'"'+(on?' checked':'')+(phone?'':' disabled')+'>'+
         '<div><span class="cnt">'+esc(it.containerNo||'(ไม่มีเลขตู้)')+'</span>'+
         (it.port||it.destination?'<span class="rl-port">'+esc(it.port||'?')+(it.destination?' → '+esc(it.destination):'')+'</span>':'')+
-        '<div class="muted">BL '+esc(it.bl||'-')+(it.customer?' • '+esc(it.customer):'')+'</div></div></label>'+
+        '<div class="muted">BL '+esc(it.bl||'-')+(it.customer?' • '+esc(it.customer):'')+'</div>'+docBadges(d.docs, it.bl)+'</div></label>'+
       '<div class="rl-drv">👤 '+esc(it.driverName||'ไม่มีชื่อคนขับ')+(it.plate?'<br>🚚 '+esc(it.plate):'')+'<br>'+
         (phone ? '📞 <a href="tel:'+phone+'">'+rlFmtPhone(phone)+'</a>' : '<span class="rl-nophone">📞 '+(it.phone?esc(it.phone)+' — ส่ง SMS ไม่ได้':'ไม่มีเบอร์มือถือ')+'</span>')+'</div>'+
       '<div class="rl-track">'+rlTrackHtml(rlSmsFor(it))+'</div>'+

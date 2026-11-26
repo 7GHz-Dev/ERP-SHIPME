@@ -183,7 +183,8 @@ function plRowHtml(row, i){
   return '<tr data-i="'+i+'" class="'+(extra?'pl-extra':'')+(row.username?'':' pl-unassigned')+'">'+
     '<td class="no">'+(i+1)+'</td>'+
     '<td><span class="pl-src'+(extra?' extra':'')+'" title="'+esc(row.source)+'">'+esc(src)+'</span></td>'+
-    '<td>'+inp('bl','mono','BL')+(row.customer?'<div class="pl-sub" title="'+esc(row.customer)+'">'+esc(row.customer)+'</div>':'')+'</td>'+
+    '<td>'+inp('bl','mono','BL')+(row.customer?'<div class="pl-sub" title="'+esc(row.customer)+'">'+esc(row.customer)+'</div>':'')+
+      docBadges(plan.data && plan.data.docs, row.bl)+'</td>'+
     '<td>'+inp('containerNo','mono','เลขตู้')+'</td>'+
     '<td>'+inp('port','short','PORT')+'</td>'+
     '<td>'+inp('destination','short','ปลายทาง')+'</td>'+
