@@ -374,7 +374,7 @@ export const invoices = pgTable('invoices', {
  */
 export const transportRecords = pgTable('transport_records', {
   id: text('id').primaryKey(),
-  transportDate: text('transport_date').notNull(),         // yyyy-MM-dd (ETA ใน Transport Request)
+  transportDate: text('transport_date').notNull(),         // yyyy-MM-dd (คอลัมน์ TRANSPORT ใน Transport Request — วันลากตู้)
   source: text('source').notNull().default('MAESOT FREEZONE'),  // MAESOT FREEZONE | TRANSIT
   customer: text('customer').notNull().default(''),        // ชิปเปอร์
   vessel: text('vessel').notNull().default(''),            // สายเรือ (SHIPLINE) — ช่อง VESSEL ของชีตเดิม
@@ -409,6 +409,30 @@ export const transportRecords = pgTable('transport_records', {
 }, (t) => [
   uniqueIndex('transport_records_bl_date_idx').on(t.blKey, t.transportDate),
   index('transport_records_date_idx').on(t.transportDate)
+]);
+
+/**
+ * ไฟล์ใบขน / E-Office ที่ ERP-KOLA (MAY) ส่งมา — ชั่วคราวระหว่างที่ KOLA ยังส่งเองไม่ได้ (kola-transport.ts)
+ * ไม่ผูกกับ transport_records เพราะไฟล์มาก่อนแถวได้ — จับคู่ด้วย bl_key ตอนแสดงในแพลนงาน
+ * อัปทับ BL + ประเภทเดิม = ไฟล์ใหม่เป็น current ไฟล์เก่ายังเก็บไว้
+ */
+export const transportDocs = pgTable('transport_docs', {
+  id: text('id').primaryKey(),
+  bl: text('bl').notNull(),
+  blKey: text('bl_key').notNull(),                  // ตัวใหญ่ เหลือแค่ A-Z0-9 (docKey)
+  kind: text('kind').notNull(),                     // DECL (ใบขน) | EOFFICE
+  fileName: text('file_name').notNull(),
+  storageKey: text('storage_key').notNull(),
+  size: integer('size').notNull().default(0),
+  mime: text('mime').notNull().default('application/pdf'),
+  current: boolean('current').notNull().default(true),
+  kolaJobId: text('kola_job_id').notNull().default(''),
+  declarationNo: text('declaration_no').notNull().default(''),
+  uploadedBy: text('uploaded_by').notNull().default(''),   // ชื่อผู้ใช้ฝั่ง KOLA
+  uploadedAt: text('uploaded_at').notNull()
+}, (t) => [
+  index('transport_docs_bl_idx').on(t.blKey, t.kind, t.current),
+  index('transport_docs_at_idx').on(t.uploadedAt)
 ]);
 
 /**

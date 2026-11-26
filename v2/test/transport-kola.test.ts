@@ -16,3 +16,19 @@ test('cleanImport rejects bad date', () => {
   const [row] = cleanImport([{ transportDate: '2026-02-30', bl: 'AMP0572751A', containers: '' }]);
   assert.equal(row.error, 'วันที่ TRANSPORT ไม่ถูกต้อง');
 });
+
+import { docKey, validDocInput } from '../src/lib/transport-docs-rules';
+
+test('docKey strips everything but A-Z0-9', () => {
+  assert.equal(docKey(' kg1042026-74915(amp0574862) '), 'KG104202674915AMP0574862');
+});
+
+test('validDocInput rejects non-pdf, >20MB, bad kind', () => {
+  const ok = { bl: 'X1', kind: 'DECL', fileName: 'a.pdf', size: 1000 };
+  assert.equal(validDocInput({ ...ok, size: 20 * 1024 * 1024 + 1 }), 'file_too_large');
+  assert.equal(validDocInput({ ...ok, kind: 'OTHER' }), 'bad_kind');
+  assert.equal(validDocInput({ ...ok, fileName: 'a.jpg' }), 'pdf_only');
+  assert.equal(validDocInput({ ...ok, bl: '' }), 'bad_bl');
+  assert.equal(validDocInput(ok), null);
+  assert.equal(validDocInput({ ...ok, kind: 'EOFFICE', fileName: 'AMP0572751A E-744810.PDF' }), null);
+});
