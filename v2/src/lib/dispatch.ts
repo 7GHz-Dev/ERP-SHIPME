@@ -1,4 +1,5 @@
 import { saveInvoicePairs } from './invoice-pairs';
+import { kolaTransportPush } from './kola-transport';
 import {
   createScanTicket, deleteInspectionFile, listInspectionFiles, registerInspectionFile,
   scanLogin, scanTicketInfo, scanUploadDone, scanUploadSign, signInspectionUpload
@@ -455,6 +456,8 @@ const handlers: Record<string, Handler> = {
   // ไม่ใช้ token ของผู้ใช้ เพราะคนยิงคือ Apps Script ในชีต ไม่ใช่คนที่ล็อกอินอยู่
   syncTransport: syncTransportSheet,
   pruneTransport: pruneTransportSheets,
+  // ERP-KOLA (MAY) ส่ง Transport Request เข้าตารางขนส่ง — ยืนยันตัวด้วย KOLA_SYNC_TOKEN ในตัวฟังก์ชัน (kola-transport.ts)
+  kolaTransportPush,
   transportSyncStatus: async (body) => {
     const session = await guard(body, ['admin', 'manager']);
     return session.error || transportSyncStatus();

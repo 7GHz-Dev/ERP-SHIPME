@@ -4,6 +4,9 @@ import { invoices, portAssignments, settlements, transportRecords, users } from 
 import { portKey } from './options';
 import type { ApiBody, ApiResult } from './types';
 import { id, nowIso, round2, safeJson } from './utils';
+import { blKeyOf, cleanImport, realDate, text } from './transport-clean';
+
+export { blKeyOf };
 
 /**
  * ตารางขนส่งของระบบ (transport_records) — ดูคำอธิบาย 5 ส่วนใน schema.ts
@@ -16,52 +19,11 @@ import { id, nowIso, round2, safeJson } from './utils';
  * ส่วน 4 / 5 อ่านสดตอนแสดงตาราง ไม่เก็บซ้ำ
  */
 export const SOURCES = ['MAESOT FREEZONE', 'TRANSIT'];
-const MAX_IMPORT = 500;
-const text = (value: unknown, max = 200) => String(value ?? '').trim().slice(0, max);
-export const blKeyOf = (bl: unknown) => String(bl ?? '').toUpperCase().replace(/\s+/g, '');
-
-const realDate = (value: string) => {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const d = new Date(`${value}T00:00:00Z`);
-  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
-};
 const addDays = (ymd: string, days: number) => {
   const d = new Date(`${ymd}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 };
-const splitContainers = (value: unknown) => [...new Set(String(value ?? '')
-  .toUpperCase().split(/[\s,;/]+/).map((x) => x.replace(/[^A-Z0-9]/g, '')).filter((x) => x.length >= 4))];
-
-type ImportRow = {
-  transportDate: string; customer: string; quantity: number; bl: string; blKey: string;
-  containers: string[]; vessel: string; vesselName: string; port: string;
-};
-
-/** ตรวจแถวที่หน้าเว็บอ่านจากไฟล์/ที่วางมา — คืนแถวที่ใช้ได้ + ข้อผิดพลาดรายแถว */
-function cleanImport(input: unknown) {
-  const rows: (ImportRow & { line: number; error?: string; warning?: string })[] = [];
-  for (const [i, raw] of (Array.isArray(input) ? input.slice(0, MAX_IMPORT) : []).entries()) {
-    const r = raw as any;
-    const transportDate = text(r?.transportDate, 10);
-    const bl = text(r?.bl, 120);
-    const containers = splitContainers(r?.containers);
-    const given = Math.round(Number(r?.quantity) || 0);
-    const row = {
-      line: Number(r?.line) || i + 1, transportDate, customer: text(r?.customer, 200), bl, blKey: blKeyOf(bl),
-      containers, quantity: given > 0 ? given : containers.length,
-      vessel: text(r?.vessel, 80), vesselName: text(r?.vesselName, 120), port: text(r?.port, 60)
-    };
-    let error = '';
-    if (!bl) error = 'ไม่มีเลข BL';
-    else if (!realDate(transportDate)) error = 'วันที่ (ETA) ไม่ถูกต้อง';
-    // CON ไม่ตรงกับจำนวนเลขตู้ = เตือน (ยังนำเข้าได้ ใช้ CON ตามไฟล์)
-    const warning = given > 0 && containers.length && given !== containers.length ? `CON ${given} แต่มีเลขตู้ ${containers.length} ตู้` : '';
-    rows.push({ ...row, ...(error ? { error } : {}), ...(warning ? { warning } : {}) });
-  }
-  return rows;
-}
-
 /** ชิปปิ้งประจำท่าของแต่ละเดือนที่ต้องใช้ → Map(period|portKey → username) */
 async function portOwners(periods: string[]) {
   const map = new Map<string, string>();
@@ -82,8 +44,17 @@ async function shipperLabels() {
  * แถวที่มีข้อผิดพลาดไม่บันทึก (แถวอื่นบันทึกได้)
  */
 export async function importTransportRequest(body: ApiBody, actor: { username: string }): Promise<ApiResult> {
-  const source = SOURCES.includes(text(body.source)) ? text(body.source) : SOURCES[0];
-  const rows = cleanImport(body.rows);
+  return runTransportImport(body.rows, {
+    source: text(body.source), commit: body.commit === true, actor: actor.username, importedFrom: 'import'
+  });
+}
+
+/** ตรรกะนำเข้ากลาง — ปุ่มนำเข้าในแพลนงาน (importedFrom = import) และ ERP-KOLA (importedFrom = kola) */
+export async function runTransportImport(input: unknown, opts: {
+  source: string; commit: boolean; actor: string; importedFrom: 'import' | 'kola';
+}): Promise<ApiResult> {
+  const source = SOURCES.includes(opts.source) ? opts.source : SOURCES[0];
+  const rows = cleanImport(input);
   if (!rows.length) return { ok: false, error: 'no_rows' };
 
   // BL ซ้ำในไฟล์เดียวกัน (วันเดียวกัน) — ใช้แถวแรก
@@ -116,7 +87,7 @@ export async function importTransportRequest(body: ApiBody, actor: { username: s
     update: preview.filter((p) => p.status === 'update').length, error: preview.filter((p) => p.status === 'error').length,
     noShipping: preview.filter((p) => p.status !== 'error' && !p.username).length
   };
-  if (body.commit !== true) return { ok: true, source, preview, summary, committed: false };
+  if (!opts.commit) return { ok: true, source, preview, summary, committed: false };
 
   const at = nowIso();
   await db.transaction(async (tx) => {
@@ -125,10 +96,10 @@ export async function importTransportRequest(body: ApiBody, actor: { username: s
       const part1 = {
         source, customer: r.customer, vessel: r.vessel, vesselName: r.vesselName, bl: r.bl,
         containersJson: JSON.stringify(r.containers), quantity: r.quantity, port: r.port, username: p.username,
-        importedFrom: 'import', updatedBy: actor.username, updatedAt: at
+        importedFrom: opts.importedFrom, updatedBy: opts.actor, updatedAt: at
       };
       await tx.insert(transportRecords).values({
-        id: id('TR'), transportDate: r.transportDate, blKey: r.blKey, ...part1, createdBy: actor.username, createdAt: at
+        id: id('TR'), transportDate: r.transportDate, blKey: r.blKey, ...part1, createdBy: opts.actor, createdAt: at
       }).onConflictDoUpdate({ target: [transportRecords.blKey, transportRecords.transportDate], set: part1 });
     }
   });

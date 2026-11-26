@@ -2,14 +2,14 @@
  * เมนูแพลนงาน → "📥 รับ Transport Request" — ส่วน 1 ของตารางขนส่งของระบบ (transport_records)
  * ตอนนี้นำเข้าจากไฟล์ Transport Request (ระหว่างรอ ERP KOLA ส่งมาเอง)
  *   วาง Copy/Paste จาก Google Sheet / Excel (รวมแถวหัวตาราง) หรืออัปไฟล์ .xlsx / .csv
- *   คอลัมน์: ETA · SHIPPER · CON · BILL OF LADING · CONTAINER NO. · SHIPLINE · VESSEL · PORT (หาจากหัวตาราง ไม่สนลำดับ)
+ *   คอลัมน์: TRANSPORT (วันลากตู้ = วันที่ของงาน · ไม่ใช้ ETA) · SHIPPER · CON · BILL OF LADING · CONTAINER NO. · SHIPLINE · VESSEL · PORT (หาจากหัวตาราง ไม่สนลำดับ)
  *   กด "ตรวจข้อมูล" ดูตัวอย่าง (ใหม่ / อัปเดต / ผิดพลาด + ชิปปิ้งประจำท่า) แล้วจึงกด "นำเข้า"
  * ใช้ $, api, state, esc, toast จาก admin.html • XLSX (SheetJS) ที่ admin.html โหลดไว้
  */
 var trState = { ready:false, rows:[], preview:null };
 
 var TR_HEADERS = [
-  { k:'transportDate', re:/^\s*(ETA|TRANSPORT|DATE|วันที่)/i },
+  { k:'transportDate', re:/^\s*(TRANSPORT|DATE|วันที่)/i },   // ไม่ใช้ ETA — วันที่ของงาน = วันลากตู้ (ผู้ใช้ยืนยัน 26 พ.ย. 69)
   { k:'customer', re:/SHIPPER|ชิปเปอร์/i },
   { k:'quantity', re:/^\s*(CON|CONT|QTY)\s*$|จำนวนตู้/i },
   { k:'bl', re:/BILL\s*OF\s*LADING|^\s*B\s*\/?\s*L\b|เลข\s*BL/i },
@@ -93,7 +93,7 @@ function initTransportImport(){
     + '<label class="btn btn-ghost btn-sm" style="cursor:pointer">📎 เลือกไฟล์ .xlsx / .csv<input id="tr-file" type="file" accept=".xlsx,.xls,.csv,.tsv,.txt" hidden></label>'
     + '<span id="tr-file-name" class="muted"></span></div>'
     + '<textarea id="tr-paste" rows="7" style="width:100%;box-sizing:border-box;font-family:ui-monospace,Menlo,monospace;font-size:12px" '
-    + 'placeholder="วางข้อมูลที่ Copy จาก Google Sheet / Excel ตรงนี้ (รวมแถวหัวตาราง ETA · SHIPPER · CON · BILL OF LADING · CONTAINER NO. · SHIPLINE · VESSEL · PORT)"></textarea>'
+    + 'placeholder="วางข้อมูลที่ Copy จาก Google Sheet / Excel ตรงนี้ (รวมแถวหัวตาราง TRANSPORT · SHIPPER · CON · BILL OF LADING · CONTAINER NO. · SHIPLINE · VESSEL · PORT)"></textarea>'
     + '<div class="toolbar" style="margin-top:8px"><button id="tr-check" class="btn btn-primary btn-sm">ตรวจข้อมูล</button>'
     + '<button id="tr-commit" class="btn btn-ok btn-sm" disabled>นำเข้า</button>'
     + '<button id="tr-clear" class="btn btn-ghost btn-sm">ล้าง</button><span id="tr-msg" class="muted"></span></div>'
@@ -177,7 +177,7 @@ var TR_STATUS={ 'new':'<span class="pill approved">ใหม่</span>', update:
 
 function trRenderPreview(list){
   $('tr-preview').innerHTML='<div class="tablewrap" style="margin-top:10px;max-height:60vh;overflow:auto"><table class="inv-tbl"><thead><tr>'
-    +'<th>แถว</th><th>สถานะ</th><th>ETA</th><th>ชิปเปอร์</th><th>BL</th><th>เลขตู้</th><th class="num">CON</th><th>สายเรือ</th><th>เรือ</th><th>ท่า</th><th>ชิปปิ้ง</th><th>หมายเหตุ</th></tr></thead><tbody>'
+    +'<th>แถว</th><th>สถานะ</th><th>TRANSPORT</th><th>ชิปเปอร์</th><th>BL</th><th>เลขตู้</th><th class="num">CON</th><th>สายเรือ</th><th>เรือ</th><th>ท่า</th><th>ชิปปิ้ง</th><th>หมายเหตุ</th></tr></thead><tbody>'
     +list.map(function(p){
       return '<tr><td class="num">'+p.line+'</td><td>'+(TR_STATUS[p.status]||'')+'</td><td>'+trDmy(p.transportDate)+'</td><td>'+esc(p.customer)+'</td>'
         +'<td class="mono">'+esc(p.bl)+'</td><td class="mono" style="white-space:pre-line;font-size:12px">'+esc((p.containers||[]).join('\n'))+'</td>'
