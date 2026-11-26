@@ -13,6 +13,16 @@ export type DocFile = { id: string; url: string; fileName: string };
 export type DocState = { do: 'yes' | 'no' | 'notfound' | 'unknown'; decl: DocFile | null; eoffice: DocFile | null };
 
 export async function docStatusFor(bls: string[]): Promise<Record<string, DocState>> {
+  // ป้ายเอกสารเป็นส่วนเสริม — อ่านไม่ได้ (เช่น ยังไม่ได้รัน migration 0024) ต้องไม่ทำให้แพลนงาน / งานปล่อยเปิดไม่ขึ้น
+  try {
+    return await readDocStatus(bls);
+  } catch (e) {
+    console.error('docStatusFor', e);
+    return {};
+  }
+}
+
+async function readDocStatus(bls: string[]): Promise<Record<string, DocState>> {
   const keys = [...new Set(bls.map(docKey).filter(Boolean))];
   if (!keys.length) return {};
   const [kolaDo, files] = await Promise.all([
