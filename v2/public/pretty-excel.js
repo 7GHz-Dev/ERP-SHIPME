@@ -84,6 +84,7 @@
       cols.forEach(function(c, i){
         var cell = xr.getCell(i + 1), v = row[c.key];
         if(c.type === 'date') { cell.value = toDate(v); cell.numFmt = 'dd/mm/yyyy'; }
+        else if(c.type === 'money' && v === '-') { cell.value = '-'; }   // ยอดที่ไม่ใช้ (เช่น ยอดในชีตของรายการยอดคงที่)
         else if(c.type === 'money') { cell.value = v === '' || v == null ? null : Number(v) || 0; cell.numFmt = '#,##0.00'; }
         else if(c.type === 'int') { cell.value = v === '' || v == null ? null : Number(v) || 0; cell.numFmt = '#,##0'; }
         else cell.value = v == null ? '' : String(v);

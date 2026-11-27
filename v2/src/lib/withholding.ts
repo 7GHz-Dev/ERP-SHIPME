@@ -14,6 +14,16 @@ type JobRow = {
 export type WhtLine = {
   category: 'DO' | 'EM' | 'PORT'; date: string; bl: string; vessel: string; source: string;
   amount: number; detail: string; count: number;
+  /** ฐานภาษี / ยอดหักคงที่ ไม่คิดจากยอดในชีต (หน้าเว็บแสดงยอดในชีตเป็น "-" และไม่รวมยอดในชีต) */
+  fixed?: { base: number; wht: number };
+};
+
+/**
+ * สายเรือที่ใบหักค่า DO ใช้ยอดคงที่แทนยอดในชีต — KNOT GLOBAL: ฐานภาษี 1,000.00 ยอดหัก 30.00 ต่อใบ (แจ้ง 27 พ.ย. 69)
+ * อยู่ที่นี่ ไม่ใช่ constants.ts เพราะใช้เฉพาะใบหักค่า DO
+ */
+const WHT_DO_FIXED: Record<string, { base: number; wht: number }> = {
+  'KNOT GLOBAL': { base: 1000, wht: 30 }
 };
 
 /** สายเรือที่ต้องออกใบหักค่า DO — คืนชื่อมาตรฐาน หรือ '' ถ้าไม่ใช่ */
@@ -106,8 +116,11 @@ export function buildDoLines(entries: DoEntry[], vessels: Map<string, string>, f
     const label = whtDoVessel(vessel);
     if (!label) continue;
     const extra = [e.note, /\+/.test(e.raw) ? `ยอดในชีต ${e.raw}` : '', byBl ? 'ยังไม่มี BL ในชีตงานขนส่ง (ดูสายเรือจากเลข BL)' : ''].filter(Boolean).join(' • ');
+    const fixed = WHT_DO_FIXED[label];
+    const fixedNote = fixed ? `ยอดคงที่ ฐาน ${fmt(fixed.base)} หัก ${fmt(fixed.wht)}` : '';
+    const detail = [extra, fixedNote].filter(Boolean).join(' • ');
     lines.push({ category: 'DO', date: e.date, bl: e.bl, vessel, source: `ชีตค่าแลกดีโอ (${e.tab})`,
-      amount: e.amount, detail: `DO ${label}${extra ? ` • ${extra}` : ''}`, count: 1 });
+      amount: e.amount, detail: `DO ${label}${detail ? ` • ${detail}` : ''}`, count: 1, ...(fixed ? { fixed: { ...fixed } } : {}) });
   }
   return { lines, unmatched };
 }

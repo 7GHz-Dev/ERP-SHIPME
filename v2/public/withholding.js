@@ -3,6 +3,7 @@
  *
  * ข้อมูลจากชีตงานขนส่ง MAESOT FREEZONE + TRANSIT (เซิร์ฟเวอร์แตกเป็นรายการ 1 รายการ = 1 ใบ)
  *   DO             : VESSEL = KNOT GLOBAL / SEAL / M+R / IFOUR FREIGHT / JJ / RCL — นับตามวันที่จ่ายในชีตค่าแลกดีโอ (ไม่ใช่วันที่ตรวจปล่อย)
+ *                    KNOT GLOBAL ใช้ยอดคงที่ ฐานภาษี 1,000.00 ยอดหัก 30.00 ต่อใบ (ยอดในชีตแสดง "-" ไม่รวมในยอดในชีต)
  *   EXTRA MOVEMENT : ทุก BL ที่มียอด
  *   STORAGE + LIFT ON + LIFT OFF : รวมเป็น 1 ใบต่อ BL
  * ยอดหัก = ยอดในชีต ÷ ตัวหาร × อัตรา — ตั้งแยกได้ทีละหมวด (ค่าเริ่มต้น ÷ 1.04 × 3%)
@@ -11,7 +12,7 @@
  */
 var whtState = { ready:false, data:null, filter:'' };
 var WHT_CATS = [
-  { key:'DO', label:'DO (KNOT GLOBAL / SEAL / M+R / IFOUR FREIGHT / JJ / RCL) ตามวันที่จ่าย' },
+  { key:'DO', label:'DO (KNOT GLOBAL / SEAL / M+R / IFOUR FREIGHT / JJ / RCL) ตามวันที่จ่าย • KNOT GLOBAL ฐาน 1,000 หัก 30 ต่อใบ' },
   { key:'EM', label:'EXTRA MOVEMENT' },
   { key:'PORT', label:'STORAGE / LIFT ON / LIFT OFF' }
 ];
@@ -45,8 +46,11 @@ function whtSetting(cat){
   var div = Number($('wht-div-'+cat).value), rate = Number($('wht-rate-'+cat).value);
   return { divisor: div > 0 ? div : 1, rate: (rate >= 0 ? rate : 0) / 100 };
 }
-function whtBase(line){ return whtRound2(line.amount / whtSetting(line.category).divisor); }
-function whtAmount(line){ return whtRound2(whtBase(line) * whtSetting(line.category).rate); }
+// line.fixed = ยอดคงที่ (เช่น DO KNOT GLOBAL ฐาน 1,000 หัก 30) — ไม่คิดจากยอดในชีต และยอดในชีตแสดงเป็น "-"
+function whtBase(line){ return line.fixed ? line.fixed.base : whtRound2(line.amount / whtSetting(line.category).divisor); }
+function whtAmount(line){ return line.fixed ? line.fixed.wht : whtRound2(whtBase(line) * whtSetting(line.category).rate); }
+function whtSheet(line){ return line.fixed ? 0 : line.amount; }
+function whtSheetText(line){ return line.fixed ? '-' : whtMoney(line.amount); }
 
 function whtLoad(){
   var from = $('wht-from').value, to = $('wht-to').value;
@@ -105,7 +109,7 @@ function whtRenderSummary(){
     var cat = tr.getAttribute('data-cat');
     var list = lines.filter(function(l){ return l.category === cat; });
     var count = list.reduce(function(s, l){ return s+(l.count==null?1:l.count); }, 0);
-    var amount = whtRound2(list.reduce(function(s, l){ return s+l.amount; }, 0));
+    var amount = whtRound2(list.reduce(function(s, l){ return s+whtSheet(l); }, 0));
     var base = whtRound2(list.reduce(function(s, l){ return s+whtBase(l); }, 0));
     var wht = whtRound2(list.reduce(function(s, l){ return s+whtAmount(l); }, 0));
     tr.querySelector('.wht-c').textContent = count;
@@ -128,7 +132,7 @@ function whtRenderLines(){
     return '<tr><td class="num">'+(i+1)+'</td><td>'+esc(whtDmy(l.date))+'<div class="sub">'+esc(l.source)+'</div></td>'
       + '<td class="mono">'+esc(l.bl)+'</td><td>'+esc(l.vessel||'—')+'</td>'
       + '<td>'+esc(l.detail)+(l.count!==1?' <span class="pill '+(l.count?'pending':'')+'">'+l.count+' ใบ</span>':'')+'</td>'
-      + '<td class="num">'+whtMoney(l.amount)+'</td><td class="num">'+whtMoney(whtBase(l))+'</td>'
+      + '<td class="num">'+whtSheetText(l)+'</td><td class="num">'+whtMoney(whtBase(l))+'</td>'
       + '<td class="num"><b>'+whtMoney(whtAmount(l))+'</b></td></tr>';
   }).join('') : '<tr><td colspan="8" class="muted" style="padding:14px">ไม่มีรายการ</td></tr>';
 }
@@ -139,7 +143,7 @@ function whtExport(){
   var catLabel = {}; WHT_CATS.forEach(function(c){ catLabel[c.key] = c.label; });
   var rows = d.lines.map(function(l, i){
     return [i+1, catLabel[l.category], whtDmy(l.date), l.source, l.bl, l.vessel, l.detail, (l.count==null?1:l.count),
-            l.amount, whtBase(l), whtAmount(l)];
+            l.fixed ? '-' : l.amount, whtBase(l), whtAmount(l)];
   });
   downloadCSV('withholding_'+d.from+'_'+d.to+'.csv',
     ['ลำดับ','หมวด','วันที่ (DO = วันที่จ่าย)','ที่มา','BL','VESSEL','รายละเอียด','จำนวนใบ','ยอดในชีต','ฐานภาษี','ยอดหัก ณ ที่จ่าย'], rows);
@@ -166,15 +170,15 @@ function whtExcel(){
   var sum = WHT_CATS.map(function(c){
     var list = d.lines.filter(function(l){ return l.category === c.key; }), st = whtSetting(c.key);
     return { cat:c.label, count:list.reduce(function(s, l){ return s+count(l); }, 0),
-      amount:whtRound2(list.reduce(function(s, l){ return s+l.amount; }, 0)),
+      amount:whtRound2(list.reduce(function(s, l){ return s+whtSheet(l); }, 0)),
       divisor:st.divisor, rate:whtRound2(st.rate*100)+'%',
       base:whtRound2(list.reduce(function(s, l){ return s+whtBase(l); }, 0)),
       wht:whtRound2(list.reduce(function(s, l){ return s+whtAmount(l); }, 0)) };
   });
-  var total = function(list, k){ return whtRound2(list.reduce(function(s, x){ return s+Number(x[k]); }, 0)); };
+  var total = function(list, k){ return whtRound2(list.reduce(function(s, x){ return s+(Number(x[k])||0); }, 0)); };   // "-" (ยอดคงที่) = 0
   var lines = d.lines.map(function(l, i){
     return { no:i+1, cat:catLabel[l.category], date:l.date, source:l.source, bl:l.bl, vessel:l.vessel||'', detail:l.detail,
-      count:count(l), amount:l.amount, base:whtBase(l), wht:whtAmount(l) };
+      count:count(l), amount:l.fixed ? '-' : l.amount, base:whtBase(l), wht:whtAmount(l) };
   });
   var range = 'วันที่ตรวจปล่อย '+whtDmy(d.from)+' – '+whtDmy(d.to)+' (DO ตามวันที่จ่ายในชีตค่าแลกดีโอ)';
   var btn = $('wht-excel'); btn.disabled = true;
@@ -183,7 +187,7 @@ function whtExcel(){
     company: 'บริษัท ชิป มี โลจิสติกส์ จำกัด',
     sheets: [{
       name: 'สรุป', title: 'สรุปใบหัก ณ ที่จ่าย (กระทำการแทน)', portrait: true,
-      subtitle: [range, 'ฐานภาษี = ยอดในชีต ÷ ตัวหาร • ยอดหัก = ฐานภาษี × อัตรา'],
+      subtitle: [range, 'ฐานภาษี = ยอดในชีต ÷ ตัวหาร • ยอดหัก = ฐานภาษี × อัตรา • DO KNOT GLOBAL ยอดคงที่ ฐาน 1,000.00 หัก 30.00 ต่อใบ'],
       columns: [
         { header:'หมวด', key:'cat', width:44 }, { header:'จำนวนใบ', key:'count', width:10, type:'int' },
         { header:'ยอดในชีต', key:'amount', width:15, type:'money' }, { header:'ตัวหาร', key:'divisor', width:8, type:'center' },
